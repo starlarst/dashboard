@@ -1,0 +1,2251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RPG Ghost | Dashboard</title>
+
+    <!-- Fonts & Icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@300;400;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
+    <!-- EmailJS SDK -->
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js">
+    </script>
+    <!-- Google reCAPTCHA v3 SDK -->
+    <script src="https://www.google.com/recaptcha/api.js?render=6LfdHyEtAAAAAJ34WMBrqoIc_Um2YqTE1jX-Lmkz">
+    </script>
+
+    <style>
+        :root {
+            --void-black: #0a0a0f;
+            --void-light: #13131f;
+            --spectral-teal: #00f3ff;
+            --soul-purple: #bc13fe;
+            --bone-white: #e0e0e0;
+            --glass-bg: rgba(19, 19, 31, 0.6);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --rarity-common: #9ca3af;
+            --rarity-rare: #3b82f6;
+            --rarity-epic: #a855f7;
+            --rarity-legendary: #f59e0b;
+            --gold: #fbbf24;
+            --silver: #94a3b8;
+            --bronze: #d97706;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--void-black);
+            color: var(--bone-white);
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
+
+        /* --- Auth Screen --- */
+        .auth-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--void-black);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            padding: 20px;
+        }
+
+        .auth-container {
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            padding: 2.5rem;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            position: relative;
+        }
+
+        .auth-logo {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--spectral-teal);
+            text-align: center;
+            margin-bottom: 2rem;
+            text-shadow: 0 0 15px rgba(0, 243, 255, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .auth-tabs {
+            display: flex;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 12px;
+            padding: 5px;
+            margin-bottom: 2rem;
+        }
+
+        .auth-tab {
+            flex: 1;
+            padding: 10px;
+            background: transparent;
+            border: none;
+            color: #8888a0;
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .auth-tab.active {
+            background: rgba(0, 243, 255, 0.15);
+            color: var(--spectral-teal);
+        }
+
+        .auth-form {
+            display: none;
+        }
+        .auth-form.active {
+            display: block;
+            animation: slideIn 0.4s ease;
+        }
+
+        .input-group {
+            position: relative;
+            margin-bottom: 1.2rem;
+        }
+        .input-group i {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #666;
+            z-index: 2;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 14px 15px 14px 45px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            color: var(--bone-white);
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        .input-group input:focus {
+            border-color: var(--spectral-teal);
+        }
+
+        .password-toggle {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: pointer;
+            color: #666;
+            z-index: 3;
+            transition: color 0.3s;
+            background: transparent;
+            border: none;
+            font-size: 1rem;
+        }
+
+        .password-toggle:hover {
+            color: var(--spectral-teal);
+        }
+
+        .pw-strength-wrap {
+            margin: -0.6rem 0 1.2rem;
+        }
+        .pw-strength-bar {
+            width: 100%;
+            height: 5px;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.08);
+            overflow: hidden;
+        }
+        .pw-strength-fill {
+            height: 100%;
+            width: 0%;
+            border-radius: 4px;
+            transition: width 0.3s ease, background-color 0.3s ease;
+            background: #ef4444;
+        }
+        .pw-strength-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-top: 6px;
+            font-size: 0.78rem;
+        }
+        .pw-strength-label {
+            font-weight: 600;
+            font-family: 'Rajdhani', sans-serif;
+            letter-spacing: 0.5px;
+        }
+        .pw-strength-hint {
+            color: #8888a0;
+            text-align: right;
+        }
+
+        .auth-btn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(90deg, var(--spectral-teal), var(--soul-purple));
+            border: none;
+            border-radius: 12px;
+            color: white;
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 1.2rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-top: 0.5rem;
+        }
+
+        .auth-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 243, 255, 0.3);
+        }
+        .auth-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .divider {
+            text-align: center;
+            margin: 1.5rem 0;
+            position: relative;
+            color: #666;
+            font-size: 0.9rem;
+        }
+        .divider::before,
+        .divider::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            width: 40%;
+            height: 1px;
+            background: var(--glass-border);
+        }
+        .divider::before {
+            left: 0;
+        }
+        .divider::after {
+            right: 0;
+        }
+
+        .social-btns {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+        }
+
+        .social-btn {
+            width: 60px;
+            height: 60px;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--glass-border);
+            color: var(--bone-white);
+            font-size: 1.5rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+        }
+
+        .social-btn.discord:hover {
+            background: rgba(88, 101, 242, 0.2);
+            border-color: #5865F2;
+            color: #5865F2;
+        }
+
+        .recaptcha-notice {
+            text-align: center;
+            font-size: 0.75rem;
+            color: #666;
+            margin-top: 2rem;
+            line-height: 1.5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        .recaptcha-notice i {
+            color: var(--spectral-teal);
+        }
+        .recaptcha-notice a {
+            color: var(--spectral-teal);
+            text-decoration: none;
+        }
+        .recaptcha-notice a:hover {
+            text-decoration: underline;
+        }
+
+        .otp-text {
+            text-align: center;
+            color: #8888a0;
+            margin-bottom: 1.5rem;
+            font-size: 0.95rem;
+        }
+        .otp-text span {
+            color: var(--spectral-teal);
+            font-weight: 600;
+        }
+
+        .otp-inputs {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .otp-input {
+            width: 45px;
+            height: 55px;
+            text-align: center;
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--glass-border);
+            border-radius: 10px;
+            color: var(--spectral-teal);
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        .otp-input:focus {
+            border-color: var(--spectral-teal);
+            box-shadow: 0 0 10px rgba(0, 243, 255, 0.2);
+        }
+
+        .resend-text {
+            text-align: center;
+            margin-top: 1.5rem;
+            color: #8888a0;
+            font-size: 0.9rem;
+        }
+        .resend-text a {
+            color: var(--spectral-teal);
+            text-decoration: none;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .logout-btn {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #f87171;
+            padding: 8px 16px;
+            border-radius: 50px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .logout-btn:hover {
+            background: rgba(239, 68, 68, 0.2);
+        }
+
+        /* --- Background Particle Canvas --- */
+        #particle-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            opacity: 0.6;
+        }
+
+        /* --- Layout --- */
+        .dashboard-container {
+            display: none;
+            min-height: 100vh;
+        }
+        .sidebar {
+            width: 260px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            border-right: 1px solid var(--glass-border);
+            padding: 2rem 1.5rem;
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100vh;
+            z-index: 30;
+            transform: translateX(-100%);
+            transition: transform .28s cubic-bezier(.4, 0, .2, 1);
+            box-shadow: 14px 0 36px rgba(0, 0, 0, 0.4);
+        }
+        .sidebar.is-open {
+            transform: translateX(0);
+        }
+
+        .topbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 56px;
+            z-index: 15;
+            display: flex;
+            align-items: center;
+            padding: 0 1.5rem;
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            border-bottom: 1px solid var(--glass-border);
+        }
+        .menu-toggle {
+            width: 38px;
+            height: 38px;
+            border-radius: 10px;
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--glass-border);
+            color: var(--bone-white);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: border-color .2s, color .2s, background .2s;
+        }
+        .menu-toggle:hover {
+            border-color: var(--spectral-teal);
+            color: var(--spectral-teal);
+            background: rgba(0, 243, 255, 0.08);
+        }
+
+        .nav-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.55);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity .25s ease;
+            z-index: 25;
+        }
+        .nav-backdrop.is-open {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .logo {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--spectral-teal);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 3rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            text-shadow: 0 0 15px rgba(0, 243, 255, 0.5);
+        }
+        .logo i {
+            animation: float 3s ease-in-out infinite;
+        }
+
+        .nav-links {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .nav-links li a {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            color: #8888a0;
+            text-decoration: none;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+        .nav-links li a:hover,
+        .nav-links li a.active {
+            background: rgba(0, 243, 255, 0.1);
+            color: var(--spectral-teal);
+            border-left: 3px solid var(--spectral-teal);
+        }
+
+        .main-content {
+            flex: 1;
+            margin-left: 0;
+            padding: 4.5rem 2rem 2rem;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        .user-greeting h1 {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 2rem;
+        }
+        .header-actions {
+            display: flex;
+            gap: 1.5rem;
+            align-items: center;
+        }
+        .currency-display {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .currency-badge {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            padding: 8px 16px;
+            border-radius: 50px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 600;
+        }
+        .currency-badge.gold {
+            color: #fbbf24;
+            border-color: rgba(251, 191, 36, 0.3);
+        }
+        .currency-badge.gems {
+            color: var(--soul-purple);
+            border-color: rgba(188, 19, 254, 0.3);
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: auto auto auto;
+            gap: 1.5rem;
+        }
+
+        .panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            padding: 1.5rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .panel:hover {
+            box-shadow: 0 8px 32px rgba(0, 243, 255, 0.05);
+            border-color: rgba(0, 243, 255, 0.2);
+        }
+
+        .panel-header {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: var(--bone-white);
+        }
+
+        .character-card {
+            grid-column: 1 / 2;
+            grid-row: 1 / 3;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .character-card::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(0, 243, 255, 0.1) 0%, transparent 70%);
+            animation: rotate 10s linear infinite;
+            z-index: 0;
+        }
+
+        .avatar-container {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            border: 3px solid var(--spectral-teal);
+            padding: 4px;
+            margin-bottom: 1rem;
+            position: relative;
+            z-index: 1;
+            box-shadow: 0 0 20px rgba(0, 243, 255, 0.3);
+        }
+        .avatar-container img {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+
+        .char-info {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+        }
+        .char-name {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 1.8rem;
+            font-weight: 700;
+        }
+        .char-class {
+            color: var(--soul-purple);
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-size: 0.9rem;
+        }
+
+        .stat-bar-container {
+            width: 100%;
+            margin-bottom: 1rem;
+            text-align: left;
+        }
+        .stat-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            margin-bottom: 6px;
+            color: #8888a0;
+        }
+        .stat-bar {
+            height: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            overflow: hidden;
+            position: relative;
+        }
+        .stat-fill {
+            height: 100%;
+            border-radius: 10px;
+            width: 0%;
+            transition: width 1.5s cubic-bezier(0.22, 1, 0.36, 1);
+            position: relative;
+        }
+        .stat-fill.hp {
+            background: linear-gradient(90deg, #ef4444, #f87171);
+            box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+        }
+        .stat-fill.mp {
+            background: linear-gradient(90deg, #3b82f6, #00f3ff);
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+        }
+        .stat-fill.xp {
+            background: linear-gradient(90deg, #f59e0b, #fbbf24);
+        }
+
+        .quick-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            width: 100%;
+            margin-top: 1.5rem;
+            position: relative;
+            z-index: 1;
+        }
+        .action-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--glass-border);
+            color: var(--bone-white);
+            padding: 12px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 600;
+            font-size: 1rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+        .action-btn:hover {
+            background: rgba(0, 243, 255, 0.15);
+            border-color: var(--spectral-teal);
+            color: var(--spectral-teal);
+            transform: translateY(-2px);
+        }
+        .action-btn i {
+            font-size: 1.2rem;
+        }
+
+        .activity-feed {
+            grid-column: 2 / 3;
+            grid-row: 1 / 2;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .activity-feed::-webkit-scrollbar {
+            width: 6px;
+        }
+        .activity-feed::-webkit-scrollbar-thumb {
+            background: var(--glass-border);
+            border-radius: 10px;
+        }
+
+        .feed-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 12px;
+            border-bottom: 1px solid var(--glass-border);
+            animation: slideIn 0.5s ease forwards;
+            opacity: 0;
+        }
+
+        .feed-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+            flex-shrink: 0;
+        }
+        .feed-icon.loot {
+            background: rgba(245, 158, 11, 0.2);
+            color: #fbbf24;
+        }
+        .feed-icon.combat {
+            background: rgba(239, 68, 68, 0.2);
+            color: #f87171;
+        }
+        .feed-icon.quest {
+            background: rgba(59, 130, 246, 0.2);
+            color: #60a5fa;
+        }
+        .feed-icon.notification {
+            background: rgba(0, 243, 255, 0.2);
+            color: var(--spectral-teal);
+        }
+
+        .feed-text {
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+        .feed-text strong {
+            color: var(--spectral-teal);
+        }
+        .feed-time {
+            font-size: 0.75rem;
+            color: #666;
+            margin-top: 4px;
+        }
+
+        .inventory-grid {
+            grid-column: 2 / 3;
+            grid-row: 2 / 3;
+        }
+        .inv-container {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+        }
+
+        .inv-slot {
+            aspect-ratio: 1;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+        .inv-slot:hover {
+            transform: scale(1.05);
+            border-color: var(--spectral-teal);
+            box-shadow: 0 0 15px rgba(0, 243, 255, 0.2);
+        }
+        .inv-slot.common {
+            border-color: var(--rarity-common);
+            color: var(--rarity-common);
+        }
+        .inv-slot.rare {
+            border-color: var(--rarity-rare);
+            color: var(--rarity-rare);
+            box-shadow: inset 0 0 10px rgba(59, 130, 246, 0.2);
+        }
+        .inv-slot.epic {
+            border-color: var(--rarity-epic);
+            color: var(--rarity-epic);
+            box-shadow: inset 0 0 10px rgba(168, 85, 247, 0.2);
+        }
+        .inv-slot.legendary {
+            border-color: var(--rarity-legendary);
+            color: var(--rarity-legendary);
+            box-shadow: inset 0 0 15px rgba(245, 158, 11, 0.3), 0 0 10px rgba(245, 158, 11, 0.2);
+            animation: pulse-legendary 2s infinite;
+        }
+
+        .item-count {
+            position: absolute;
+            bottom: 4px;
+            right: 6px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: white;
+            text-shadow: 0 1px 2px black;
+        }
+
+        /* --- LEADERBOARD STYLES --- */
+        .leaderboard-panel {
+            grid-column: 1 / 3;
+            grid-row: 3 / 4;
+        }
+        .lb-podium {
+            display: flex;
+            justify-content: center;
+            align-items: flex-end;
+            gap: 2rem;
+            margin-bottom: 1.5rem;
+            padding: 0.5rem;
+        }
+        .podium-item {
+            text-align: center;
+            padding: 0.75rem 1.5rem;
+            border-radius: 16px;
+            transition: transform 0.3s;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--glass-border);
+        }
+        .podium-item:hover {
+            transform: translateY(-5px);
+        }
+        .podium-item.first {
+            order: 2;
+            border-color: var(--gold);
+            background: rgba(251, 191, 36, 0.1);
+        }
+        .podium-item.second {
+            order: 1;
+            border-color: var(--silver);
+            background: rgba(148, 163, 184, 0.1);
+        }
+        .podium-item.third {
+            order: 3;
+            border-color: var(--bronze);
+            background: rgba(217, 119, 6, 0.1);
+        }
+        .podium-avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            margin: 0 auto 0.5rem;
+            border: 2px solid var(--spectral-teal);
+            object-fit: cover;
+        }
+        .podium-rank {
+            font-size: 1.8rem;
+            font-weight: 700;
+            font-family: 'Rajdhani', sans-serif;
+        }
+        .podium-rank.gold {
+            color: var(--gold);
+        }
+        .podium-rank.silver {
+            color: var(--silver);
+        }
+        .podium-rank.bronze {
+            color: var(--bronze);
+        }
+        .podium-name {
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        .podium-score {
+            font-size: 0.8rem;
+            color: #8888a0;
+        }
+
+        .lb-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .lb-table th {
+            text-align: left;
+            padding: 8px 12px;
+            color: #8888a0;
+            font-size: 0.8rem;
+            font-weight: 600;
+            border-bottom: 1px solid var(--glass-border);
+        }
+        .lb-table td {
+            padding: 8px 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            font-size: 0.9rem;
+        }
+        .lb-table tr:hover td {
+            background: rgba(255, 255, 255, 0.03);
+        }
+        .lb-rank {
+            font-weight: 700;
+            font-family: 'Rajdhani', sans-serif;
+        }
+        .lb-rank.top1 {
+            color: var(--gold);
+        }
+        .lb-rank.top2 {
+            color: var(--silver);
+        }
+        .lb-rank.top3 {
+            color: var(--bronze);
+        }
+        .lb-avatar {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            object-fit: cover;
+            vertical-align: middle;
+            margin-right: 8px;
+        }
+        .lb-name {
+            font-weight: 500;
+        }
+        .lb-score {
+            color: #fbbf24;
+            font-weight: 600;
+        }
+        .lb-class {
+            font-size: 0.75rem;
+            color: #8888a0;
+        }
+        .lb-you {
+            background: rgba(0, 243, 255, 0.05);
+            border-left: 2px solid var(--spectral-teal);
+        }
+
+        /* --- AUCTION HOUSE STYLES --- */
+        .auction-panel {
+            grid-column: 1 / 3;
+            grid-row: 4 / 5;
+        }
+        .auction-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 1.5rem;
+        }
+        .auction-items {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        .auction-item {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.75rem 1rem;
+            border-radius: 12px;
+            border: 1px solid var(--glass-border);
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        .auction-item:hover {
+            border-color: rgba(0, 243, 255, 0.3);
+            background: rgba(0, 0, 0, 0.2);
+        }
+        .auction-item-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            flex-shrink: 0;
+        }
+        .auction-item-info {
+            flex: 1;
+        }
+        .auction-item-name {
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        .auction-item-desc {
+            font-size: 0.75rem;
+            color: #8888a0;
+        }
+        .auction-item-price {
+            font-weight: 700;
+            color: var(--gold);
+            font-size: 0.9rem;
+        }
+        .btn-bid {
+            background: rgba(0, 243, 255, 0.1);
+            border: 1px solid rgba(0, 243, 255, 0.3);
+            color: var(--spectral-teal);
+            padding: 4px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.8rem;
+            transition: all 0.2s;
+            font-family: 'Rajdhani', sans-serif;
+        }
+        .btn-bid:hover {
+            background: rgba(0, 243, 255, 0.2);
+        }
+
+        .auction-sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        .auction-stat {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 0.75rem 1rem;
+            border-radius: 12px;
+            border: 1px solid var(--glass-border);
+        }
+        .auction-stat-label {
+            font-size: 0.75rem;
+            color: #8888a0;
+        }
+        .auction-stat-value {
+            font-size: 1.2rem;
+            font-weight: 700;
+            font-family: 'Rajdhani', sans-serif;
+            color: var(--spectral-teal);
+        }
+        .auction-stat-value.gold {
+            color: var(--gold);
+        }
+
+        .tooltip {
+            position: fixed;
+            background: rgba(10, 10, 15, 0.95);
+            border: 1px solid var(--spectral-teal);
+            padding: 12px;
+            border-radius: 8px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 100;
+            width: 200px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+        .tooltip h4 {
+            color: var(--spectral-teal);
+            margin-bottom: 4px;
+            font-family: 'Rajdhani', sans-serif;
+        }
+        .tooltip p {
+            font-size: 0.8rem;
+            color: #aaa;
+            line-height: 1.3;
+        }
+        .tooltip .stat {
+            color: #fbbf24;
+            font-size: 0.8rem;
+            margin-top: 6px;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            border-left: 4px solid var(--spectral-teal);
+            padding: 16px 24px;
+            border-radius: 8px;
+            color: white;
+            transform: translateX(150%);
+            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+        .toast.show {
+            transform: translateX(0);
+        }
+
+        @keyframes float {
+            0%,
+            100% {
+                transform: translateY(0);
+            }
+            50% {
+                transform: translateY(-8px);
+            }
+        }
+        @keyframes rotate {
+            from {
+                transform: rotate(0deg);
+            }
+            to {
+                transform: rotate(360deg);
+            }
+        }
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        @keyframes pulse-legendary {
+            0%,
+            100% {
+                box-shadow: inset 0 0 15px rgba(245, 158, 11, 0.3), 0 0 10px rgba(245, 158, 11, 0.2);
+            }
+            50% {
+                box-shadow: inset 0 0 20px rgba(245, 158, 11, 0.5), 0 0 20px rgba(245, 158, 11, 0.4);
+            }
+        }
+
+        @media (max-width: 900px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+            .character-card,
+            .activity-feed,
+            .inventory-grid,
+            .leaderboard-panel,
+            .auction-panel {
+                grid-column: 1 / -1;
+                grid-row: auto;
+            }
+            .sidebar {
+                width: 230px;
+            }
+            .main-content {
+                padding: 4.5rem 1.25rem 1.5rem;
+            }
+            .header-actions {
+                width: 100%;
+                justify-content: space-between;
+            }
+            .auction-grid {
+                grid-template-columns: 1fr;
+            }
+            .lb-podium {
+                flex-wrap: wrap;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="particle-canvas"></canvas>
+
+    <div class="topbar" id="dashTopbar" style="display:none;">
+        <button class="menu-toggle" id="navToggle" aria-label="Toggle navigation">
+            <i class="fa-solid fa-ellipsis-vertical"></i>
+        </button>
+    </div>
+    <div class="nav-backdrop" id="navBackdrop"></div>
+
+    <!-- Auth screen -->
+    <div id="auth-screen" class="auth-screen">
+        <div class="auth-container">
+            <div class="auth-logo">
+                <i class="fa-solid fa-ghost"></i>
+                <span>RPG Ghost</span>
+            </div>
+
+            <div class="auth-tabs">
+                <button class="auth-tab active" onclick="switchTab('login')">Sign In</button>
+                <button class="auth-tab" onclick="switchTab('register')">Sign Up</button>
+            </div>
+
+            <!-- Login Form -->
+            <form id="login-form" class="auth-form active" onsubmit="handleLogin(event)">
+                <div class="input-group">
+                    <i class="fa-solid fa-envelope"></i>
+                    <input type="email" id="login-email" placeholder="Email Address" required />
+                </div>
+                <div class="input-group">
+                    <i class="fa-solid fa-lock"></i>
+                    <input type="password" id="login-pass" placeholder="Password" required />
+                    <button type="button" class="password-toggle" onclick="togglePassword('login-pass')">
+                        <i class="fa-regular fa-eye"></i>
+                    </button>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 1.2rem;">
+                    <input type="checkbox" id="keep-signed-in" style="width: 16px; height: 16px; accent-color: var(--spectral-teal); cursor: pointer; margin: 0;" />
+                    <label for="keep-signed-in" style="color: #8888a0; font-size: 0.9rem; cursor: pointer; user-select: none;">Keep me signed in</label>
+                </div>
+                <button type="submit" class="auth-btn" id="login-btn">Sign In</button>
+                <p class="resend-text" style="margin-top: 0.8rem;"><a onclick="showForgotPasswordForm()">Forgot password?</a></p>
+
+                <div class="divider"><span>OR CONTINUE WITH</span></div>
+                <div class="social-btns">
+                    <a href="/login/discord" class="social-btn discord" id="discord-login-btn"><i class="fa-brands fa-discord"></i></a>
+                </div>
+            </form>
+
+            <!-- Register Form -->
+            <form id="register-form" class="auth-form" onsubmit="handleRegister(event)">
+                <div class="input-group">
+                    <i class="fa-solid fa-envelope"></i>
+                    <input type="email" id="reg-email" placeholder="Email Address" required />
+                </div>
+                <div class="input-group">
+                    <i class="fa-solid fa-lock"></i>
+                    <input type="password" id="reg-pass" placeholder="Password" required oninput="updatePasswordStrength(this.value)" />
+                    <button type="button" class="password-toggle" onclick="togglePassword('reg-pass')">
+                        <i class="fa-regular fa-eye"></i>
+                    </button>
+                </div>
+                <div class="pw-strength-wrap" id="pw-strength-wrap" style="display: none;">
+                    <div class="pw-strength-bar"><div class="pw-strength-fill" id="pw-strength-fill"></div></div>
+                    <div class="pw-strength-row">
+                        <span class="pw-strength-label" id="pw-strength-label"></span>
+                        <span class="pw-strength-hint" id="pw-strength-hint"></span>
+                    </div>
+                </div>
+                <div class="input-group">
+                    <i class="fa-solid fa-lock"></i>
+                    <input type="password" id="reg-confirm-pass" placeholder="Confirm Password" required />
+                    <button type="button" class="password-toggle" onclick="togglePassword('reg-confirm-pass')">
+                        <i class="fa-regular fa-eye"></i>
+                    </button>
+                </div>
+                <button type="submit" class="auth-btn" id="register-btn">Create Account</button>
+
+                <div class="divider"><span>OR CONTINUE WITH</span></div>
+                <div class="social-btns">
+                    <a href="/login/discord" class="social-btn discord"><i class="fa-brands fa-discord"></i></a>
+                </div>
+
+                <div class="recaptcha-notice">
+                    <i class="fa-solid fa-shield-halved"></i>
+                    Protected by reCAPTCHA and the Google
+                    <a href="https://policies.google.com/privacy" target="_blank">Privacy Policy</a> and
+                    <a href="https://policies.google.com/terms" target="_blank">Terms of Service</a> apply.
+                </div>
+            </form>
+
+            <!-- Forgot Password: Request Reset -->
+            <form id="forgot-form" class="auth-form" onsubmit="handleForgotPassword(event)">
+                <p class="otp-text">Enter your account email and we'll send you a reset code.</p>
+                <div class="input-group">
+                    <i class="fa-solid fa-envelope"></i>
+                    <input type="email" id="forgot-email" placeholder="Email Address" required />
+                </div>
+                <button type="submit" class="auth-btn" id="forgot-btn">Send Reset Code</button>
+                <p class="resend-text"><a onclick="switchTab('login')">Back to Sign In</a></p>
+            </form>
+
+            <!-- Forgot Password: Verify OTP + Set New Password -->
+            <form id="otp-form" class="auth-form" onsubmit="handleOTPSubmit(event)">
+                <p class="otp-text">Enter the 6-digit code sent to<br /><span id="otp-email-display"></span></p>
+                <div class="otp-inputs">
+                    <input type="text" maxlength="1" class="otp-input" inputmode="numeric" />
+                    <input type="text" maxlength="1" class="otp-input" inputmode="numeric" />
+                    <input type="text" maxlength="1" class="otp-input" inputmode="numeric" />
+                    <input type="text" maxlength="1" class="otp-input" inputmode="numeric" />
+                    <input type="text" maxlength="1" class="otp-input" inputmode="numeric" />
+                    <input type="text" maxlength="1" class="otp-input" inputmode="numeric" />
+                </div>
+                <div class="input-group">
+                    <i class="fa-solid fa-lock"></i>
+                    <input type="password" id="otp-new-pass" placeholder="New Password" required oninput="updatePasswordStrength(this.value, 'otp')" />
+                    <button type="button" class="password-toggle" onclick="togglePassword('otp-new-pass')">
+                        <i class="fa-regular fa-eye"></i>
+                    </button>
+                </div>
+                <div class="pw-strength-wrap" id="pw-strength-wrap-otp" style="display: none;">
+                    <div class="pw-strength-bar"><div class="pw-strength-fill" id="pw-strength-fill-otp"></div></div>
+                    <div class="pw-strength-row">
+                        <span class="pw-strength-label" id="pw-strength-label-otp"></span>
+                        <span class="pw-strength-hint" id="pw-strength-hint-otp"></span>
+                    </div>
+                </div>
+                <button type="submit" class="auth-btn" id="otp-btn">Reset Password</button>
+                <p class="resend-text">Didn't receive code? <a onclick="resendOTP()">Resend</a></p>
+            </form>
+        </div>
+    </div>
+
+    <!-- Dashboard -->
+    <div class="dashboard-container" id="dashboard">
+        <aside class="sidebar" id="sidebar">
+            <div class="logo"><i class="fa-solid fa-ghost"></i><span>RPG Ghost</span></div>
+            <ul class="nav-links">
+                <li><a href="/dashboard" class="active"><i class="fa-solid fa-chart-pie"></i> <span>Overview</span></a></li>
+                <li><a href="/battle-log"><i class="fa-solid fa-khanda"></i> <span>Battle Log</span></a></li>
+                <li><a href="/inventory"><i class="fa-solid fa-sack-dollar"></i> <span>Inventory</span></a></li>
+                <li><a href="/quest-board"><i class="fa-solid fa-scroll"></i> <span>Quest Board</span></a></li>
+                <li><a href="/guild-hall"><i class="fa-solid fa-users"></i> <span>Guild Hall</span></a></li>
+                <li><a href="/settings"><i class="fa-solid fa-gear"></i> <span>Settings</span></a></li>
+            </ul>
+        </aside>
+
+        <main class="main-content">
+            <header class="header">
+                <div class="user-greeting">
+                    <h1>Welcome back, <span style="color: var(--spectral-teal);" id="user-name-display">Adventurer</span></h1>
+                    <p style="color: #8888a0; font-size: 0.9rem;">The spirits whisper of new adventures today.</p>
+                </div>
+                <div class="header-actions">
+                    <div class="currency-display">
+                        <div class="currency-badge gold"><i class="fa-solid fa-coins"></i> <span id="gold-display">0</span></div>
+                        <div class="currency-badge gems"><i class="fa-solid fa-gem"></i> <span id="gems-display">0</span></div>
+                    </div>
+                    <button class="logout-btn" onclick="logout()"><i class="fa-solid fa-right-from-bracket"></i> Logout</button>
+                </div>
+            </header>
+
+            <div class="dashboard-grid">
+                <div class="panel character-card">
+                    <div class="avatar-container">
+                        <img id="user-avatar" src="https://api.dicebear.com/7.x/avataaars/svg?seed=Default&backgroundColor=b6e3f4" alt="Avatar" />
+                    </div>
+                    <div class="char-info">
+                        <div class="char-name" id="dash-name">Adventurer</div>
+                        <div class="char-class">Level <span id="dash-level">1</span> <span id="dash-class">Spectral Rogue</span></div>
+
+                        <div class="stat-bar-container">
+                            <div class="stat-label"><span>HP</span><span id="hp-text">100 / 100</span></div>
+                            <div class="stat-bar"><div class="stat-fill hp" id="hp-bar" style="width: 100%"></div></div>
+                        </div>
+
+                        <div class="stat-bar-container">
+                            <div class="stat-label"><span>MP</span><span id="mp-text">50 / 50</span></div>
+                            <div class="stat-bar"><div class="stat-fill mp" id="mp-bar" style="width: 100%"></div></div>
+                        </div>
+
+                        <div class="stat-bar-container">
+                            <div class="stat-label"><span>XP</span><span id="xp-text">0 / 100</span></div>
+                            <div class="stat-bar"><div class="stat-fill xp" id="xp-bar" style="width: 0%"></div></div>
+                        </div>
+
+                        <div class="quick-actions">
+                            <button class="action-btn" onclick="performAction('heal')"><i class="fa-solid fa-heart-pulse"></i> Heal</button>
+                            <button class="action-btn" onclick="performAction('hunt')"><i class="fa-solid fa-crosshairs"></i> Hunt</button>
+                            <button class="action-btn" onclick="performAction('daily')"><i class="fa-solid fa-gift"></i> Daily</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel activity-feed">
+                    <div class="panel-header">
+                        <span><i class="fa-solid fa-tower-broadcast" style="color: var(--spectral-teal); margin-right: 8px;"></i> Ghost Wire</span>
+                        <span style="font-size: 0.8rem; color: #666;">Live</span>
+                    </div>
+                    <div id="feed-container">
+                        <p style="text-align:center; color:#666; padding:20px;">Loading activity...</p>
+                    </div>
+                </div>
+
+                <div class="panel inventory-grid">
+                    <div class="panel-header">
+                        <span><i class="fa-solid fa-backpack" style="color: var(--soul-purple); margin-right: 8px;"></i> Inventory</span>
+                        <span style="font-size: 0.8rem; color: #666; cursor: pointer;">Manage <i class="fa-solid fa-chevron-right"></i></span>
+                    </div>
+                    <div class="inv-container" id="inventory-container">
+                        <p style="grid-column: 1/-1; text-align:center; color:#666; padding:20px;">Loading inventory...</p>
+                    </div>
+                </div>
+
+                <!-- LEADERBOARD PANEL -->
+                <div class="panel leaderboard-panel">
+                    <div class="panel-header">
+                        <span><i class="fa-solid fa-trophy" style="color: var(--gold); margin-right: 8px;"></i> Leaderboard</span>
+                        <span style="font-size: 0.8rem; color: #666;">Top Adventurers</span>
+                    </div>
+
+                    <!-- Podium (Dynamic) -->
+                    <div class="lb-podium" id="lb-podium">
+                        <!-- Populated by JS -->
+                    </div>
+
+                    <!-- Full Leaderboard Table (Dynamic) -->
+                    <table class="lb-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Adventurer</th>
+                                <th>Class</th>
+                                <th style="text-align:right;">Score</th>
+                            </tr>
+                        </thead>
+                        <tbody id="lb-tbody">
+                            <tr><td colspan="4" style="text-align:center; padding:20px; color:#666;">Loading leaderboard...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- AUCTION HOUSE PANEL -->
+                <div class="panel auction-panel">
+                    <div class="panel-header">
+                        <span><i class="fa-solid fa-gavel" style="color: var(--gold); margin-right: 8px;"></i> Auction House</span>
+                        <span style="font-size: 0.8rem; color: #666;">Live Bidding</span>
+                    </div>
+                    <div class="auction-grid">
+                        <div class="auction-items" id="auction-items">
+                            <!-- Populated by JS -->
+                            <p style="text-align:center; color:#666; padding:20px;">Loading auctions...</p>
+                        </div>
+                        <div class="auction-sidebar">
+                            <div class="auction-stat">
+                                <div class="auction-stat-label">Your Balance</div>
+                                <div class="auction-stat-value gold" id="auction-balance">0 <span style="font-size: 0.8rem; color: #8888a0;">Gold</span></div>
+                            </div>
+                            <div class="auction-stat">
+                                <div class="auction-stat-label">Active Bids</div>
+                                <div class="auction-stat-value" id="active-bids">0</div>
+                            </div>
+                            <div class="auction-stat">
+                                <div class="auction-stat-label">Items Listed</div>
+                                <div class="auction-stat-value" id="items-listed">0</div>
+                            </div>
+                            <button class="auth-btn" style="margin-top: 0; padding: 10px; font-size: 1rem;" onclick="showToast('Auction House opened!')">
+                                <i class="fa-solid fa-plus"></i> List Item
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div class="tooltip" id="tooltip">
+        <h4 id="tt-name">Item Name</h4>
+        <p id="tt-desc">Item description goes here.</p>
+        <div class="stat" id="tt-stat">+15 Attack Damage</div>
+    </div>
+
+    <div class="toast" id="toast">
+        <i class="fa-solid fa-circle-check" style="color: var(--spectral-teal); font-size: 1.2rem;"></i>
+        <span id="toast-message">Action successful!</span>
+    </div>
+
+    <script>
+        // EmailJS / reCAPTCHA config
+        const RECAPTCHA_SITE_KEY = "6LfdHyEtAAAAAJ34WMBrqoIc_Um2YqTE1jX-Lmkz";
+        const EMAILJS_PUBLIC_KEY = "eMQUadu5q-_pONmwc";
+        const EMAILJS_SERVICE_ID = "service_miabeqg";
+        const EMAILJS_TEMPLATE_ID = "template_tntozpq";
+
+        let resetEmail = "";
+        let resetOTP = "";
+        let isDashboardInitialized = false;
+        let currentUser = null;
+
+        // Initialize EmailJS
+        if (typeof emailjs !== 'undefined') {
+            emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY });
+        }
+
+        // toast helper
+        function showToast(message, isError = false) {
+            const toast = document.getElementById('toast');
+            const toastMessage = document.getElementById('toast-message');
+            const toastIcon = toast.querySelector('i');
+
+            toastMessage.innerText = message;
+
+            if (isError) {
+                toastIcon.style.color = '#ef4444';
+                toast.style.borderLeftColor = '#ef4444';
+            } else {
+                toastIcon.style.color = 'var(--spectral-teal)';
+                toast.style.borderLeftColor = 'var(--spectral-teal)';
+            }
+
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        // show/hide password
+        function togglePassword(inputId) {
+            const input = document.getElementById(inputId);
+            const toggleBtn = input.parentElement.querySelector('.password-toggle');
+            const icon = toggleBtn.querySelector('i');
+
+            if (input.type === "password") {
+                input.type = "text";
+                icon.classList.remove('fa-eye');
+                icon.classList.add('fa-eye-slash');
+            } else {
+                input.type = "password";
+                icon.classList.remove('fa-eye-slash');
+                icon.classList.add('fa-eye');
+            }
+        }
+
+        // tab switching for the auth card
+        function switchTab(tab) {
+            document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
+
+            if (tab === 'login') {
+                document.querySelector('.auth-tab:first-child').classList.add('active');
+                document.getElementById('login-form').classList.add('active');
+            } else {
+                document.querySelector('.auth-tab:last-child').classList.add('active');
+                document.getElementById('register-form').classList.add('active');
+            }
+        }
+
+        // password strength meter
+        function getPasswordStrength(password) {
+            if (!password) {
+                return { score: 0, label: '', color: '#666', hint: '' };
+            }
+
+            const lengthScore = Math.min(password.length / 16, 1);
+            const hasLower = /[a-z]/.test(password);
+            const hasUpper = /[A-Z]/.test(password);
+            const hasNumber = /[0-9]/.test(password);
+            const hasSymbol = /[^a-zA-Z0-9]/.test(password);
+            const varietyCount = [hasLower, hasUpper, hasNumber, hasSymbol].filter(Boolean).length;
+
+            const commonPasswords = [
+                'password', 'password1', '12345678', '123456789', 'qwerty123',
+                'letmein', 'iloveyou', 'admin123', 'welcome1', 'monkey123',
+                'football', 'dragon123', 'master123', 'sunshine', 'princess'
+            ];
+            const isCommon = commonPasswords.includes(password.toLowerCase());
+            const isSequential = /^(?:0123|1234|2345|3456|4567|5678|6789|abcd|qwer|asdf)/.test(password.toLowerCase());
+
+            let score = 0;
+            if (password.length >= 8) score += 1;
+            if (password.length >= 12) score += 1;
+            if (varietyCount >= 3) score += 1;
+            if (varietyCount === 4 && password.length >= 12) score += 1;
+            if (isCommon || isSequential) score = Math.min(score, 1);
+            if (password.length < 8) score = 0;
+
+            score = Math.max(0, Math.min(4, score));
+
+            const levels = [
+                { label: 'Very Weak', color: '#ef4444' },
+                { label: 'Weak', color: '#f97316' },
+                { label: 'Fair', color: '#f59e0b' },
+                { label: 'Strong', color: '#22c55e' },
+                { label: 'Very Strong', color: '#00f3ff' },
+            ];
+            const level = levels[score];
+
+            let hint = '';
+            if (isCommon) hint = 'Too common — pick something less guessable';
+            else if (isSequential) hint = 'Avoid simple sequences';
+            else if (password.length < 8) hint = 'Use at least 8 characters';
+            else if (varietyCount < 3) hint = 'Add numbers, symbols, or uppercase letters';
+            else if (password.length < 12) hint = 'Longer passwords are stronger';
+            else hint = 'Great password!';
+
+            return { score, label: level.label, color: level.color, hint };
+        }
+
+        function updatePasswordStrength(password, suffix = '') {
+            const tag = suffix ? `-${suffix}` : '';
+            const wrap = document.getElementById(`pw-strength-wrap${tag}`);
+            const fill = document.getElementById(`pw-strength-fill${tag}`);
+            const label = document.getElementById(`pw-strength-label${tag}`);
+            const hint = document.getElementById(`pw-strength-hint${tag}`);
+            if (!wrap || !fill || !label || !hint) return;
+
+            if (!password) {
+                wrap.style.display = 'none';
+                return;
+            }
+            wrap.style.display = 'block';
+
+            const result = getPasswordStrength(password);
+            const pct = (result.score / 4) * 100;
+            fill.style.width = pct + '%';
+            fill.style.backgroundColor = result.color;
+            label.innerText = result.label;
+            label.style.color = result.color;
+            hint.innerText = result.hint;
+        }
+
+        // Discord OAuth button
+        function handleDiscordLogin() {
+            showToast('Redirecting to Discord...');
+            setTimeout(() => {
+                window.location.href = '/login/discord';
+            }, 500);
+            return false;
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const discordBtns = document.querySelectorAll('.social-btn.discord');
+            discordBtns.forEach(btn => {
+                btn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    handleDiscordLogin();
+                });
+            });
+        });
+
+        // login form submit
+        async function handleLogin(event) {
+            event.preventDefault();
+            const email = document.getElementById('login-email').value.trim();
+            const password = document.getElementById('login-pass').value;
+
+            if (!email || !password) {
+                showToast('Please fill in all fields', true);
+                return;
+            }
+
+            const btn = document.getElementById('login-btn');
+            btn.disabled = true;
+            btn.innerText = "Verifying...";
+
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                const data = await response.json();
+
+                if (data.ok && data.logged_in) {
+                    showToast('Welcome back, ' + (data.username || 'Adventurer') + '!');
+                    showDashboard(data);
+                } else {
+                    showToast(data.error || 'Login failed. Check your credentials.', true);
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                showToast('Cannot reach server. Check your connection.', true);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "Sign In";
+            }
+        }
+
+        // register form submit
+        async function handleRegister(event) {
+            event.preventDefault();
+            const email = document.getElementById('reg-email').value.trim();
+            const pass = document.getElementById('reg-pass').value;
+            const confirmPass = document.getElementById('reg-confirm-pass').value;
+            const btn = document.getElementById('register-btn');
+
+            if (pass !== confirmPass) {
+                showToast("Passwords do not match!", true);
+                return;
+            }
+
+            const strength = getPasswordStrength(pass);
+            if (strength.score < 2) {
+                showToast("Please choose a stronger password.", true);
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerText = "Verifying Security...";
+
+            const submitRegistration = async (recaptchaToken) => {
+                try {
+                    const response = await fetch('/api/signup', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email, password: pass, recaptcha_token: recaptchaToken })
+                    });
+                    const data = await response.json();
+
+                    if (data.ok && data.logged_in) {
+                        showToast('Account created! Welcome, ' + (data.username || 'Adventurer') + '!');
+                        showDashboard(data);
+                    } else {
+                        showToast(data.error || 'Registration failed. Please try again.', true);
+                    }
+                } catch (error) {
+                    console.error('Register error:', error);
+                    showToast('Cannot reach server. Check your connection.', true);
+                } finally {
+                    btn.disabled = false;
+                    btn.innerText = "Create Account";
+                }
+            };
+
+            if (typeof grecaptcha !== 'undefined' && RECAPTCHA_SITE_KEY) {
+                grecaptcha.ready(function() {
+                    grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: 'register' })
+                        .then(submitRegistration)
+                        .catch(() => submitRegistration(null));
+                });
+            } else {
+                submitRegistration(null);
+            }
+        }
+
+        // forgot-password flow
+        async function handleForgotPassword(event) {
+            event.preventDefault();
+            const email = document.getElementById('forgot-email').value.trim();
+            const btn = document.getElementById('forgot-btn');
+
+            btn.disabled = true;
+            btn.innerText = "Sending...";
+
+            try {
+                const response = await fetch('/api/password/request-reset', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+                const data = await response.json();
+
+                if (data.ok) {
+                    resetEmail = email;
+                    resetOTP = data.otp || "";
+
+                    const templateParams = {
+                        to_email: email,
+                        otp_code: resetOTP,
+                        from_name: "RPG Ghost"
+                    };
+
+                    if (typeof emailjs !== 'undefined' && resetOTP) {
+                        emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, templateParams)
+                            .then(() => showToast("Reset code sent to your email!"))
+                            .catch((err) => {
+                                console.error("EmailJS Error:", err);
+                                showToast("Email delivery failed. Demo code: " + resetOTP, true);
+                            });
+                    } else {
+                        showToast(data.message || "If that email is registered, a code has been sent.");
+                    }
+                    showOTPForm(email);
+                } else {
+                    showToast(data.error || "Could not request a reset code.", true);
+                }
+            } catch (error) {
+                console.error('Forgot password error:', error);
+                showToast('Cannot reach server. Check your connection.', true);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "Send Reset Code";
+            }
+        }
+
+        function showForgotPasswordForm() {
+            document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
+            document.getElementById('forgot-form').classList.add('active');
+            document.getElementById('forgot-email').focus();
+        }
+
+        // OTP verification + new password
+        async function handleOTPSubmit(event) {
+            event.preventDefault();
+            let enteredOTP = "";
+            document.querySelectorAll('.otp-input').forEach(input => enteredOTP += input.value);
+            const newPassword = document.getElementById('otp-new-pass').value;
+            const btn = document.getElementById('otp-btn');
+
+            if (!newPassword || newPassword.length < 8) {
+                showToast("New password must be at least 8 characters.", true);
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerText = "Verifying...";
+
+            try {
+                const response = await fetch('/api/password/verify-reset', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: resetEmail, otp: enteredOTP, new_password: newPassword })
+                });
+                const data = await response.json();
+
+                if (data.ok) {
+                    showToast(data.message || "Password updated successfully!");
+                    document.getElementById('otp-form').reset();
+                    document.querySelectorAll('.otp-input').forEach(i => i.value = "");
+                    switchTab('login');
+                } else {
+                    showToast(data.error || "Invalid or expired code.", true);
+                }
+            } catch (error) {
+                console.error('Reset verify error:', error);
+                showToast('Cannot reach server. Check your connection.', true);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "Reset Password";
+            }
+        }
+
+        // OTP Input Auto-focus
+        document.querySelectorAll('.otp-input').forEach((input, index, inputs) => {
+            input.addEventListener('input', (e) => {
+                if (e.target.value.length === 1 && index < inputs.length - 1) {
+                    inputs[index + 1].focus();
+                }
+            });
+            input.addEventListener('keydown', (e) => {
+                if (e.key === "Backspace" && !input.value && index > 0) {
+                    inputs[index - 1].focus();
+                }
+            });
+        });
+
+        function resendOTP() {
+            if (!resetEmail) return;
+            showToast("Requesting new code...");
+            document.getElementById('forgot-form').dispatchEvent(new Event('submit'));
+        }
+
+        function showOTPForm(email) {
+            document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
+            document.getElementById('otp-form').classList.add('active');
+            document.getElementById('otp-email-display').innerText = email;
+            document.querySelectorAll('.otp-input')[0].focus();
+        }
+
+        // auction house
+        function placeBid(itemName) {
+            showToast(`💰 Bid placed on ${itemName}!`);
+            // Update active bids
+            const bidsEl = document.getElementById('active-bids');
+            let currentBids = parseInt(bidsEl.textContent) || 0;
+            bidsEl.textContent = currentBids + 1;
+        }
+
+        // Dashboard rendering
+        function showDashboard(user) {
+            currentUser = user; // Store for other functions
+            const authScreen = document.getElementById('auth-screen');
+            const dashboard = document.getElementById('dashboard');
+
+            authScreen.style.display = 'none';
+            dashboard.style.display = 'flex';
+            document.getElementById('dashTopbar').style.display = 'flex';
+
+            const name = user.username || "Adventurer";
+            document.getElementById('user-name-display').innerText = name;
+            document.getElementById('dash-name').innerText = name;
+            document.getElementById('dash-level').innerText = user.level || 1;
+            document.getElementById('dash-class').innerText = user.char_class || "Adventurer";
+            document.getElementById('gold-display').innerText = (user.gold || 0).toLocaleString();
+            document.getElementById('gems-display').innerText = (user.gems || 0).toLocaleString();
+            document.getElementById('auction-balance').innerHTML = (user.gold || 0).toLocaleString() +
+                ' <span style="font-size: 0.8rem; color: #8888a0;">Gold</span>';
+
+            // Update XP Bar
+            const xpPct = user.xp_pct || 0;
+            document.getElementById('xp-bar').style.width = xpPct + '%';
+            document.getElementById('xp-text').innerText = `${user.xp || 0} / ${user.xp_needed || 100}`;
+
+            // Load custom avatar/nickname from localStorage AFTER dashboard is visible
+            loadCustomProfile();
+
+            if (user.avatar) {
+                document.getElementById('user-avatar').src = user.avatar;
+            }
+
+            initDashboard();
+        }
+
+        // pull saved nickname/avatar/bio from the real backend, not localStorage
+        async function loadCustomProfile() {
+            try {
+                const res = await fetch('/api/profile');
+                const data = await res.json();
+                if (!data.logged_in) return;
+
+                if (data.avatar) {
+                    const avatarImg = document.getElementById('user-avatar');
+                    if (avatarImg) avatarImg.src = data.avatar;
+                }
+                if (data.nickname) {
+                    const nameDisplays = document.querySelectorAll('#dash-name, #user-name-display');
+                    nameDisplays.forEach(el => el.textContent = data.nickname);
+                }
+            } catch (err) {
+                console.error('Failed to load profile:', err);
+            }
+        }
+
+        async function logout() {
+            try {
+                await fetch('/logout');
+            } catch (e) {
+                console.error('Logout error:', e);
+            }
+
+            document.getElementById('dashboard').style.display = 'none';
+            document.getElementById('dashTopbar').style.display = 'none';
+            document.getElementById('auth-screen').style.display = 'flex';
+            document.getElementById('login-form').reset();
+            document.getElementById('register-form').reset();
+            document.getElementById('forgot-form').reset();
+            document.getElementById('otp-form').reset();
+            document.querySelectorAll('.otp-input').forEach(i => i.value = "");
+            updatePasswordStrength('');
+            updatePasswordStrength('', 'otp');
+            switchTab('login');
+            showToast('Logged out successfully');
+        }
+
+        // dashboard rendering
+        function initDashboard() {
+            if (isDashboardInitialized) return;
+            isDashboardInitialized = true;
+
+            // Particles
+            const canvas = document.getElementById('particle-canvas');
+            const ctx = canvas.getContext('2d');
+            let particles = [];
+
+            function resizeCanvas() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            }
+            window.addEventListener('resize', resizeCanvas);
+            resizeCanvas();
+
+            class Particle {
+                constructor() {
+                    this.x = Math.random() * canvas.width;
+                    this.y = Math.random() * canvas.height;
+                    this.size = Math.random() * 2 + 0.5;
+                    this.speedX = Math.random() * 0.5 - 0.25;
+                    this.speedY = Math.random() * 0.5 - 0.25;
+                    this.opacity = Math.random() * 0.5 + 0.1;
+                }
+                update() {
+                    this.x += this.speedX;
+                    this.y += this.speedY;
+                    if (this.x > canvas.width) this.x = 0;
+                    if (this.x < 0) this.x = canvas.width;
+                    if (this.y > canvas.height) this.y = 0;
+                    if (this.y < 0) this.y = canvas.height;
+                }
+                draw() {
+                    ctx.fillStyle = `rgba(0, 243, 255, ${this.opacity})`;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            for (let i = 0; i < 80; i++) particles.push(new Particle());
+
+            function animateParticles() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                particles.forEach(p => { p.update();
+                    p.draw(); });
+                requestAnimationFrame(animateParticles);
+            }
+            animateParticles();
+
+            // Load Real Data from APIs
+            if (currentUser && currentUser.discord_id) {
+                loadLeaderboard();
+                loadInventory(currentUser.discord_id);
+                loadActivity(currentUser.discord_id);
+                loadAuctions();
+            }
+        }
+
+        async function loadLeaderboard() {
+            try {
+                const res = await fetch('/api/leaderboard');
+                const data = await res.json();
+                const players = data.leaderboard || [];
+
+                // Render Podium (Top 3)
+                const podiumContainer = document.getElementById('lb-podium');
+                podiumContainer.innerHTML = '';
+
+                if (players.length > 0) {
+                    // 2nd Place
+                    if (players[1]) {
+                        podiumContainer.innerHTML += createPodiumItem(players[1], 'second', '🥈');
+                    }
+                    // 1st Place
+                    if (players[0]) {
+                        podiumContainer.innerHTML += createPodiumItem(players[0], 'first', '👑');
+                    }
+                    // 3rd Place
+                    if (players[2]) {
+                        podiumContainer.innerHTML += createPodiumItem(players[2], 'third', '🥉');
+                    }
+                }
+
+                // Render Table
+                const tbody = document.getElementById('lb-tbody');
+                tbody.innerHTML = '';
+
+                players.slice(0, 10).forEach((p, index) => {
+                    const rankClass = index === 0 ? 'top1' : index === 1 ? 'top2' : index === 2 ? 'top3' : '';
+                    const isMe = currentUser && p.id == currentUser.discord_id ? 'lb-you' : '';
+
+                    tbody.innerHTML += `
+                            <tr class="${isMe}">
+                                <td><span class="lb-rank ${rankClass}">#${index + 1}</span></td>
+                                <td><img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${p.name}&backgroundColor=b6e3f4" class="lb-avatar"> <span class="lb-name">${p.name}</span></td>
+                                <td><span class="lb-class">${p.class}</span></td>
+                                <td style="text-align:right;"><span class="lb-score">${p.xp.toLocaleString()} XP</span></td>
+                            </tr>
+                        `;
+                });
+            } catch (e) {
+                console.error("Failed to load leaderboard", e);
+                document.getElementById('lb-tbody').innerHTML =
+                    '<tr><td colspan="4" style="text-align:center; color:red;">Failed to load</td></tr>';
+            }
+        }
+
+        function createPodiumItem(player, rankClass, icon) {
+            return `
+                    <div class="podium-item ${rankClass}">
+                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${player.name}&backgroundColor=b6e3f4" class="podium-avatar" alt="">
+                        <div class="podium-rank ${rankClass === 'first' ? 'gold' : rankClass === 'second' ? 'silver' : 'bronze'}">${icon}</div>
+                        <div class="podium-name">${player.name}</div>
+                        <div class="podium-score">${player.xp.toLocaleString()} XP</div>
+                    </div>
+                `;
+        }
+
+        async function loadInventory(userId) {
+            try {
+                const res = await fetch(`/api/inventory/${userId}`);
+                const data = await res.json();
+                const items = data.items || [];
+
+                const container = document.getElementById('inventory-container');
+                container.innerHTML = '';
+
+                if (items.length === 0) {
+                    container.innerHTML = '<p style="grid-column: 1/-1; text-align:center; color:#666;">Inventory is empty.</p>';
+                    return;
+                }
+
+                // Show first 8 items
+                items.slice(0, 8).forEach(item => {
+                    const rarity = item.rarity ? item.rarity.toLowerCase() : 'common';
+                    const icon = getItemIcon(item.name);
+
+                    const slot = document.createElement('div');
+                    slot.className = `inv-slot ${rarity}`;
+                    slot.innerHTML =
+                        `<i class="fa-solid ${icon}"></i>${item.quantity > 1 ? `<span class="item-count">${item.quantity}</span>` : ''}`;
+
+                    // Tooltip logic
+                    slot.addEventListener('mousemove', (e) => {
+                        document.getElementById('tt-name').innerText = item.name;
+                        document.getElementById('tt-desc').innerText = rarity.charAt(0).toUpperCase() + rarity.slice(1) +
+                            " Item";
+                        document.getElementById('tt-stat').innerText = `Qty: ${item.quantity}`;
+                        const tooltip = document.getElementById('tooltip');
+                        tooltip.style.opacity = '1';
+                        tooltip.style.left = e.clientX + 15 + 'px';
+                        tooltip.style.top = e.clientY + 15 + 'px';
+                    });
+                    slot.addEventListener('mouseleave', () => { document.getElementById('tooltip').style.opacity = '0'; });
+
+                    container.appendChild(slot);
+                });
+            } catch (e) {
+                console.error("Failed to load inventory", e);
+            }
+        }
+
+        function getItemIcon(name) {
+            const n = name.toLowerCase();
+            if (n.includes('sword') || n.includes('blade') || n.includes('weapon')) return 'fa-khanda';
+            if (n.includes('shield') || n.includes('armor')) return 'fa-shield-halved';
+            if (n.includes('potion') || n.includes('elixir')) return 'fa-flask';
+            if (n.includes('gem') || n.includes('crystal')) return 'fa-gem';
+            if (n.includes('scroll') || n.includes('map')) return 'fa-scroll';
+            if (n.includes('coin') || n.includes('gold')) return 'fa-coins';
+            return 'fa-box';
+        }
+
+        async function loadActivity(userId) {
+            try {
+                const res = await fetch(`/api/activity/${userId}`);
+                const data = await res.json();
+                const items = data.items || [];
+
+                const container = document.getElementById('feed-container');
+                container.innerHTML = '';
+
+                if (items.length === 0) {
+                    container.innerHTML = '<p style="text-align:center; color:#666; padding:20px;">No recent activity.</p>';
+                    return;
+                }
+
+                items.slice(0, 5).forEach((item, index) => {
+                    let icon = 'fa-circle-info';
+                    let type = 'notification';
+
+                    if (item.action.includes('battle') || item.action.includes('kill')) {
+                        icon = 'fa-skull';
+                        type = 'combat';
+                    } else if (item.action.includes('loot') || item.action.includes('get')) {
+                        icon = 'fa-gem';
+                        type = 'loot';
+                    } else if (item.action.includes('quest')) {
+                        icon = 'fa-scroll';
+                        type = 'quest';
+                    }
+
+                    const div = document.createElement('div');
+                    div.className = 'feed-item';
+                    div.style.animationDelay = `${index * 0.1}s`;
+                    div.style.opacity = '1';
+                    div.innerHTML = `
+                            <div class="feed-icon ${type}"><i class="fa-solid ${icon}"></i></div>
+                            <div>
+                                <div class="feed-text">${item.detail || item.action}</div>
+                                <div class="feed-time">${new Date(item.ts).toLocaleTimeString()}</div>
+                            </div>`;
+                    container.appendChild(div);
+                });
+            } catch (e) {
+                console.error("Failed to load activity", e);
+            }
+        }
+
+        async function loadAuctions() {
+            try {
+                const res = await fetch('/api/auctions');
+                const data = await res.json();
+                const auctions = data.auctions || [];
+
+                const container = document.getElementById('auction-items');
+                container.innerHTML = '';
+
+                if (auctions.length === 0) {
+                    container.innerHTML = '<p style="text-align:center; color:#666; padding:20px;">No active auctions.</p>';
+                    return;
+                }
+
+                auctions.slice(0, 4).forEach(auction => {
+                    const rarityColor = auction.rarity === 'legendary' ? 'var(--rarity-legendary)' :
+                        auction.rarity === 'epic' ? 'var(--rarity-epic)' :
+                        auction.rarity === 'rare' ? 'var(--rarity-rare)' : '#22c55e';
+
+                    const div = document.createElement('div');
+                    div.className = 'auction-item';
+                    div.onclick = () => placeBid(auction.name);
+                    div.innerHTML = `
+                            <div class="auction-item-icon" style="background: ${rarityColor}22; color: ${rarityColor};">
+                                <i class="fa-solid fa-gavel"></i>
+                            </div>
+                            <div class="auction-item-info">
+                                <div class="auction-item-name" style="color: ${rarityColor};">${auction.name}</div>
+                                <div class="auction-item-desc">Seller: ${auction.seller}</div>
+                            </div>
+                            <div class="auction-item-price">💰 ${auction.current_bid.toLocaleString()} Gold</div>
+                            <button class="btn-bid" onclick="event.stopPropagation(); placeBid('${auction.name}')">Bid</button>
+                        `;
+                    container.appendChild(div);
+                });
+
+                document.getElementById('items-listed').innerText = auctions.length;
+            } catch (e) {
+                console.error("Failed to load auctions", e);
+            }
+        }
+
+        function performAction(action) {
+            if (action === 'heal') showToast("Casting Heal... HP Restored!");
+            else if (action === 'hunt') showToast("Entering the hunting grounds...");
+            else if (action === 'daily') showToast("Daily reward claimed: +100 XP, +50 Gold!");
+        }
+
+        // session check + oauth callback
+        async function checkAuth() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const authStatus = urlParams.get('auth');
+
+            if (authStatus === 'success') {
+                window.history.replaceState({}, document.title, window.location.pathname);
+                showToast('Successfully logged in with Discord!');
+            } else if (authStatus === 'failed') {
+                window.history.replaceState({}, document.title, window.location.pathname);
+                showToast('Discord login failed. Please try again.', true);
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/me');
+                const data = await response.json();
+
+                if (data.logged_in) {
+                    showDashboard(data);
+                }
+            } catch (error) {
+                console.error('Auth check error:', error);
+            }
+        }
+
+        // kick things off
+        document.addEventListener('DOMContentLoaded', () => {
+            checkAuth();
+
+            const sidebar = document.getElementById('sidebar');
+            const navBackdrop = document.getElementById('navBackdrop');
+            const navToggle = document.getElementById('navToggle');
+
+            navToggle.addEventListener('click', () => {
+                sidebar.classList.toggle('is-open');
+                navBackdrop.classList.toggle('is-open');
+            });
+            navBackdrop.addEventListener('click', () => {
+                sidebar.classList.remove('is-open');
+                navBackdrop.classList.remove('is-open');
+            });
+            document.querySelectorAll('.nav-links a').forEach(link => {
+                link.addEventListener('click', () => {
+                    sidebar.classList.remove('is-open');
+                    navBackdrop.classList.remove('is-open');
+                });
+            });
+        });
+    </script>
+</body>
+</html>

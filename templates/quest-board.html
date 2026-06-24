@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RPG Ghost | Quest Board</title>
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root { --void-black: #0a0a0f; --spectral-teal: #00f3ff; --bone-white: #e0e0e0; --glass-bg: rgba(19, 19, 31, 0.6); --glass-border: rgba(255, 255, 255, 0.08); --gold: #fbbf24; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background-color: var(--void-black); color: var(--bone-white); min-height: 100vh; display: flex; }
+        .sidebar { width: 260px; background: var(--glass-bg); backdrop-filter: blur(16px); border-right: 1px solid var(--glass-border); padding: 2rem 1.5rem; position: fixed; height: 100vh; }
+        .logo { font-family: 'Rajdhani', sans-serif; font-size: 1.8rem; font-weight: 700; color: var(--spectral-teal); margin-bottom: 3rem; display: flex; align-items: center; gap: 10px; }
+        .nav-links { list-style: none; display: flex; flex-direction: column; gap: 0.5rem; }
+        .nav-links li a { display: flex; align-items: center; gap: 12px; padding: 12px 16px; color: #8888a0; text-decoration: none; border-radius: 12px; transition: all 0.3s; }
+        .nav-links li a:hover, .nav-links li a.active { background: rgba(0, 243, 255, 0.1); color: var(--spectral-teal); border-left: 3px solid var(--spectral-teal); }
+        .main-content { flex: 1; margin-left: 260px; padding: 2rem; }
+        
+        .section-title { font-family: 'Rajdhani'; font-size: 1.5rem; margin: 2rem 0 1rem; border-bottom: 1px solid var(--glass-border); padding-bottom: 0.5rem; }
+        .quest-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.5rem; }
+        .quest-card { background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 16px; padding: 1.5rem; transition: transform 0.2s; }
+        .quest-card:hover { transform: translateY(-3px); border-color: var(--spectral-teal); }
+        .quest-title { font-family: 'Rajdhani'; font-size: 1.3rem; font-weight: 700; margin-bottom: 0.5rem; color: var(--spectral-teal); }
+        .quest-reward { display: inline-block; background: rgba(251, 191, 36, 0.1); color: var(--gold); padding: 4px 10px; border-radius: 20px; font-size: 0.8rem; font-weight: 600; margin-top: 1rem; }
+        .quest-status { font-size: 0.8rem; color: #8888a0; margin-top: 0.5rem; }
+        .empty-state { text-align: center; padding: 3rem; color: #666; background: var(--glass-bg); border-radius: 16px; border: 1px dashed var(--glass-border); }
+    </style>
+</head>
+<body>
+    <aside class="sidebar">
+        <div class="logo"><i class="fa-solid fa-ghost"></i><span>RPG Ghost</span></div>
+        <ul class="nav-links">
+            <li><a href="/dashboard"><i class="fa-solid fa-chart-pie"></i> Overview</a></li>
+            <li><a href="/battle-log"><i class="fa-solid fa-khanda"></i> Battle Log</a></li>
+            <li><a href="/inventory"><i class="fa-solid fa-sack-dollar"></i> Inventory</a></li>
+            <li><a href="/quest-board" class="active"><i class="fa-solid fa-scroll"></i> Quest Board</a></li>
+            <li><a href="/guild-hall"><i class="fa-solid fa-users"></i> Guild Hall</a></li>
+            <li><a href="/settings"><i class="fa-solid fa-gear"></i> Settings</a></li>
+        </ul>
+    </aside>
+
+    <main class="main-content">
+        <header style="margin-bottom: 2rem;"><h1>Quest Board</h1></header>
+
+        <h2 class="section-title"><i class="fa-solid fa-star" style="color:var(--gold);"></i> Daily Contracts</h2>
+        <div class="quest-grid" id="daily-container">
+            <div class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</div>
+        </div>
+
+        <h2 class="section-title"><i class="fa-solid fa-book" style="color:var(--spectral-teal);"></i> Active Story Quests</h2>
+        <div class="quest-grid" id="active-container"></div>
+
+        <h2 class="section-title"><i class="fa-solid fa-check-circle" style="color:#22c55e;"></i> Completed</h2>
+        <div class="quest-grid" id="completed-container"></div>
+    </main>
+
+<script>
+document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        const meRes = await fetch('/api/me');
+        const me = await meRes.json();
+        if (!me.logged_in) return window.location.href = '/';
+
+        const qRes = await fetch(`/api/quests/${me.discord_id}`);
+        const qData = await qRes.json();
+
+        // Render Dailies
+        const dailyC = document.getElementById('daily-container');
+        dailyC.innerHTML = '';
+        if (!qData.daily_quests || qData.daily_quests.length === 0) {
+            dailyC.innerHTML = '<div class="empty-state">No daily contracts available today.</div>';
+        } else {
+            qData.daily_quests.forEach(q => {
+                const rewardStr = q.reward ? `${q.reward.gold || 0} Gold, ${q.reward.xp || 0} XP` : 'Reward TBD';
+                dailyC.innerHTML += `
+                    <div class="quest-card">
+                        <div class="quest-title">${q.name}</div>
+                        <div class="quest-status">Daily • Resets at midnight UTC</div>
+                        <div class="quest-reward"><i class="fa-solid fa-gift"></i> ${rewardStr}</div>
+                    </div>
+                `;
+            });
+        }
+
+        // Render Active
+        const activeC = document.getElementById('active-container');
+        if (qData.active_quests && qData.active_quests.length > 0) {
+            qData.active_quests.forEach(q => {
+                activeC.innerHTML += `
+                    <div class="quest-card">
+                        <div class="quest-title">${q.title}</div>
+                        <div class="quest-status">Current Objective: ${q.current_node || 'In Progress'}</div>
+                    </div>
+                `;
+            });
+        }
+
+        // Render Completed
+        const compC = document.getElementById('completed-container');
+        if (qData.completed_quests && qData.completed_quests.length > 0) {
+            qData.completed_quests.slice(0, 6).forEach(q => {
+                compC.innerHTML += `
+                    <div class="quest-card" style="opacity: 0.7;">
+                        <div class="quest-title" style="color:#8888a0;">${q.title}</div>
+                        <div class="quest-status">Completed ${q.completed_at ? new Date(q.completed_at).toLocaleDateString() : ''}</div>
+                    </div>
+                `;
+            });
+        }
+
+    } catch (e) {
+        console.error(e);
+        document.getElementById('daily-container').innerHTML = '<div class="empty-state">Failed to load quests.</div>';
+    }
+});
+</script>
+</body>
+</html>

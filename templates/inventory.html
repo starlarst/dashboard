@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RPG Ghost | Inventory</title>
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root { --void-black: #0a0a0f; --spectral-teal: #00f3ff; --soul-purple: #bc13fe; --bone-white: #e0e0e0; --glass-bg: rgba(19, 19, 31, 0.6); --glass-border: rgba(255, 255, 255, 0.08); --rarity-common: #9ca3af; --rarity-rare: #3b82f6; --rarity-epic: #a855f7; --rarity-legendary: #f59e0b; --gold: #fbbf24; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background-color: var(--void-black); color: var(--bone-white); min-height: 100vh; display: flex; }
+        
+        /* Sidebar & Topbar (Simplified for brevity - assume same as dashboard) */
+        .sidebar { width: 260px; background: var(--glass-bg); backdrop-filter: blur(16px); border-right: 1px solid var(--glass-border); padding: 2rem 1.5rem; position: fixed; height: 100vh; z-index: 30; }
+        .logo { font-family: 'Rajdhani', sans-serif; font-size: 1.8rem; font-weight: 700; color: var(--spectral-teal); margin-bottom: 3rem; display: flex; align-items: center; gap: 10px; }
+        .nav-links { list-style: none; display: flex; flex-direction: column; gap: 0.5rem; }
+        .nav-links li a { display: flex; align-items: center; gap: 12px; padding: 12px 16px; color: #8888a0; text-decoration: none; border-radius: 12px; transition: all 0.3s; }
+        .nav-links li a:hover, .nav-links li a.active { background: rgba(0, 243, 255, 0.1); color: var(--spectral-teal); border-left: 3px solid var(--spectral-teal); }
+        
+        .main-content { flex: 1; margin-left: 260px; padding: 2rem; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
+        .currency-badge { background: var(--glass-bg); border: 1px solid var(--glass-border); padding: 8px 16px; border-radius: 50px; display: inline-flex; align-items: center; gap: 8px; font-weight: 600; color: var(--gold); }
+
+        /* Inventory Grid */
+        .inv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 1rem; margin-top: 1.5rem; }
+        .inv-slot { aspect-ratio: 1; background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; cursor: pointer; transition: all 0.2s; }
+        .inv-slot:hover { transform: translateY(-3px); border-color: var(--spectral-teal); box-shadow: 0 0 15px rgba(0, 243, 255, 0.1); }
+        .inv-slot.common { border-color: var(--rarity-common); }
+        .inv-slot.rare { border-color: var(--rarity-rare); box-shadow: inset 0 0 10px rgba(59, 130, 246, 0.1); }
+        .inv-slot.epic { border-color: var(--rarity-epic); box-shadow: inset 0 0 10px rgba(168, 85, 247, 0.1); }
+        .inv-slot.legendary { border-color: var(--rarity-legendary); box-shadow: inset 0 0 15px rgba(245, 158, 11, 0.2); animation: pulse 2s infinite; }
+        
+        .item-icon { font-size: 2rem; margin-bottom: 0.5rem; }
+        .item-qty { position: absolute; bottom: 5px; right: 8px; font-size: 0.8rem; font-weight: 700; background: rgba(0,0,0,0.6); padding: 2px 6px; border-radius: 4px; }
+        .item-name { font-size: 0.7rem; text-align: center; padding: 0 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
+
+        .empty-state { grid-column: 1 / -1; text-align: center; padding: 4rem; color: #666; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.8; } }
+    </style>
+</head>
+<body>
+    <aside class="sidebar">
+        <div class="logo"><i class="fa-solid fa-ghost"></i><span>RPG Ghost</span></div>
+        <ul class="nav-links">
+            <li><a href="/dashboard"><i class="fa-solid fa-chart-pie"></i> Overview</a></li>
+            <li><a href="/battle-log"><i class="fa-solid fa-khanda"></i> Battle Log</a></li>
+            <li><a href="/inventory" class="active"><i class="fa-solid fa-sack-dollar"></i> Inventory</a></li>
+            <li><a href="/quest-board"><i class="fa-solid fa-scroll"></i> Quest Board</a></li>
+            <li><a href="/guild-hall"><i class="fa-solid fa-users"></i> Guild Hall</a></li>
+            <li><a href="/settings"><i class="fa-solid fa-gear"></i> Settings</a></li>
+        </ul>
+    </aside>
+
+    <main class="main-content">
+        <header class="header">
+            <h1>Inventory</h1>
+            <div class="currency-badge"><i class="fa-solid fa-coins"></i> <span id="gold-display">...</span></div>
+        </header>
+
+        <div class="inv-grid" id="inventory-container">
+            <div class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i> Loading artifacts...</div>
+        </div>
+    </main>
+
+<script>
+document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        // Get current user ID first
+        const meRes = await fetch('/api/me');
+        const me = await meRes.json();
+        if (!me.logged_in) return window.location.href = '/';
+        
+        document.getElementById('gold-display').innerText = (me.gold || 0).toLocaleString();
+
+        // Fetch Inventory
+        const invRes = await fetch(`/api/inventory/${me.discord_id}`);
+        const invData = await invRes.json();
+        const container = document.getElementById('inventory-container');
+        
+        if (!invData.items || invData.items.length === 0) {
+            container.innerHTML = '<div class="empty-state"><i class="fa-solid fa-box-open"></i><br>Your inventory is empty.</div>';
+            return;
+        }
+
+        container.innerHTML = '';
+        invData.items.forEach(item => {
+            const rarity = (item.rarity || 'common').toLowerCase();
+            const icon = getIcon(item.name);
+            const el = document.createElement('div');
+            el.className = `inv-slot ${rarity}`;
+            el.innerHTML = `
+                <i class="fa-solid ${icon} item-icon" style="color: var(--rarity-${rarity})"></i>
+                <div class="item-name">${item.name}</div>
+                ${item.quantity > 1 ? `<span class="item-qty">${item.quantity}</span>` : ''}
+            `;
+            container.appendChild(el);
+        });
+
+    } catch (e) {
+        console.error(e);
+        document.getElementById('inventory-container').innerHTML = '<div class="empty-state">Failed to load inventory.</div>';
+    }
+});
+
+function getIcon(name) {
+    const n = name.toLowerCase();
+    if (n.includes('sword') || n.includes('blade')) return 'fa-khanda';
+    if (n.includes('shield') || n.includes('armor')) return 'fa-shield-halved';
+    if (n.includes('potion') || n.includes('elixir')) return 'fa-flask';
+    if (n.includes('gem') || n.includes('crystal')) return 'fa-gem';
+    return 'fa-box';
+}
+</script>
+</body>
+</html>
