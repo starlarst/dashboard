@@ -1139,6 +1139,350 @@
             }
         }
 
+        /* ===== BOT INTRO OVERLAY ===== */
+        .bot-intro-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(4, 4, 12, 0.92);
+            backdrop-filter: blur(10px);
+            z-index: 99999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.4s ease;
+        }
+        .bot-intro-overlay.visible {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .bot-intro-card {
+            width: 100%;
+            max-width: 520px;
+            background: linear-gradient(135deg, rgba(13,13,28,0.98) 0%, rgba(19,19,40,0.98) 100%);
+            border: 1px solid rgba(0,243,255,0.18);
+            border-radius: 24px;
+            padding: 2.5rem 2rem 2rem;
+            position: relative;
+            box-shadow: 0 0 80px rgba(0,243,255,0.08), 0 30px 60px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.05);
+            transform: translateY(30px) scale(0.96);
+            opacity: 0;
+            transition: transform 0.5s cubic-bezier(.34,1.56,.64,1), opacity 0.4s ease;
+        }
+        .bot-intro-overlay.visible .bot-intro-card {
+            transform: translateY(0) scale(1);
+            opacity: 1;
+        }
+
+        /* Shimmer border effect */
+        .bot-intro-card::before {
+            content: '';
+            position: absolute;
+            inset: -1px;
+            border-radius: 24px;
+            background: linear-gradient(90deg, transparent, rgba(0,243,255,0.3), rgba(188,19,254,0.3), transparent);
+            background-size: 200% 100%;
+            animation: shimmerBorder 3s linear infinite;
+            z-index: -1;
+        }
+        @keyframes shimmerBorder {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+
+        .bot-intro-skip {
+            position: absolute;
+            top: 16px;
+            right: 18px;
+            background: none;
+            border: none;
+            color: #555;
+            font-size: 0.82rem;
+            cursor: pointer;
+            transition: color 0.2s;
+            letter-spacing: 0.3px;
+        }
+        .bot-intro-skip:hover { color: #aaa; }
+
+        /* Bot section */
+        .bot-intro-bot-row {
+            display: flex;
+            align-items: center;
+            gap: 1.2rem;
+            margin-bottom: 1.5rem;
+        }
+        .bot-intro-bot-avatar {
+            width: 68px;
+            height: 68px;
+            border-radius: 18px;
+            background: rgba(0,0,0,0.4);
+            border: 2px solid rgba(0,243,255,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            color: var(--spectral-teal);
+            box-shadow: 0 0 30px rgba(0,243,255,0.25), inset 0 0 20px rgba(0,243,255,0.05);
+            animation: botFloat 3.5s ease-in-out infinite;
+            flex-shrink: 0;
+        }
+        @keyframes botFloat {
+            0%, 100% { transform: translateY(0) rotate(0deg); }
+            33% { transform: translateY(-5px) rotate(-1deg); }
+            66% { transform: translateY(-2px) rotate(1deg); }
+        }
+        .bot-intro-bot-info { flex: 1; }
+        .bot-intro-bot-name {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--bone-white);
+            letter-spacing: 0.5px;
+            margin-bottom: 2px;
+        }
+        .bot-intro-bot-tag {
+            font-size: 0.78rem;
+            color: #666;
+            letter-spacing: 0.3px;
+        }
+        .bot-intro-bot-tag span {
+            color: var(--spectral-teal);
+            font-weight: 600;
+        }
+
+        /* Typewriter description */
+        .bot-intro-desc {
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 12px;
+            padding: 1rem 1.2rem;
+            min-height: 80px;
+            font-size: 0.93rem;
+            line-height: 1.65;
+            color: #c0c0d8;
+            margin-bottom: 1.8rem;
+            position: relative;
+        }
+        .bot-intro-desc .tw-cursor {
+            display: inline-block;
+            width: 2px;
+            height: 1em;
+            background: var(--spectral-teal);
+            margin-left: 1px;
+            vertical-align: -2px;
+            animation: twBlink 0.85s step-end infinite;
+        }
+        @keyframes twBlink {
+            0%, 49% { opacity: 1; }
+            50%, 100% { opacity: 0; }
+        }
+
+        /* Divider */
+        .bot-intro-divider {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+            margin-bottom: 1.5rem;
+        }
+
+        /* Developer section */
+        .bot-intro-dev-label {
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: #555;
+            font-weight: 600;
+            margin-bottom: 0.9rem;
+        }
+        .bot-intro-dev-row {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            background: rgba(0,0,0,0.25);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 14px;
+            padding: 0.9rem 1.1rem;
+            margin-bottom: 1.5rem;
+            position: relative;
+            overflow: hidden;
+        }
+        .bot-intro-dev-row::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(90deg, rgba(188,19,254,0.04), transparent);
+            pointer-events: none;
+        }
+        .bot-intro-dev-pfp {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            border: 2px solid rgba(188,19,254,0.6);
+            object-fit: cover;
+            box-shadow: 0 0 20px rgba(188,19,254,0.3);
+            flex-shrink: 0;
+            animation: pfpPulse 4s ease-in-out infinite;
+        }
+        @keyframes pfpPulse {
+            0%, 100% { box-shadow: 0 0 15px rgba(188,19,254,0.3); }
+            50% { box-shadow: 0 0 30px rgba(188,19,254,0.6), 0 0 10px rgba(188,19,254,0.2); }
+        }
+        .bot-intro-dev-pfp-fallback {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            border: 2px solid rgba(188,19,254,0.6);
+            background: linear-gradient(135deg, #4a0080, #bc13fe22);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3rem;
+            flex-shrink: 0;
+            animation: pfpPulse 4s ease-in-out infinite;
+        }
+        .bot-intro-dev-details { flex: 1; }
+        .bot-intro-dev-name {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: var(--bone-white);
+        }
+        .bot-intro-dev-handle {
+            font-size: 0.8rem;
+            color: #888;
+            margin-top: 1px;
+        }
+        .bot-intro-dev-handle span { color: rgba(188,19,254,0.9); font-weight: 600; }
+        .bot-intro-dev-badge {
+            font-size: 0.7rem;
+            background: rgba(188,19,254,0.12);
+            border: 1px solid rgba(188,19,254,0.25);
+            color: #bc13fe;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+        }
+
+        /* Enter button */
+        .bot-intro-enter {
+            width: 100%;
+            padding: 13px;
+            background: linear-gradient(90deg, rgba(0,243,255,0.9), rgba(188,19,254,0.8));
+            border: none;
+            border-radius: 12px;
+            color: white;
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.2s, box-shadow 0.2s, opacity 0.3s;
+            opacity: 0;
+        }
+        .bot-intro-enter.ready { opacity: 1; }
+        .bot-intro-enter::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+            transition: left 0.5s ease;
+        }
+        .bot-intro-enter:hover::before { left: 100%; }
+        .bot-intro-enter:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0,243,255,0.3);
+        }
+
+        /* ===== ENHANCED PANEL ANIMATIONS ===== */
+        @keyframes panelEntry {
+            from { opacity: 0; transform: translateY(18px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .panel { animation: panelEntry 0.55s cubic-bezier(.22,1,.36,1) both; }
+        .panel:nth-child(1) { animation-delay: 0.05s; }
+        .panel:nth-child(2) { animation-delay: 0.12s; }
+        .panel:nth-child(3) { animation-delay: 0.19s; }
+        .panel:nth-child(4) { animation-delay: 0.26s; }
+        .panel:nth-child(5) { animation-delay: 0.33s; }
+
+        /* Header greeting animation */
+        @keyframes greetingSlide {
+            from { opacity: 0; transform: translateX(-15px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        .user-greeting { animation: greetingSlide 0.6s cubic-bezier(.22,1,.36,1) 0.1s both; }
+        .header-actions { animation: greetingSlide 0.6s cubic-bezier(.22,1,.36,1) 0.2s both; }
+
+        /* Ambient glow on character card */
+        .character-card {
+            background: linear-gradient(145deg, rgba(19,19,31,0.8) 0%, rgba(0,243,255,0.03) 100%);
+        }
+
+        /* Live indicator pulse for Ghost Wire */
+        .live-dot {
+            display: inline-block;
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #22c55e;
+            margin-left: 6px;
+            box-shadow: 0 0 6px #22c55e;
+            animation: livePulse 1.8s ease-in-out infinite;
+            vertical-align: middle;
+        }
+        @keyframes livePulse {
+            0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 6px #22c55e; }
+            50% { opacity: 0.7; transform: scale(1.4); box-shadow: 0 0 12px #22c55e, 0 0 4px #22c55e; }
+        }
+
+        /* Stat bar shimmer */
+        .stat-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -60%;
+            width: 40%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            animation: statShimmer 2.5s ease-in-out infinite 1s;
+        }
+        @keyframes statShimmer {
+            0% { left: -60%; }
+            100% { left: 120%; }
+        }
+
+        /* Currency badge hover */
+        .currency-badge {
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .currency-badge:hover {
+            transform: translateY(-2px);
+        }
+        .currency-badge.gold:hover { box-shadow: 0 5px 20px rgba(251,191,36,0.2); }
+        .currency-badge.gems:hover { box-shadow: 0 5px 20px rgba(188,19,254,0.2); }
+
+        /* Action button ripple feel */
+        .action-btn:active {
+            transform: scale(0.95);
+        }
+
+        /* Feed items stagger */
+        .feed-item {
+            border-radius: 8px;
+            transition: background 0.2s;
+        }
+        .feed-item:hover {
+            background: rgba(255,255,255,0.02);
+        }
+
         @media (max-width: 900px) {
             .dashboard-grid {
                 grid-template-columns: 1fr;
@@ -1368,7 +1712,7 @@
                 <div class="panel activity-feed">
                     <div class="panel-header">
                         <span><i class="fa-solid fa-tower-broadcast" style="color: var(--spectral-teal); margin-right: 8px;"></i> Ghost Wire</span>
-                        <span style="font-size: 0.8rem; color: #666;">Live</span>
+                        <span style="font-size: 0.8rem; color: #22c55e; font-weight:600;">Live<span class="live-dot"></span></span>
                     </div>
                     <div id="feed-container">
                         <p style="text-align:center; color:#666; padding:20px;">Loading activity...</p>
@@ -1456,6 +1800,40 @@
     <div class="toast" id="toast">
         <i class="fa-solid fa-circle-check" style="color: var(--spectral-teal); font-size: 1.2rem;"></i>
         <span id="toast-message">Action successful!</span>
+    </div>
+
+    <!-- ===== BOT INTRO OVERLAY ===== -->
+    <div class="bot-intro-overlay" id="botIntroOverlay">
+        <div class="bot-intro-card" id="botIntroCard">
+            <button class="bot-intro-skip" id="botIntroSkip">skip <i class="fa-solid fa-xmark"></i></button>
+
+            <div class="bot-intro-bot-row">
+                <div class="bot-intro-bot-avatar"><i class="fa-solid fa-ghost"></i></div>
+                <div class="bot-intro-bot-info">
+                    <div class="bot-intro-bot-name">RPG Ghost</div>
+                    <div class="bot-intro-bot-tag">Discord Bot &nbsp;&middot;&nbsp; <span>Text Adventure RPG</span></div>
+                </div>
+            </div>
+
+            <div class="bot-intro-desc" id="botIntroDesc"><span class="tw-cursor"></span></div>
+
+            <div class="bot-intro-divider"></div>
+
+            <div class="bot-intro-dev-label">Created by</div>
+            <div class="bot-intro-dev-row">
+                <div class="bot-intro-dev-pfp-fallback" id="devAvatarFallback">&#128126;</div>
+                <img class="bot-intro-dev-pfp" id="devAvatarImg" src="" alt="dev" style="display:none;" onerror="this.style.display='none';document.getElementById('devAvatarFallback').style.display='flex';">
+                <div class="bot-intro-dev-details">
+                    <div class="bot-intro-dev-name">Rerir | DND mode</div>
+                    <div class="bot-intro-dev-handle"><span>@5_sinners_nightmare</span></div>
+                </div>
+                <div class="bot-intro-dev-badge">Developer</div>
+            </div>
+
+            <button class="bot-intro-enter" id="botIntroEnter">
+                Enter the Realm &nbsp;<i class="fa-solid fa-arrow-right"></i>
+            </button>
+        </div>
     </div>
 
     <script>
@@ -2246,6 +2624,83 @@
                 });
             });
         });
+        // ===== BOT INTRO OVERLAY LOGIC =====
+        function maybeShowBotIntro() {
+            if (sessionStorage.getItem('botIntroSeen') === '1') return;
+            sessionStorage.setItem('botIntroSeen', '1');
+            launchBotIntro();
+        }
+
+        async function launchBotIntro() {
+            const overlay = document.getElementById('botIntroOverlay');
+            const enterBtn = document.getElementById('botIntroEnter');
+            const skipBtn = document.getElementById('botIntroSkip');
+            const descEl = document.getElementById('botIntroDesc');
+
+            // Try to load avatar from Discord CDN (user must be logged in via Discord for this)
+            try {
+                const res = await fetch('/api/bot-info');
+                if (res.ok) {
+                    const info = await res.json();
+                    if (info.dev_avatar) {
+                        const img = document.getElementById('devAvatarImg');
+                        img.src = info.dev_avatar;
+                        img.style.display = 'block';
+                        document.getElementById('devAvatarFallback').style.display = 'none';
+                    }
+                }
+            } catch(e) { /* fallback emoji stays */ }
+
+            const description = "Hey there, Adventurer. I'm RPG Ghost — a fully-featured Discord RPG bot where you can battle monsters, loot rare gear, complete quests, trade in the auction house, and climb the leaderboard with your guild. Your journey through the spectral realm starts here.";
+
+            // Show overlay
+            overlay.classList.add('visible');
+
+            // Typewrite the description with variable speed for natural feel
+            await humanTypewriter(descEl, description, () => {
+                enterBtn.classList.add('ready');
+            });
+
+            const dismiss = () => {
+                overlay.classList.remove('visible');
+                setTimeout(() => overlay.style.display = 'none', 400);
+            };
+
+            enterBtn.addEventListener('click', dismiss);
+            skipBtn.addEventListener('click', dismiss);
+        }
+
+        function humanTypewriter(el, text, onDone) {
+            return new Promise(resolve => {
+                el.innerHTML = '<span class="tw-cursor"></span>';
+                let i = 0;
+
+                // Variable speed: punctuation pauses, normal chars fast
+                function nextChar() {
+                    if (i >= text.length) {
+                        el.innerHTML = text + '<span class="tw-cursor"></span>';
+                        if (onDone) onDone();
+                        resolve();
+                        return;
+                    }
+
+                    const ch = text[i];
+                    el.innerHTML = text.slice(0, i + 1) + '<span class="tw-cursor"></span>';
+                    i++;
+
+                    let delay = 22 + Math.random() * 12; // base speed with natural jitter
+                    if (ch === '.' || ch === '!' || ch === '?') delay = 280 + Math.random() * 120;
+                    else if (ch === ',') delay = 120 + Math.random() * 60;
+                    else if (ch === ' ') delay = 15 + Math.random() * 20;
+
+                    setTimeout(nextChar, delay);
+                }
+                nextChar();
+            });
+        }
+        const _origShowDashboard = showDashboard;
+        function showDashboard(user) {
+            _origShowDashboard(user);
+            setTimeout(maybeShowBotIntro, 350);
+        }
     </script>
-</body>
-</html>
