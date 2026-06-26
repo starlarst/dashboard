@@ -6,7 +6,7 @@
     <title>RPG Ghost | Dashboard</title>
 
     <!-- Fonts & Icons -->
-    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@300;400;600&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
 
     <!-- EmailJS SDK -->
@@ -19,12 +19,12 @@
     <style>
         :root {
             --void-black: #0a0a0f;
-            --void-light: #13131f;
+            --void-light: #11111f;
             --spectral-teal: #00f3ff;
             --soul-purple: #bc13fe;
-            --bone-white: #e0e0e0;
-            --glass-bg: rgba(19, 19, 31, 0.6);
-            --glass-border: rgba(255, 255, 255, 0.08);
+            --bone-white: #e8e8f0;
+            --glass-bg: rgba(17, 17, 31, 0.7);
+            --glass-border: rgba(255, 255, 255, 0.06);
             --rarity-common: #9ca3af;
             --rarity-rare: #3b82f6;
             --rarity-epic: #a855f7;
@@ -32,6 +32,7 @@
             --gold: #fbbf24;
             --silver: #94a3b8;
             --bronze: #d97706;
+            --card-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
         }
 
         * {
@@ -42,19 +43,47 @@
 
         body {
             font-family: 'Inter', sans-serif;
-            background-color: var(--void-black);
+            background: var(--void-black);
             color: var(--bone-white);
             overflow-x: hidden;
             min-height: 100vh;
         }
 
-        /* --- Auth Screen --- */
-        .auth-screen {
+        /* ===== ANIMATED BACKGROUND ===== */
+        .bg-canvas {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
+            z-index: 0;
+            pointer-events: none;
+            background: 
+                radial-gradient(ellipse at 20% 50%, rgba(0, 243, 255, 0.03) 0%, transparent 60%),
+                radial-gradient(ellipse at 80% 50%, rgba(188, 19, 254, 0.03) 0%, transparent 60%),
+                radial-gradient(ellipse at 50% 100%, rgba(0, 243, 255, 0.02) 0%, transparent 40%);
+        }
+
+        .bg-grid {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            pointer-events: none;
+            background-image: 
+                linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+            background-size: 60px 60px;
+            mask-image: radial-gradient(ellipse at center, black 30%, transparent 70%);
+            -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 70%);
+        }
+
+        /* ===== AUTH SCREEN ===== */
+        .auth-screen {
+            position: fixed;
+            inset: 0;
             background: var(--void-black);
             display: flex;
             align-items: center;
@@ -65,110 +94,262 @@
 
         .auth-container {
             background: var(--glass-bg);
-            backdrop-filter: blur(16px);
+            backdrop-filter: blur(20px);
             border: 1px solid var(--glass-border);
-            border-radius: 20px;
-            padding: 2.5rem;
+            border-radius: 24px;
+            padding: 2.8rem 2.5rem;
             width: 100%;
-            max-width: 420px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            max-width: 440px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
             position: relative;
+            overflow: hidden;
+        }
+
+        .auth-container::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle at 30% 20%, rgba(0, 243, 255, 0.03) 0%, transparent 50%);
+            pointer-events: none;
         }
 
         .auth-logo {
-            font-family: 'Rajdhani', sans-serif;
+            font-family: 'Orbitron', sans-serif;
             font-size: 2rem;
-            font-weight: 700;
+            font-weight: 800;
             color: var(--spectral-teal);
             text-align: center;
             margin-bottom: 2rem;
-            text-shadow: 0 0 15px rgba(0, 243, 255, 0.5);
+            text-shadow: 0 0 30px rgba(0, 243, 255, 0.3);
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 10px;
+            gap: 12px;
+            letter-spacing: 1px;
+        }
+
+        .auth-logo i {
+            animation: float 3s ease-in-out infinite;
         }
 
         .auth-tabs {
             display: flex;
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: 12px;
-            padding: 5px;
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 14px;
+            padding: 4px;
             margin-bottom: 2rem;
+            border: 1px solid rgba(255, 255, 255, 0.04);
         }
 
         .auth-tab {
             flex: 1;
-            padding: 10px;
+            padding: 12px;
             background: transparent;
             border: none;
-            color: #8888a0;
-            font-family: 'Rajdhani', sans-serif;
-            font-size: 1.1rem;
+            color: #666;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.85rem;
             font-weight: 600;
             cursor: pointer;
-            border-radius: 8px;
-            transition: all 0.3s ease;
+            border-radius: 10px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            letter-spacing: 0.5px;
         }
 
         .auth-tab.active {
-            background: rgba(0, 243, 255, 0.15);
+            background: rgba(0, 243, 255, 0.12);
             color: var(--spectral-teal);
+            box-shadow: 0 0 20px rgba(0, 243, 255, 0.05);
         }
 
         .auth-form {
             display: none;
+            animation: fadeSlide 0.4s cubic-bezier(0.4, 0, 0.2, 1);
         }
+
         .auth-form.active {
             display: block;
-            animation: slideIn 0.4s ease;
         }
 
         .input-group {
             position: relative;
             margin-bottom: 1.2rem;
         }
+
         .input-group i {
             position: absolute;
-            left: 15px;
+            left: 16px;
             top: 50%;
             transform: translateY(-50%);
-            color: #666;
+            color: #444;
             z-index: 2;
+            font-size: 0.9rem;
         }
 
         .input-group input {
             width: 100%;
-            padding: 14px 15px 14px 45px;
-            background: rgba(0, 0, 0, 0.3);
-            border: 1px solid var(--glass-border);
+            padding: 14px 16px 14px 46px;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.06);
             border-radius: 12px;
             color: var(--bone-white);
-            font-size: 1rem;
+            font-size: 0.95rem;
             outline: none;
-            transition: border-color 0.3s;
+            transition: all 0.3s ease;
+            font-family: 'Inter', sans-serif;
         }
 
         .input-group input:focus {
             border-color: var(--spectral-teal);
+            box-shadow: 0 0 20px rgba(0, 243, 255, 0.05);
+            background: rgba(0, 0, 0, 0.5);
+        }
+
+        .input-group input::placeholder {
+            color: #444;
         }
 
         .password-toggle {
             position: absolute;
-            right: 15px;
+            right: 14px;
             top: 50%;
             transform: translateY(-50%);
             cursor: pointer;
-            color: #666;
+            color: #444;
             z-index: 3;
             transition: color 0.3s;
             background: transparent;
             border: none;
-            font-size: 1rem;
+            font-size: 0.95rem;
         }
 
         .password-toggle:hover {
             color: var(--spectral-teal);
+        }
+
+        .auth-btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, var(--spectral-teal), var(--soul-purple));
+            border: none;
+            border-radius: 12px;
+            color: white;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            letter-spacing: 1px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .auth-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+            transition: left 0.5s ease;
+        }
+
+        .auth-btn:hover::before {
+            left: 100%;
+        }
+
+        .auth-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(0, 243, 255, 0.25);
+        }
+
+        .auth-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .divider {
+            text-align: center;
+            margin: 1.8rem 0;
+            position: relative;
+            color: #333;
+            font-size: 0.8rem;
+            font-weight: 500;
+            letter-spacing: 1px;
+        }
+
+        .divider::before,
+        .divider::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            width: 38%;
+            height: 1px;
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .divider::before { left: 0; }
+        .divider::after { right: 0; }
+
+        .social-btns {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+        }
+
+        .social-btn {
+            width: 56px;
+            height: 56px;
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            color: var(--bone-white);
+            font-size: 1.4rem;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+        }
+
+        .social-btn.discord:hover {
+            background: rgba(88, 101, 242, 0.15);
+            border-color: #5865F2;
+            color: #5865F2;
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(88, 101, 242, 0.15);
+        }
+
+        .recaptcha-notice {
+            text-align: center;
+            font-size: 0.7rem;
+            color: #333;
+            margin-top: 1.8rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            letter-spacing: 0.3px;
+        }
+
+        .recaptcha-notice i {
+            color: var(--spectral-teal);
+            font-size: 0.8rem;
+        }
+
+        .recaptcha-notice a {
+            color: var(--spectral-teal);
+            text-decoration: none;
+        }
+
+        .recaptcha-notice a:hover {
+            text-decoration: underline;
         }
 
         .pw-strength-wrap {
@@ -178,7 +359,7 @@
             width: 100%;
             height: 5px;
             border-radius: 4px;
-            background: rgba(255, 255, 255, 0.08);
+            background: rgba(255, 255, 255, 0.04);
             overflow: hidden;
         }
         .pw-strength-fill {
@@ -193,122 +374,27 @@
             justify-content: space-between;
             align-items: baseline;
             margin-top: 6px;
-            font-size: 0.78rem;
+            font-size: 0.75rem;
         }
         .pw-strength-label {
             font-weight: 600;
-            font-family: 'Rajdhani', sans-serif;
+            font-family: 'Orbitron', sans-serif;
             letter-spacing: 0.5px;
         }
         .pw-strength-hint {
-            color: #8888a0;
+            color: #444;
             text-align: right;
         }
 
-        .auth-btn {
-            width: 100%;
-            padding: 14px;
-            background: linear-gradient(90deg, var(--spectral-teal), var(--soul-purple));
-            border: none;
-            border-radius: 12px;
-            color: white;
-            font-family: 'Rajdhani', sans-serif;
-            font-size: 1.2rem;
-            font-weight: 700;
-            cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
-            margin-top: 0.5rem;
-        }
-
-        .auth-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0, 243, 255, 0.3);
-        }
-        .auth-btn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        .divider {
-            text-align: center;
-            margin: 1.5rem 0;
-            position: relative;
-            color: #666;
-            font-size: 0.9rem;
-        }
-        .divider::before,
-        .divider::after {
-            content: '';
-            position: absolute;
-            top: 50%;
-            width: 40%;
-            height: 1px;
-            background: var(--glass-border);
-        }
-        .divider::before {
-            left: 0;
-        }
-        .divider::after {
-            right: 0;
-        }
-
-        .social-btns {
-            display: flex;
-            gap: 1rem;
-            justify-content: center;
-        }
-
-        .social-btn {
-            width: 60px;
-            height: 60px;
-            border-radius: 12px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid var(--glass-border);
-            color: var(--bone-white);
-            font-size: 1.5rem;
-            cursor: pointer;
-            transition: all 0.3s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            text-decoration: none;
-        }
-
-        .social-btn.discord:hover {
-            background: rgba(88, 101, 242, 0.2);
-            border-color: #5865F2;
-            color: #5865F2;
-        }
-
-        .recaptcha-notice {
-            text-align: center;
-            font-size: 0.75rem;
-            color: #666;
-            margin-top: 2rem;
-            line-height: 1.5;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 6px;
-        }
-        .recaptcha-notice i {
-            color: var(--spectral-teal);
-        }
-        .recaptcha-notice a {
-            color: var(--spectral-teal);
-            text-decoration: none;
-        }
-        .recaptcha-notice a:hover {
-            text-decoration: underline;
-        }
-
+        /* OTP Styles */
         .otp-text {
             text-align: center;
-            color: #8888a0;
+            color: #666;
             margin-bottom: 1.5rem;
-            font-size: 0.95rem;
+            font-size: 0.9rem;
+            line-height: 1.6;
         }
+
         .otp-text span {
             color: var(--spectral-teal);
             font-weight: 600;
@@ -322,74 +408,86 @@
         }
 
         .otp-input {
-            width: 45px;
-            height: 55px;
+            width: 44px;
+            height: 54px;
             text-align: center;
-            font-size: 1.5rem;
+            font-size: 1.4rem;
             font-weight: 700;
-            background: rgba(0, 0, 0, 0.3);
-            border: 1px solid var(--glass-border);
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.06);
             border-radius: 10px;
             color: var(--spectral-teal);
             outline: none;
-            transition: border-color 0.3s;
+            transition: all 0.3s ease;
+            font-family: 'Orbitron', sans-serif;
         }
 
         .otp-input:focus {
             border-color: var(--spectral-teal);
-            box-shadow: 0 0 10px rgba(0, 243, 255, 0.2);
+            box-shadow: 0 0 20px rgba(0, 243, 255, 0.05);
         }
 
         .resend-text {
             text-align: center;
             margin-top: 1.5rem;
-            color: #8888a0;
-            font-size: 0.9rem;
+            color: #444;
+            font-size: 0.85rem;
         }
+
         .resend-text a {
             color: var(--spectral-teal);
             text-decoration: none;
             font-weight: 600;
             cursor: pointer;
+            transition: color 0.3s;
         }
 
-        .logout-btn {
-            background: rgba(239, 68, 68, 0.1);
-            border: 1px solid rgba(239, 68, 68, 0.3);
-            color: #f87171;
-            padding: 8px 16px;
-            border-radius: 50px;
-            cursor: pointer;
-            font-weight: 600;
-            transition: all 0.3s;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .logout-btn:hover {
-            background: rgba(239, 68, 68, 0.2);
+        .resend-text a:hover {
+            color: var(--soul-purple);
         }
 
-        /* --- Background Particle Canvas --- */
-        #particle-canvas {
+        /* ===== TOPBAR ===== */
+        .topbar {
             position: fixed;
             top: 0;
             left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: -1;
-            opacity: 0.6;
+            right: 0;
+            height: 64px;
+            z-index: 15;
+            display: none;
+            align-items: center;
+            padding: 0 2rem;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--glass-border);
         }
 
-        /* --- Layout --- */
-        .dashboard-container {
-            display: none;
-            min-height: 100vh;
+        .menu-toggle {
+            width: 42px;
+            height: 42px;
+            border-radius: 12px;
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--glass-border);
+            color: var(--bone-white);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            font-size: 1.1rem;
         }
+
+        .menu-toggle:hover {
+            border-color: var(--spectral-teal);
+            color: var(--spectral-teal);
+            background: rgba(0, 243, 255, 0.06);
+        }
+
+        /* ===== SIDEBAR ===== */
         .sidebar {
             width: 260px;
             background: var(--glass-bg);
-            backdrop-filter: blur(16px);
+            backdrop-filter: blur(20px);
             border-right: 1px solid var(--glass-border);
             padding: 2rem 1.5rem;
             display: flex;
@@ -400,73 +498,43 @@
             height: 100vh;
             z-index: 30;
             transform: translateX(-100%);
-            transition: transform .28s cubic-bezier(.4, 0, .2, 1);
-            box-shadow: 14px 0 36px rgba(0, 0, 0, 0.4);
-        }
-        .sidebar.is-open {
-            transform: translateX(0);
+            transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 20px 0 60px rgba(0, 0, 0, 0.4);
         }
 
-        .topbar {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 56px;
-            z-index: 15;
-            display: flex;
-            align-items: center;
-            padding: 0 1.5rem;
-            background: var(--glass-bg);
-            backdrop-filter: blur(16px);
-            border-bottom: 1px solid var(--glass-border);
-        }
-        .menu-toggle {
-            width: 38px;
-            height: 38px;
-            border-radius: 10px;
-            cursor: pointer;
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid var(--glass-border);
-            color: var(--bone-white);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: border-color .2s, color .2s, background .2s;
-        }
-        .menu-toggle:hover {
-            border-color: var(--spectral-teal);
-            color: var(--spectral-teal);
-            background: rgba(0, 243, 255, 0.08);
+        .sidebar.is-open {
+            transform: translateX(0);
         }
 
         .nav-backdrop {
             position: fixed;
             inset: 0;
-            background: rgba(0, 0, 0, 0.55);
+            background: rgba(0, 0, 0, 0.5);
             opacity: 0;
             pointer-events: none;
-            transition: opacity .25s ease;
+            transition: opacity 0.3s ease;
             z-index: 25;
         }
+
         .nav-backdrop.is-open {
             opacity: 1;
             pointer-events: auto;
         }
 
         .logo {
-            font-family: 'Rajdhani', sans-serif;
-            font-size: 1.8rem;
-            font-weight: 700;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.6rem;
+            font-weight: 800;
             color: var(--spectral-teal);
             text-transform: uppercase;
             letter-spacing: 2px;
-            margin-bottom: 3rem;
+            margin-bottom: 2.5rem;
             display: flex;
             align-items: center;
-            gap: 10px;
-            text-shadow: 0 0 15px rgba(0, 243, 255, 0.5);
+            gap: 12px;
+            text-shadow: 0 0 30px rgba(0, 243, 255, 0.2);
         }
+
         .logo i {
             animation: float 3s ease-in-out infinite;
         }
@@ -475,72 +543,151 @@
             list-style: none;
             display: flex;
             flex-direction: column;
-            gap: 0.5rem;
+            gap: 0.3rem;
         }
+
         .nav-links li a {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 14px;
             padding: 12px 16px;
-            color: #8888a0;
+            color: #555;
             text-decoration: none;
             border-radius: 12px;
-            transition: all 0.3s ease;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             font-weight: 500;
+            font-size: 0.9rem;
         }
+
+        .nav-links li a i {
+            width: 20px;
+            font-size: 1rem;
+        }
+
         .nav-links li a:hover,
         .nav-links li a.active {
-            background: rgba(0, 243, 255, 0.1);
+            background: rgba(0, 243, 255, 0.06);
             color: var(--spectral-teal);
             border-left: 3px solid var(--spectral-teal);
+        }
+
+        /* ===== MAIN CONTENT ===== */
+        .dashboard-container {
+            display: none;
+            min-height: 100vh;
+            position: relative;
+            z-index: 1;
         }
 
         .main-content {
             flex: 1;
             margin-left: 0;
-            padding: 4.5rem 2rem 2rem;
+            padding: 5rem 2.5rem 2.5rem;
+            max-width: 1440px;
+            margin: 0 auto;
         }
+
+        /* Header */
         .header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 2rem;
+            margin-bottom: 2.5rem;
             flex-wrap: wrap;
-            gap: 1rem;
+            gap: 1.5rem;
+            animation: fadeSlide 0.6s cubic-bezier(0.4, 0, 0.2, 1);
         }
+
         .user-greeting h1 {
-            font-family: 'Rajdhani', sans-serif;
-            font-size: 2rem;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.8rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
         }
+
+        .user-greeting h1 span {
+            background: linear-gradient(135deg, var(--spectral-teal), var(--soul-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .user-greeting p {
+            color: #444;
+            font-size: 0.9rem;
+            margin-top: 4px;
+            letter-spacing: 0.3px;
+        }
+
         .header-actions {
             display: flex;
             gap: 1.5rem;
             align-items: center;
         }
+
         .currency-display {
             display: flex;
-            gap: 1rem;
+            gap: 0.8rem;
         }
 
         .currency-badge {
             background: var(--glass-bg);
             border: 1px solid var(--glass-border);
-            padding: 8px 16px;
+            padding: 8px 18px;
             border-radius: 50px;
             display: flex;
             align-items: center;
             gap: 8px;
             font-weight: 600;
-        }
-        .currency-badge.gold {
-            color: #fbbf24;
-            border-color: rgba(251, 191, 36, 0.3);
-        }
-        .currency-badge.gems {
-            color: var(--soul-purple);
-            border-color: rgba(188, 19, 254, 0.3);
+            font-size: 0.9rem;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
+        .currency-badge:hover {
+            transform: translateY(-2px);
+        }
+
+        .currency-badge.gold {
+            color: var(--gold);
+            border-color: rgba(251, 191, 36, 0.15);
+        }
+
+        .currency-badge.gold:hover {
+            box-shadow: 0 8px 25px rgba(251, 191, 36, 0.1);
+        }
+
+        .currency-badge.gems {
+            color: var(--soul-purple);
+            border-color: rgba(188, 19, 254, 0.15);
+        }
+
+        .currency-badge.gems:hover {
+            box-shadow: 0 8px 25px rgba(188, 19, 254, 0.1);
+        }
+
+        .logout-btn {
+            background: rgba(239, 68, 68, 0.08);
+            border: 1px solid rgba(239, 68, 68, 0.15);
+            color: #f87171;
+            padding: 8px 18px;
+            border-radius: 50px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .logout-btn:hover {
+            background: rgba(239, 68, 68, 0.15);
+            transform: translateY(-2px);
+        }
+
+        /* ===== DASHBOARD GRID ===== */
         .dashboard-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -550,62 +697,103 @@
 
         .panel {
             background: var(--glass-bg);
-            backdrop-filter: blur(12px);
+            backdrop-filter: blur(16px);
             border: 1px solid var(--glass-border);
             border-radius: 20px;
             padding: 1.5rem;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-        }
-        .panel:hover {
-            box-shadow: 0 8px 32px rgba(0, 243, 255, 0.05);
-            border-color: rgba(0, 243, 255, 0.2);
+            box-shadow: var(--card-shadow);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            animation: panelFade 0.6s cubic-bezier(0.4, 0, 0.2, 1) both;
+            position: relative;
+            overflow: hidden;
         }
 
+        .panel::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--spectral-teal), var(--soul-purple), transparent);
+            opacity: 0;
+            transition: opacity 0.4s ease;
+        }
+
+        .panel:hover::before {
+            opacity: 1;
+        }
+
+        .panel:hover {
+            border-color: rgba(0, 243, 255, 0.1);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+            transform: translateY(-2px);
+        }
+
+        .panel:nth-child(1) { animation-delay: 0.05s; }
+        .panel:nth-child(2) { animation-delay: 0.12s; }
+        .panel:nth-child(3) { animation-delay: 0.19s; }
+        .panel:nth-child(4) { animation-delay: 0.26s; }
+        .panel:nth-child(5) { animation-delay: 0.33s; }
+
         .panel-header {
-            font-family: 'Rajdhani', sans-serif;
-            font-size: 1.3rem;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1rem;
             font-weight: 600;
             margin-bottom: 1.5rem;
             display: flex;
             justify-content: space-between;
             align-items: center;
             color: var(--bone-white);
+            letter-spacing: 0.5px;
         }
 
+        .panel-header i {
+            margin-right: 8px;
+        }
+
+        /* ===== CHARACTER CARD ===== */
         .character-card {
             grid-column: 1 / 2;
             grid-row: 1 / 3;
+            background: linear-gradient(145deg, rgba(19, 19, 31, 0.9), rgba(0, 243, 255, 0.02));
             display: flex;
             flex-direction: column;
             align-items: center;
             text-align: center;
             position: relative;
-            overflow: hidden;
         }
-        .character-card::before {
+
+        .character-card::after {
             content: '';
             position: absolute;
-            top: -50%;
-            left: -50%;
-            width: 200%;
-            height: 200%;
-            background: radial-gradient(circle, rgba(0, 243, 255, 0.1) 0%, transparent 70%);
-            animation: rotate 10s linear infinite;
-            z-index: 0;
+            top: -30%;
+            left: -30%;
+            width: 160%;
+            height: 160%;
+            background: radial-gradient(circle, rgba(0, 243, 255, 0.03) 0%, transparent 70%);
+            animation: rotate 20s linear infinite;
+            pointer-events: none;
         }
 
         .avatar-container {
-            width: 120px;
-            height: 120px;
+            width: 110px;
+            height: 110px;
             border-radius: 50%;
-            border: 3px solid var(--spectral-teal);
-            padding: 4px;
+            border: 2px solid var(--spectral-teal);
+            padding: 3px;
             margin-bottom: 1rem;
             position: relative;
             z-index: 1;
-            box-shadow: 0 0 20px rgba(0, 243, 255, 0.3);
+            box-shadow: 0 0 40px rgba(0, 243, 255, 0.1);
+            transition: all 0.4s ease;
         }
+
+        .avatar-container:hover {
+            box-shadow: 0 0 60px rgba(0, 243, 255, 0.2);
+            transform: scale(1.02);
+        }
+
         .avatar-container img {
             width: 100%;
             height: 100%;
@@ -618,18 +806,22 @@
             z-index: 1;
             width: 100%;
         }
+
         .char-name {
-            font-family: 'Rajdhani', sans-serif;
-            font-size: 1.8rem;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.6rem;
             font-weight: 700;
+            letter-spacing: 0.5px;
         }
+
         .char-class {
             color: var(--soul-purple);
             font-weight: 600;
             margin-bottom: 1.5rem;
             text-transform: uppercase;
-            letter-spacing: 1px;
-            font-size: 0.9rem;
+            letter-spacing: 2px;
+            font-size: 0.8rem;
+            font-family: 'Orbitron', sans-serif;
         }
 
         .stat-bar-container {
@@ -637,20 +829,25 @@
             margin-bottom: 1rem;
             text-align: left;
         }
+
         .stat-label {
             display: flex;
             justify-content: space-between;
-            font-size: 0.85rem;
-            margin-bottom: 6px;
-            color: #8888a0;
+            font-size: 0.8rem;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 500;
+            letter-spacing: 0.3px;
         }
+
         .stat-bar {
-            height: 10px;
-            background: rgba(255, 255, 255, 0.1);
+            height: 8px;
+            background: rgba(255, 255, 255, 0.04);
             border-radius: 10px;
             overflow: hidden;
             position: relative;
         }
+
         .stat-fill {
             height: 100%;
             border-radius: 10px;
@@ -658,16 +855,31 @@
             transition: width 1.5s cubic-bezier(0.22, 1, 0.36, 1);
             position: relative;
         }
+
         .stat-fill.hp {
             background: linear-gradient(90deg, #ef4444, #f87171);
-            box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+            box-shadow: 0 0 15px rgba(239, 68, 68, 0.2);
         }
+
         .stat-fill.mp {
-            background: linear-gradient(90deg, #3b82f6, #00f3ff);
-            box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+            background: linear-gradient(90deg, #3b82f6, var(--spectral-teal));
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.2);
         }
+
         .stat-fill.xp {
-            background: linear-gradient(90deg, #f59e0b, #fbbf24);
+            background: linear-gradient(90deg, #f59e0b, var(--gold));
+            box-shadow: 0 0 15px rgba(245, 158, 11, 0.2);
+        }
+
+        .stat-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -60%;
+            width: 40%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            animation: shimmer 3s ease-in-out infinite 1s;
         }
 
         .quick-actions {
@@ -679,43 +891,55 @@
             position: relative;
             z-index: 1;
         }
+
         .action-btn {
-            background: rgba(255, 255, 255, 0.05);
+            background: rgba(255, 255, 255, 0.03);
             border: 1px solid var(--glass-border);
             color: var(--bone-white);
-            padding: 12px;
+            padding: 12px 8px;
             border-radius: 12px;
             cursor: pointer;
-            transition: all 0.2s ease;
-            font-family: 'Rajdhani', sans-serif;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            font-family: 'Orbitron', sans-serif;
             font-weight: 600;
-            font-size: 1rem;
+            font-size: 0.75rem;
             display: flex;
             flex-direction: column;
             align-items: center;
             gap: 5px;
+            letter-spacing: 0.5px;
         }
-        .action-btn:hover {
-            background: rgba(0, 243, 255, 0.15);
-            border-color: var(--spectral-teal);
-            color: var(--spectral-teal);
-            transform: translateY(-2px);
-        }
+
         .action-btn i {
             font-size: 1.2rem;
         }
 
+        .action-btn:hover {
+            background: rgba(0, 243, 255, 0.08);
+            border-color: var(--spectral-teal);
+            color: var(--spectral-teal);
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0, 243, 255, 0.05);
+        }
+
+        .action-btn:active {
+            transform: scale(0.95);
+        }
+
+        /* ===== ACTIVITY FEED ===== */
         .activity-feed {
             grid-column: 2 / 3;
             grid-row: 1 / 2;
             max-height: 300px;
             overflow-y: auto;
         }
+
         .activity-feed::-webkit-scrollbar {
-            width: 6px;
+            width: 4px;
         }
+
         .activity-feed::-webkit-scrollbar-thumb {
-            background: var(--glass-border);
+            background: rgba(255, 255, 255, 0.06);
             border-radius: 10px;
         }
 
@@ -723,10 +947,16 @@
             display: flex;
             align-items: flex-start;
             gap: 12px;
-            padding: 12px;
-            border-bottom: 1px solid var(--glass-border);
-            animation: slideIn 0.5s ease forwards;
+            padding: 10px 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+            animation: slideIn 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
             opacity: 0;
+            border-radius: 8px;
+            transition: background 0.3s ease;
+        }
+
+        .feed-item:hover {
+            background: rgba(255, 255, 255, 0.02);
         }
 
         .feed-icon {
@@ -736,47 +966,74 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             flex-shrink: 0;
         }
+
         .feed-icon.loot {
-            background: rgba(245, 158, 11, 0.2);
-            color: #fbbf24;
+            background: rgba(245, 158, 11, 0.12);
+            color: var(--gold);
         }
+
         .feed-icon.combat {
-            background: rgba(239, 68, 68, 0.2);
+            background: rgba(239, 68, 68, 0.12);
             color: #f87171;
         }
+
         .feed-icon.quest {
-            background: rgba(59, 130, 246, 0.2);
+            background: rgba(59, 130, 246, 0.12);
             color: #60a5fa;
         }
+
         .feed-icon.notification {
-            background: rgba(0, 243, 255, 0.2);
+            background: rgba(0, 243, 255, 0.08);
             color: var(--spectral-teal);
         }
 
         .feed-text {
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             line-height: 1.4;
         }
+
         .feed-text strong {
             color: var(--spectral-teal);
         }
+
         .feed-time {
-            font-size: 0.75rem;
-            color: #666;
+            font-size: 0.7rem;
+            color: #333;
             margin-top: 4px;
         }
 
+        .live-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.7rem;
+            color: #22c55e;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .live-dot {
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #22c55e;
+            animation: pulse-dot 1.8s ease-in-out infinite;
+        }
+
+        /* ===== INVENTORY ===== */
         .inventory-grid {
             grid-column: 2 / 3;
             grid-row: 2 / 3;
         }
+
         .inv-container {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
-            gap: 12px;
+            gap: 10px;
         }
 
         .inv-slot {
@@ -787,52 +1044,58 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.5rem;
+            font-size: 1.3rem;
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             position: relative;
         }
+
         .inv-slot:hover {
             transform: scale(1.05);
             border-color: var(--spectral-teal);
-            box-shadow: 0 0 15px rgba(0, 243, 255, 0.2);
+            box-shadow: 0 0 30px rgba(0, 243, 255, 0.05);
         }
+
         .inv-slot.common {
-            border-color: var(--rarity-common);
+            border-color: rgba(156, 163, 175, 0.2);
             color: var(--rarity-common);
         }
+
         .inv-slot.rare {
-            border-color: var(--rarity-rare);
+            border-color: rgba(59, 130, 246, 0.2);
             color: var(--rarity-rare);
-            box-shadow: inset 0 0 10px rgba(59, 130, 246, 0.2);
+            box-shadow: inset 0 0 20px rgba(59, 130, 246, 0.05);
         }
+
         .inv-slot.epic {
-            border-color: var(--rarity-epic);
+            border-color: rgba(168, 85, 247, 0.2);
             color: var(--rarity-epic);
-            box-shadow: inset 0 0 10px rgba(168, 85, 247, 0.2);
+            box-shadow: inset 0 0 20px rgba(168, 85, 247, 0.05);
         }
+
         .inv-slot.legendary {
-            border-color: var(--rarity-legendary);
+            border-color: rgba(245, 158, 11, 0.3);
             color: var(--rarity-legendary);
-            box-shadow: inset 0 0 15px rgba(245, 158, 11, 0.3), 0 0 10px rgba(245, 158, 11, 0.2);
-            animation: pulse-legendary 2s infinite;
+            box-shadow: 0 0 30px rgba(245, 158, 11, 0.05), inset 0 0 30px rgba(245, 158, 11, 0.05);
+            animation: pulse-legendary 2.5s ease-in-out infinite;
         }
 
         .item-count {
             position: absolute;
             bottom: 4px;
             right: 6px;
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             font-weight: 700;
-            color: white;
-            text-shadow: 0 1px 2px black;
+            color: rgba(255, 255, 255, 0.6);
+            text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
         }
 
-        /* --- LEADERBOARD STYLES --- */
+        /* ===== LEADERBOARD ===== */
         .leaderboard-panel {
             grid-column: 1 / 3;
             grid-row: 3 / 4;
         }
+
         .lb-podium {
             display: flex;
             justify-content: center;
@@ -841,302 +1104,493 @@
             margin-bottom: 1.5rem;
             padding: 0.5rem;
         }
+
         .podium-item {
             text-align: center;
-            padding: 0.75rem 1.5rem;
+            padding: 0.8rem 1.8rem;
             border-radius: 16px;
-            transition: transform 0.3s;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
             background: rgba(0, 0, 0, 0.2);
             border: 1px solid var(--glass-border);
         }
+
         .podium-item:hover {
             transform: translateY(-5px);
         }
+
         .podium-item.first {
             order: 2;
-            border-color: var(--gold);
-            background: rgba(251, 191, 36, 0.1);
+            border-color: rgba(251, 191, 36, 0.2);
+            background: rgba(251, 191, 36, 0.05);
         }
+
         .podium-item.second {
             order: 1;
-            border-color: var(--silver);
-            background: rgba(148, 163, 184, 0.1);
+            border-color: rgba(148, 163, 184, 0.15);
+            background: rgba(148, 163, 184, 0.05);
         }
+
         .podium-item.third {
             order: 3;
-            border-color: var(--bronze);
-            background: rgba(217, 119, 6, 0.1);
+            border-color: rgba(217, 119, 6, 0.15);
+            background: rgba(217, 119, 6, 0.05);
         }
+
         .podium-avatar {
-            width: 50px;
-            height: 50px;
+            width: 48px;
+            height: 48px;
             border-radius: 50%;
             margin: 0 auto 0.5rem;
             border: 2px solid var(--spectral-teal);
             object-fit: cover;
         }
+
         .podium-rank {
-            font-size: 1.8rem;
+            font-size: 1.6rem;
             font-weight: 700;
-            font-family: 'Rajdhani', sans-serif;
+            font-family: 'Orbitron', sans-serif;
         }
-        .podium-rank.gold {
-            color: var(--gold);
-        }
-        .podium-rank.silver {
-            color: var(--silver);
-        }
-        .podium-rank.bronze {
-            color: var(--bronze);
-        }
+
+        .podium-rank.gold { color: var(--gold); }
+        .podium-rank.silver { color: var(--silver); }
+        .podium-rank.bronze { color: var(--bronze); }
+
         .podium-name {
             font-weight: 600;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
         }
+
         .podium-score {
-            font-size: 0.8rem;
-            color: #8888a0;
+            font-size: 0.75rem;
+            color: #444;
         }
 
         .lb-table {
             width: 100%;
             border-collapse: collapse;
         }
+
         .lb-table th {
             text-align: left;
             padding: 8px 12px;
-            color: #8888a0;
-            font-size: 0.8rem;
-            font-weight: 600;
+            color: #333;
+            font-size: 0.7rem;
+            font-weight: 700;
             border-bottom: 1px solid var(--glass-border);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            font-family: 'Orbitron', sans-serif;
         }
+
         .lb-table td {
             padding: 8px 12px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-            font-size: 0.9rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+            font-size: 0.85rem;
         }
+
         .lb-table tr:hover td {
-            background: rgba(255, 255, 255, 0.03);
+            background: rgba(255, 255, 255, 0.02);
         }
+
         .lb-rank {
             font-weight: 700;
-            font-family: 'Rajdhani', sans-serif;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.8rem;
         }
-        .lb-rank.top1 {
+
+        .lb-rank.top1 { color: var(--gold); }
+        .lb-rank.top2 { color: var(--silver); }
+        .lb-rank.top3 { color: var(--bronze); }
+
+        .lb-avatar {
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            object-fit: cover;
+            vertical-align: middle;
+            margin-right: 8px;
+            border: 1px solid var(--glass-border);
+        }
+
+        .lb-name {
+            font-weight: 500;
+        }
+
+        .lb-score {
+            color: var(--gold);
+            font-weight: 600;
+        }
+
+        .lb-class {
+            font-size: 0.7rem;
+            color: #444;
+            font-weight: 500;
+        }
+
+        .lb-you {
+            background: rgba(0, 243, 255, 0.03);
+            border-left: 2px solid var(--spectral-teal);
+        }
+
+        /* ===== AUCTION HOUSE ===== */
+        .auction-panel {
+            grid-column: 1 / 3;
+            grid-row: 4 / 5;
+        }
+
+        .auction-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 1.5rem;
+        }
+
+        .auction-items {
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+        }
+
+        .auction-item {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.8rem 1rem;
+            border-radius: 12px;
+            border: 1px solid var(--glass-border);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+        }
+
+        .auction-item:hover {
+            border-color: rgba(0, 243, 255, 0.15);
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .auction-item-icon {
+            width: 38px;
+            height: 38px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            flex-shrink: 0;
+        }
+
+        .auction-item-info {
+            flex: 1;
+        }
+
+        .auction-item-name {
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+
+        .auction-item-desc {
+            font-size: 0.7rem;
+            color: #444;
+        }
+
+        .auction-item-price {
+            font-weight: 700;
+            color: var(--gold);
+            font-size: 0.85rem;
+        }
+
+        .btn-bid {
+            background: rgba(0, 243, 255, 0.06);
+            border: 1px solid rgba(0, 243, 255, 0.1);
+            color: var(--spectral-teal);
+            padding: 4px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.75rem;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            font-family: 'Orbitron', sans-serif;
+            letter-spacing: 0.5px;
+        }
+
+        .btn-bid:hover {
+            background: rgba(0, 243, 255, 0.12);
+            transform: translateY(-2px);
+        }
+
+        .auction-sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 0.8rem;
+        }
+
+        .auction-stat {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 0.8rem 1rem;
+            border-radius: 12px;
+            border: 1px solid var(--glass-border);
+        }
+
+        .auction-stat-label {
+            font-size: 0.7rem;
+            color: #333;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .auction-stat-value {
+            font-size: 1.1rem;
+            font-weight: 700;
+            font-family: 'Orbitron', sans-serif;
+            color: var(--spectral-teal);
+        }
+
+        .auction-stat-value.gold {
             color: var(--gold);
         }
-        .lb-rank.top2 {
-            color: var(--silver);
+
+        /* ===== ADMIN PANEL ===== */
+        .admin-panel {
+            grid-column: 1 / 3;
+            grid-row: 5 / 6;
+            display: none;
         }
-        .lb-rank.top3 {
-            color: var(--bronze);
+
+        .admin-panel.visible {
+            display: block;
         }
-        .lb-avatar {
+
+        .admin-stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .admin-stat-card {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 1rem 1.2rem;
+            border-radius: 12px;
+            border: 1px solid var(--glass-border);
+            text-align: center;
+        }
+
+        .admin-stat-number {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--spectral-teal);
+        }
+
+        .admin-stat-number.gold { color: var(--gold); }
+        .admin-stat-number.green { color: #22c55e; }
+        .admin-stat-number.red { color: #ef4444; }
+
+        .admin-stat-label {
+            font-size: 0.7rem;
+            color: #444;
+            margin-top: 4px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .admin-actions {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 1rem;
+            gap: 0.8rem;
+        }
+
+        .admin-btn {
+            padding: 8px 20px;
+            border-radius: 8px;
+            border: 1px solid var(--glass-border);
+            background: rgba(255, 255, 255, 0.03);
+            color: var(--bone-white);
+            cursor: pointer;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.7rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            letter-spacing: 0.5px;
+        }
+
+        .admin-btn:hover {
+            background: rgba(0, 243, 255, 0.08);
+            border-color: var(--spectral-teal);
+            color: var(--spectral-teal);
+        }
+
+        .admin-btn.danger:hover {
+            background: rgba(239, 68, 68, 0.08);
+            border-color: #ef4444;
+            color: #ef4444;
+        }
+
+        .admin-table-wrap {
+            overflow-x: auto;
+        }
+
+        .admin-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        .admin-table th {
+            text-align: left;
+            padding: 8px 12px;
+            color: #333;
+            font-size: 0.65rem;
+            font-weight: 700;
+            border-bottom: 1px solid var(--glass-border);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        .admin-table td {
+            padding: 8px 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+            vertical-align: middle;
+        }
+
+        .admin-table tr:hover td {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .admin-table .user-avatar {
             width: 28px;
             height: 28px;
             border-radius: 50%;
             object-fit: cover;
             vertical-align: middle;
             margin-right: 8px;
-        }
-        .lb-name {
-            font-weight: 500;
-        }
-        .lb-score {
-            color: #fbbf24;
-            font-weight: 600;
-        }
-        .lb-class {
-            font-size: 0.75rem;
-            color: #8888a0;
-        }
-        .lb-you {
-            background: rgba(0, 243, 255, 0.05);
-            border-left: 2px solid var(--spectral-teal);
+            border: 1px solid var(--glass-border);
         }
 
-        /* --- AUCTION HOUSE STYLES --- */
-        .auction-panel {
-            grid-column: 1 / 3;
-            grid-row: 4 / 5;
-        }
-        .auction-grid {
-            display: grid;
-            grid-template-columns: 2fr 1fr;
-            gap: 1.5rem;
-        }
-        .auction-items {
-            display: flex;
-            flex-direction: column;
-            gap: 0.75rem;
-        }
-        .auction-item {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            padding: 0.75rem 1rem;
-            border-radius: 12px;
-            border: 1px solid var(--glass-border);
-            transition: all 0.2s;
-            cursor: pointer;
-        }
-        .auction-item:hover {
-            border-color: rgba(0, 243, 255, 0.3);
-            background: rgba(0, 0, 0, 0.2);
-        }
-        .auction-item-icon {
-            width: 40px;
-            height: 40px;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.2rem;
-            flex-shrink: 0;
-        }
-        .auction-item-info {
-            flex: 1;
-        }
-        .auction-item-name {
-            font-weight: 600;
-            font-size: 0.9rem;
-        }
-        .auction-item-desc {
-            font-size: 0.75rem;
-            color: #8888a0;
-        }
-        .auction-item-price {
+        .admin-role-badge {
+            padding: 2px 12px;
+            border-radius: 20px;
+            font-size: 0.65rem;
             font-weight: 700;
-            color: var(--gold);
-            font-size: 0.9rem;
+            display: inline-block;
         }
-        .btn-bid {
-            background: rgba(0, 243, 255, 0.1);
-            border: 1px solid rgba(0, 243, 255, 0.3);
-            color: var(--spectral-teal);
-            padding: 4px 16px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: 600;
+
+        .admin-role-badge.admin {
+            background: rgba(239, 68, 68, 0.15);
+            color: #ef4444;
+        }
+
+        .admin-role-badge.user {
+            background: rgba(255, 255, 255, 0.05);
+            color: #666;
+        }
+
+        .admin-status-online {
+            color: #22c55e;
             font-size: 0.8rem;
-            transition: all 0.2s;
-            font-family: 'Rajdhani', sans-serif;
-        }
-        .btn-bid:hover {
-            background: rgba(0, 243, 255, 0.2);
         }
 
-        .auction-sidebar {
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
+        .admin-status-offline {
+            color: #333;
+            font-size: 0.8rem;
         }
-        .auction-stat {
-            background: rgba(0, 0, 0, 0.2);
-            padding: 0.75rem 1rem;
-            border-radius: 12px;
+
+        .admin-action-btn {
+            padding: 3px 10px;
+            border-radius: 6px;
             border: 1px solid var(--glass-border);
+            background: transparent;
+            color: var(--bone-white);
+            cursor: pointer;
+            font-size: 0.65rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            font-family: 'Orbitron', sans-serif;
+            letter-spacing: 0.3px;
+            margin: 0 2px;
         }
-        .auction-stat-label {
-            font-size: 0.75rem;
-            color: #8888a0;
-        }
-        .auction-stat-value {
-            font-size: 1.2rem;
-            font-weight: 700;
-            font-family: 'Rajdhani', sans-serif;
+
+        .admin-action-btn:hover {
+            background: rgba(0, 243, 255, 0.08);
+            border-color: var(--spectral-teal);
             color: var(--spectral-teal);
         }
-        .auction-stat-value.gold {
+
+        .admin-action-btn.danger:hover {
+            background: rgba(239, 68, 68, 0.08);
+            border-color: #ef4444;
+            color: #ef4444;
+        }
+
+        .admin-action-btn.warning:hover {
+            background: rgba(245, 158, 11, 0.08);
+            border-color: var(--gold);
             color: var(--gold);
         }
 
+        /* ===== TOOLTIP ===== */
         .tooltip {
             position: fixed;
             background: rgba(10, 10, 15, 0.95);
             border: 1px solid var(--spectral-teal);
-            padding: 12px;
-            border-radius: 8px;
+            padding: 12px 16px;
+            border-radius: 10px;
             pointer-events: none;
             opacity: 0;
-            transition: opacity 0.2s;
+            transition: opacity 0.2s ease;
             z-index: 100;
             width: 200px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
         }
+
         .tooltip h4 {
             color: var(--spectral-teal);
             margin-bottom: 4px;
-            font-family: 'Rajdhani', sans-serif;
-        }
-        .tooltip p {
-            font-size: 0.8rem;
-            color: #aaa;
-            line-height: 1.3;
-        }
-        .tooltip .stat {
-            color: #fbbf24;
-            font-size: 0.8rem;
-            margin-top: 6px;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.9rem;
+            letter-spacing: 0.5px;
         }
 
+        .tooltip p {
+            font-size: 0.75rem;
+            color: #666;
+            line-height: 1.4;
+        }
+
+        .tooltip .stat {
+            color: var(--gold);
+            font-size: 0.75rem;
+            margin-top: 6px;
+            font-weight: 600;
+        }
+
+        /* ===== TOAST ===== */
         .toast {
             position: fixed;
             bottom: 30px;
             right: 30px;
             background: var(--glass-bg);
-            backdrop-filter: blur(12px);
-            border-left: 4px solid var(--spectral-teal);
+            backdrop-filter: blur(20px);
+            border-left: 3px solid var(--spectral-teal);
             padding: 16px 24px;
-            border-radius: 8px;
+            border-radius: 12px;
             color: white;
-            transform: translateX(150%);
-            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            transform: translateX(120%);
+            transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
             z-index: 10000;
             display: flex;
             align-items: center;
-            gap: 12px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-        }
-        .toast.show {
-            transform: translateX(0);
+            gap: 14px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            font-size: 0.9rem;
+            min-width: 280px;
         }
 
-        @keyframes float {
-            0%,
-            100% {
-                transform: translateY(0);
-            }
-            50% {
-                transform: translateY(-8px);
-            }
-        }
-        @keyframes rotate {
-            from {
-                transform: rotate(0deg);
-            }
-            to {
-                transform: rotate(360deg);
-            }
-        }
-        @keyframes slideIn {
-            from {
-                opacity: 0;
-                transform: translateX(20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateX(0);
-            }
-        }
-        @keyframes pulse-legendary {
-            0%,
-            100% {
-                box-shadow: inset 0 0 15px rgba(245, 158, 11, 0.3), 0 0 10px rgba(245, 158, 11, 0.2);
-            }
-            50% {
-                box-shadow: inset 0 0 20px rgba(245, 158, 11, 0.5), 0 0 20px rgba(245, 158, 11, 0.4);
-            }
+        .toast.show {
+            transform: translateX(0);
         }
 
         /* ===== BOT INTRO OVERLAY ===== */
@@ -1144,7 +1598,7 @@
             position: fixed;
             inset: 0;
             background: rgba(4, 4, 12, 0.92);
-            backdrop-filter: blur(10px);
+            backdrop-filter: blur(16px);
             z-index: 99999;
             display: flex;
             align-items: center;
@@ -1152,8 +1606,9 @@
             padding: 20px;
             opacity: 0;
             pointer-events: none;
-            transition: opacity 0.4s ease;
+            transition: opacity 0.5s ease;
         }
+
         .bot-intro-overlay.visible {
             opacity: 1;
             pointer-events: all;
@@ -1161,230 +1616,246 @@
 
         .bot-intro-card {
             width: 100%;
-            max-width: 520px;
-            background: linear-gradient(135deg, rgba(13,13,28,0.98) 0%, rgba(19,19,40,0.98) 100%);
-            border: 1px solid rgba(0,243,255,0.18);
-            border-radius: 24px;
-            padding: 2.5rem 2rem 2rem;
+            max-width: 560px;
+            background: linear-gradient(145deg, rgba(13, 13, 28, 0.98), rgba(19, 19, 40, 0.98));
+            border: 1px solid rgba(0, 243, 255, 0.1);
+            border-radius: 28px;
+            padding: 2.8rem 2.5rem 2.5rem;
             position: relative;
-            box-shadow: 0 0 80px rgba(0,243,255,0.08), 0 30px 60px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.05);
-            transform: translateY(30px) scale(0.96);
+            box-shadow: 0 40px 100px rgba(0, 0, 0, 0.6), 0 0 60px rgba(0, 243, 255, 0.03);
+            transform: translateY(40px) scale(0.96);
             opacity: 0;
-            transition: transform 0.5s cubic-bezier(.34,1.56,.64,1), opacity 0.4s ease;
+            transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
+
         .bot-intro-overlay.visible .bot-intro-card {
             transform: translateY(0) scale(1);
             opacity: 1;
         }
 
-        /* Shimmer border effect */
         .bot-intro-card::before {
             content: '';
             position: absolute;
             inset: -1px;
-            border-radius: 24px;
-            background: linear-gradient(90deg, transparent, rgba(0,243,255,0.3), rgba(188,19,254,0.3), transparent);
-            background-size: 200% 100%;
-            animation: shimmerBorder 3s linear infinite;
-            z-index: -1;
-        }
-        @keyframes shimmerBorder {
-            0% { background-position: -200% 0; }
-            100% { background-position: 200% 0; }
+            border-radius: 28px;
+            padding: 1px;
+            background: linear-gradient(135deg, transparent, rgba(0, 243, 255, 0.2), rgba(188, 19, 254, 0.2), transparent);
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            pointer-events: none;
         }
 
         .bot-intro-skip {
             position: absolute;
-            top: 16px;
-            right: 18px;
+            top: 18px;
+            right: 20px;
             background: none;
             border: none;
-            color: #555;
-            font-size: 0.82rem;
+            color: #333;
+            font-size: 0.8rem;
             cursor: pointer;
-            transition: color 0.2s;
-            letter-spacing: 0.3px;
+            transition: color 0.3s ease;
+            font-family: 'Inter', sans-serif;
+            letter-spacing: 0.5px;
         }
-        .bot-intro-skip:hover { color: #aaa; }
 
-        /* Bot section */
+        .bot-intro-skip:hover {
+            color: #666;
+        }
+
         .bot-intro-bot-row {
             display: flex;
             align-items: center;
             gap: 1.2rem;
             margin-bottom: 1.5rem;
         }
+
         .bot-intro-bot-avatar {
-            width: 68px;
-            height: 68px;
-            border-radius: 18px;
-            background: rgba(0,0,0,0.4);
-            border: 2px solid rgba(0,243,255,0.5);
+            width: 72px;
+            height: 72px;
+            border-radius: 20px;
+            background: rgba(0, 0, 0, 0.4);
+            border: 2px solid rgba(0, 243, 255, 0.3);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 2rem;
+            font-size: 2.2rem;
             color: var(--spectral-teal);
-            box-shadow: 0 0 30px rgba(0,243,255,0.25), inset 0 0 20px rgba(0,243,255,0.05);
-            animation: botFloat 3.5s ease-in-out infinite;
+            box-shadow: 0 0 40px rgba(0, 243, 255, 0.1);
+            animation: float 3.5s ease-in-out infinite;
             flex-shrink: 0;
         }
-        @keyframes botFloat {
-            0%, 100% { transform: translateY(0) rotate(0deg); }
-            33% { transform: translateY(-5px) rotate(-1deg); }
-            66% { transform: translateY(-2px) rotate(1deg); }
+
+        .bot-intro-bot-info {
+            flex: 1;
         }
-        .bot-intro-bot-info { flex: 1; }
+
         .bot-intro-bot-name {
-            font-family: 'Rajdhani', sans-serif;
-            font-size: 1.5rem;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.4rem;
             font-weight: 700;
             color: var(--bone-white);
             letter-spacing: 0.5px;
             margin-bottom: 2px;
         }
+
         .bot-intro-bot-tag {
-            font-size: 0.78rem;
-            color: #666;
-            letter-spacing: 0.3px;
+            font-size: 0.75rem;
+            color: #333;
+            letter-spacing: 0.5px;
         }
+
         .bot-intro-bot-tag span {
             color: var(--spectral-teal);
             font-weight: 600;
         }
 
-        /* Typewriter description */
         .bot-intro-desc {
-            background: rgba(0,0,0,0.3);
-            border: 1px solid rgba(255,255,255,0.06);
-            border-radius: 12px;
-            padding: 1rem 1.2rem;
-            min-height: 80px;
-            font-size: 0.93rem;
-            line-height: 1.65;
-            color: #c0c0d8;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            border-radius: 14px;
+            padding: 1.2rem 1.5rem;
+            min-height: 90px;
+            font-size: 0.9rem;
+            line-height: 1.7;
+            color: #a0a0b8;
             margin-bottom: 1.8rem;
             position: relative;
         }
+
         .bot-intro-desc .tw-cursor {
             display: inline-block;
             width: 2px;
             height: 1em;
             background: var(--spectral-teal);
-            margin-left: 1px;
+            margin-left: 2px;
             vertical-align: -2px;
-            animation: twBlink 0.85s step-end infinite;
-        }
-        @keyframes twBlink {
-            0%, 49% { opacity: 1; }
-            50%, 100% { opacity: 0; }
+            animation: blink 0.85s step-end infinite;
         }
 
-        /* Divider */
         .bot-intro-divider {
             height: 1px;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.04), transparent);
             margin-bottom: 1.5rem;
         }
 
-        /* Developer section */
         .bot-intro-dev-label {
-            font-size: 0.72rem;
+            font-size: 0.65rem;
             text-transform: uppercase;
-            letter-spacing: 1.5px;
-            color: #555;
-            font-weight: 600;
-            margin-bottom: 0.9rem;
+            letter-spacing: 2px;
+            color: #333;
+            font-weight: 700;
+            margin-bottom: 0.8rem;
+            font-family: 'Orbitron', sans-serif;
         }
+
         .bot-intro-dev-row {
             display: flex;
             align-items: center;
             gap: 1rem;
-            background: rgba(0,0,0,0.25);
-            border: 1px solid rgba(255,255,255,0.06);
-            border-radius: 14px;
-            padding: 0.9rem 1.1rem;
-            margin-bottom: 1.5rem;
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            border-radius: 16px;
+            padding: 0.8rem 1.2rem;
+            margin-bottom: 1.8rem;
             position: relative;
             overflow: hidden;
         }
+
         .bot-intro-dev-row::after {
             content: '';
             position: absolute;
             inset: 0;
-            background: linear-gradient(90deg, rgba(188,19,254,0.04), transparent);
+            background: linear-gradient(90deg, rgba(188, 19, 254, 0.03), transparent);
             pointer-events: none;
         }
+
         .bot-intro-dev-pfp {
-            width: 48px;
-            height: 48px;
+            width: 50px;
+            height: 50px;
             border-radius: 50%;
-            border: 2px solid rgba(188,19,254,0.6);
+            border: 2px solid rgba(188, 19, 254, 0.4);
             object-fit: cover;
-            box-shadow: 0 0 20px rgba(188,19,254,0.3);
+            box-shadow: 0 0 30px rgba(188, 19, 254, 0.1);
             flex-shrink: 0;
-            animation: pfpPulse 4s ease-in-out infinite;
+            animation: pfp-glow 4s ease-in-out infinite;
+            background: #1a0a2a;
         }
-        @keyframes pfpPulse {
-            0%, 100% { box-shadow: 0 0 15px rgba(188,19,254,0.3); }
-            50% { box-shadow: 0 0 30px rgba(188,19,254,0.6), 0 0 10px rgba(188,19,254,0.2); }
-        }
+
         .bot-intro-dev-pfp-fallback {
-            width: 48px;
-            height: 48px;
+            width: 50px;
+            height: 50px;
             border-radius: 50%;
-            border: 2px solid rgba(188,19,254,0.6);
-            background: linear-gradient(135deg, #4a0080, #bc13fe22);
+            border: 2px solid rgba(188, 19, 254, 0.4);
+            background: linear-gradient(135deg, #1a0a2a, #2a0a3a);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.3rem;
+            font-size: 1.5rem;
             flex-shrink: 0;
-            animation: pfpPulse 4s ease-in-out infinite;
+            animation: pfp-glow 4s ease-in-out infinite;
         }
-        .bot-intro-dev-details { flex: 1; }
+
+        .bot-intro-dev-details {
+            flex: 1;
+        }
+
         .bot-intro-dev-name {
-            font-family: 'Rajdhani', sans-serif;
-            font-size: 1.05rem;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1rem;
             font-weight: 700;
             color: var(--bone-white);
-        }
-        .bot-intro-dev-handle {
-            font-size: 0.8rem;
-            color: #888;
-            margin-top: 1px;
-        }
-        .bot-intro-dev-handle span { color: rgba(188,19,254,0.9); font-weight: 600; }
-        .bot-intro-dev-badge {
-            font-size: 0.7rem;
-            background: rgba(188,19,254,0.12);
-            border: 1px solid rgba(188,19,254,0.25);
-            color: #bc13fe;
-            padding: 3px 10px;
-            border-radius: 20px;
-            font-weight: 600;
             letter-spacing: 0.3px;
         }
 
-        /* Enter button */
-        .bot-intro-enter {
-            width: 100%;
-            padding: 13px;
-            background: linear-gradient(90deg, rgba(0,243,255,0.9), rgba(188,19,254,0.8));
-            border: none;
-            border-radius: 12px;
-            color: white;
-            font-family: 'Rajdhani', sans-serif;
-            font-size: 1.1rem;
+        .bot-intro-dev-handle {
+            font-size: 0.75rem;
+            color: #444;
+            margin-top: 1px;
+        }
+
+        .bot-intro-dev-handle span {
+            color: rgba(188, 19, 254, 0.8);
+            font-weight: 600;
+        }
+
+        .bot-intro-dev-badge {
+            font-size: 0.6rem;
+            background: rgba(188, 19, 254, 0.08);
+            border: 1px solid rgba(188, 19, 254, 0.1);
+            color: var(--soul-purple);
+            padding: 3px 12px;
+            border-radius: 20px;
             font-weight: 700;
             letter-spacing: 0.5px;
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        .bot-intro-enter {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, rgba(0, 243, 255, 0.9), rgba(188, 19, 254, 0.8));
+            border: none;
+            border-radius: 14px;
+            color: white;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1rem;
+            font-weight: 700;
+            letter-spacing: 1px;
             cursor: pointer;
             position: relative;
             overflow: hidden;
-            transition: transform 0.2s, box-shadow 0.2s, opacity 0.3s;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             opacity: 0;
+            transform: translateY(10px);
         }
-        .bot-intro-enter.ready { opacity: 1; }
+
+        .bot-intro-enter.ready {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
         .bot-intro-enter::before {
             content: '';
             position: absolute;
@@ -1392,150 +1863,217 @@
             left: -100%;
             width: 100%;
             height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
-            transition: left 0.5s ease;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+            transition: left 0.6s ease;
         }
-        .bot-intro-enter:hover::before { left: 100%; }
+
+        .bot-intro-enter:hover::before {
+            left: 100%;
+        }
+
         .bot-intro-enter:hover {
             transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(0,243,255,0.3);
+            box-shadow: 0 12px 40px rgba(0, 243, 255, 0.2);
         }
 
-        /* ===== ENHANCED PANEL ANIMATIONS ===== */
-        @keyframes panelEntry {
-            from { opacity: 0; transform: translateY(18px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        .panel { animation: panelEntry 0.55s cubic-bezier(.22,1,.36,1) both; }
-        .panel:nth-child(1) { animation-delay: 0.05s; }
-        .panel:nth-child(2) { animation-delay: 0.12s; }
-        .panel:nth-child(3) { animation-delay: 0.19s; }
-        .panel:nth-child(4) { animation-delay: 0.26s; }
-        .panel:nth-child(5) { animation-delay: 0.33s; }
-
-        /* Header greeting animation */
-        @keyframes greetingSlide {
-            from { opacity: 0; transform: translateX(-15px); }
-            to { opacity: 1; transform: translateX(0); }
-        }
-        .user-greeting { animation: greetingSlide 0.6s cubic-bezier(.22,1,.36,1) 0.1s both; }
-        .header-actions { animation: greetingSlide 0.6s cubic-bezier(.22,1,.36,1) 0.2s both; }
-
-        /* Ambient glow on character card */
-        .character-card {
-            background: linear-gradient(145deg, rgba(19,19,31,0.8) 0%, rgba(0,243,255,0.03) 100%);
+        /* ===== KEYFRAMES ===== */
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-8px); }
         }
 
-        /* Live indicator pulse for Ghost Wire */
-        .live-dot {
-            display: inline-block;
-            width: 7px;
-            height: 7px;
-            border-radius: 50%;
-            background: #22c55e;
-            margin-left: 6px;
-            box-shadow: 0 0 6px #22c55e;
-            animation: livePulse 1.8s ease-in-out infinite;
-            vertical-align: middle;
-        }
-        @keyframes livePulse {
-            0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 6px #22c55e; }
-            50% { opacity: 0.7; transform: scale(1.4); box-shadow: 0 0 12px #22c55e, 0 0 4px #22c55e; }
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
         }
 
-        /* Stat bar shimmer */
-        .stat-fill::after {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -60%;
-            width: 40%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
-            animation: statShimmer 2.5s ease-in-out infinite 1s;
-        }
-        @keyframes statShimmer {
+        @keyframes shimmer {
             0% { left: -60%; }
             100% { left: 120%; }
         }
 
-        /* Currency badge hover */
-        .currency-badge {
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-        .currency-badge:hover {
-            transform: translateY(-2px);
-        }
-        .currency-badge.gold:hover { box-shadow: 0 5px 20px rgba(251,191,36,0.2); }
-        .currency-badge.gems:hover { box-shadow: 0 5px 20px rgba(188,19,254,0.2); }
-
-        /* Action button ripple feel */
-        .action-btn:active {
-            transform: scale(0.95);
+        @keyframes fadeSlide {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
-        /* Feed items stagger */
-        .feed-item {
-            border-radius: 8px;
-            transition: background 0.2s;
-        }
-        .feed-item:hover {
-            background: rgba(255,255,255,0.02);
+        @keyframes panelFade {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
-        @media (max-width: 900px) {
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-15px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        @keyframes blink {
+            0%, 49% { opacity: 1; }
+            50%, 100% { opacity: 0; }
+        }
+
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.5); }
+        }
+
+        @keyframes pulse-legendary {
+            0%, 100% { 
+                box-shadow: 0 0 30px rgba(245, 158, 11, 0.05), inset 0 0 30px rgba(245, 158, 11, 0.05);
+            }
+            50% { 
+                box-shadow: 0 0 50px rgba(245, 158, 11, 0.1), inset 0 0 50px rgba(245, 158, 11, 0.08);
+            }
+        }
+
+        @keyframes pfp-glow {
+            0%, 100% { box-shadow: 0 0 20px rgba(188, 19, 254, 0.1); }
+            50% { box-shadow: 0 0 40px rgba(188, 19, 254, 0.2), 0 0 15px rgba(188, 19, 254, 0.05); }
+        }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 1024px) {
             .dashboard-grid {
                 grid-template-columns: 1fr;
+                gap: 1.2rem;
             }
+
             .character-card,
             .activity-feed,
             .inventory-grid,
             .leaderboard-panel,
-            .auction-panel {
+            .auction-panel,
+            .admin-panel {
                 grid-column: 1 / -1;
                 grid-row: auto;
             }
-            .sidebar {
-                width: 230px;
-            }
-            .main-content {
-                padding: 4.5rem 1.25rem 1.5rem;
-            }
-            .header-actions {
-                width: 100%;
-                justify-content: space-between;
-            }
+
             .auction-grid {
                 grid-template-columns: 1fr;
             }
+
+            .main-content {
+                padding: 5rem 1.5rem 1.5rem;
+            }
+
+            .admin-stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 220px;
+                padding: 1.5rem 1rem;
+            }
+
+            .header {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 1rem;
+            }
+
+            .header-actions {
+                flex-wrap: wrap;
+                justify-content: space-between;
+            }
+
+            .user-greeting h1 {
+                font-size: 1.4rem;
+            }
+
+            .auth-container {
+                padding: 2rem 1.5rem;
+                margin: 1rem;
+            }
+
             .lb-podium {
                 flex-wrap: wrap;
+                gap: 1rem;
+            }
+
+            .inv-container {
+                grid-template-columns: repeat(3, 1fr);
+            }
+
+            .bot-intro-card {
+                padding: 2rem 1.5rem;
+            }
+
+            .bot-intro-dev-row {
+                flex-wrap: wrap;
+            }
+
+            .admin-stats-grid {
+                grid-template-columns: 1fr 1fr;
+                gap: 0.8rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .currency-display {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+
+            .quick-actions {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .inv-container {
+                grid-template-columns: repeat(3, 1fr);
+            }
+
+            .otp-inputs {
+                gap: 6px;
+            }
+
+            .otp-input {
+                width: 38px;
+                height: 46px;
+                font-size: 1.2rem;
+            }
+
+            .admin-stats-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .admin-table-wrap {
+                font-size: 0.75rem;
+            }
+
+            .admin-table td,
+            .admin-table th {
+                padding: 6px 8px;
             }
         }
     </style>
 </head>
 <body>
 
-    <canvas id="particle-canvas"></canvas>
+    <!-- Background -->
+    <div class="bg-canvas"></div>
+    <div class="bg-grid"></div>
 
+    <!-- ===== TOPBAR ===== -->
     <div class="topbar" id="dashTopbar" style="display:none;">
         <button class="menu-toggle" id="navToggle" aria-label="Toggle navigation">
-            <i class="fa-solid fa-ellipsis-vertical"></i>
+            <i class="fa-solid fa-bars"></i>
         </button>
     </div>
     <div class="nav-backdrop" id="navBackdrop"></div>
 
-    <!-- Auth screen -->
+    <!-- ===== AUTH SCREEN ===== -->
     <div id="auth-screen" class="auth-screen">
         <div class="auth-container">
             <div class="auth-logo">
                 <i class="fa-solid fa-ghost"></i>
-                <span>RPG Ghost</span>
+                <span>RPG GHOST</span>
             </div>
 
             <div class="auth-tabs">
-                <button class="auth-tab active" onclick="switchTab('login')">Sign In</button>
-                <button class="auth-tab" onclick="switchTab('register')">Sign Up</button>
+                <button class="auth-tab active" onclick="switchTab('login')">SIGN IN</button>
+                <button class="auth-tab" onclick="switchTab('register')">SIGN UP</button>
             </div>
 
             <!-- Login Form -->
@@ -1551,14 +2089,14 @@
                         <i class="fa-regular fa-eye"></i>
                     </button>
                 </div>
-                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 1.2rem;">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 1.5rem;">
                     <input type="checkbox" id="keep-signed-in" style="width: 16px; height: 16px; accent-color: var(--spectral-teal); cursor: pointer; margin: 0;" />
-                    <label for="keep-signed-in" style="color: #8888a0; font-size: 0.9rem; cursor: pointer; user-select: none;">Keep me signed in</label>
+                    <label for="keep-signed-in" style="color: #444; font-size: 0.85rem; cursor: pointer; user-select: none;">Keep me signed in</label>
                 </div>
-                <button type="submit" class="auth-btn" id="login-btn">Sign In</button>
-                <p class="resend-text" style="margin-top: 0.8rem;"><a onclick="showForgotPasswordForm()">Forgot password?</a></p>
+                <button type="submit" class="auth-btn" id="login-btn">SIGN IN</button>
+                <p class="resend-text"><a onclick="showForgotPasswordForm()">Forgot password?</a></p>
 
-                <div class="divider"><span>OR CONTINUE WITH</span></div>
+                <div class="divider">OR CONTINUE WITH</div>
                 <div class="social-btns">
                     <a href="/login/discord" class="social-btn discord" id="discord-login-btn"><i class="fa-brands fa-discord"></i></a>
                 </div>
@@ -1591,9 +2129,9 @@
                         <i class="fa-regular fa-eye"></i>
                     </button>
                 </div>
-                <button type="submit" class="auth-btn" id="register-btn">Create Account</button>
+                <button type="submit" class="auth-btn" id="register-btn">CREATE ACCOUNT</button>
 
-                <div class="divider"><span>OR CONTINUE WITH</span></div>
+                <div class="divider">OR CONTINUE WITH</div>
                 <div class="social-btns">
                     <a href="/login/discord" class="social-btn discord"><i class="fa-brands fa-discord"></i></a>
                 </div>
@@ -1606,18 +2144,18 @@
                 </div>
             </form>
 
-            <!-- Forgot Password: Request Reset -->
+            <!-- Forgot Password -->
             <form id="forgot-form" class="auth-form" onsubmit="handleForgotPassword(event)">
                 <p class="otp-text">Enter your account email and we'll send you a reset code.</p>
                 <div class="input-group">
                     <i class="fa-solid fa-envelope"></i>
                     <input type="email" id="forgot-email" placeholder="Email Address" required />
                 </div>
-                <button type="submit" class="auth-btn" id="forgot-btn">Send Reset Code</button>
+                <button type="submit" class="auth-btn" id="forgot-btn">SEND RESET CODE</button>
                 <p class="resend-text"><a onclick="switchTab('login')">Back to Sign In</a></p>
             </form>
 
-            <!-- Forgot Password: Verify OTP + Set New Password -->
+            <!-- OTP Form -->
             <form id="otp-form" class="auth-form" onsubmit="handleOTPSubmit(event)">
                 <p class="otp-text">Enter the 6-digit code sent to<br /><span id="otp-email-display"></span></p>
                 <div class="otp-inputs">
@@ -1642,16 +2180,16 @@
                         <span class="pw-strength-hint" id="pw-strength-hint-otp"></span>
                     </div>
                 </div>
-                <button type="submit" class="auth-btn" id="otp-btn">Reset Password</button>
+                <button type="submit" class="auth-btn" id="otp-btn">RESET PASSWORD</button>
                 <p class="resend-text">Didn't receive code? <a onclick="resendOTP()">Resend</a></p>
             </form>
         </div>
     </div>
 
-    <!-- Dashboard -->
+    <!-- ===== DASHBOARD ===== -->
     <div class="dashboard-container" id="dashboard">
         <aside class="sidebar" id="sidebar">
-            <div class="logo"><i class="fa-solid fa-ghost"></i><span>RPG Ghost</span></div>
+            <div class="logo"><i class="fa-solid fa-ghost"></i><span>RPG GHOST</span></div>
             <ul class="nav-links">
                 <li><a href="/dashboard" class="active"><i class="fa-solid fa-chart-pie"></i> <span>Overview</span></a></li>
                 <li><a href="/battle-log"><i class="fa-solid fa-khanda"></i> <span>Battle Log</span></a></li>
@@ -1665,8 +2203,8 @@
         <main class="main-content">
             <header class="header">
                 <div class="user-greeting">
-                    <h1>Welcome back, <span style="color: var(--spectral-teal);" id="user-name-display">Adventurer</span></h1>
-                    <p style="color: #8888a0; font-size: 0.9rem;">The spirits whisper of new adventures today.</p>
+                    <h1>Welcome back, <span id="user-name-display">Adventurer</span></h1>
+                    <p>The spirits whisper of new adventures today.</p>
                 </div>
                 <div class="header-actions">
                     <div class="currency-display">
@@ -1678,6 +2216,7 @@
             </header>
 
             <div class="dashboard-grid">
+                <!-- Character Card -->
                 <div class="panel character-card">
                     <div class="avatar-container">
                         <img id="user-avatar" src="https://api.dicebear.com/7.x/avataaars/svg?seed=Default&backgroundColor=b6e3f4" alt="Avatar" />
@@ -1709,39 +2248,37 @@
                     </div>
                 </div>
 
+                <!-- Activity Feed -->
                 <div class="panel activity-feed">
                     <div class="panel-header">
-                        <span><i class="fa-solid fa-tower-broadcast" style="color: var(--spectral-teal); margin-right: 8px;"></i> Ghost Wire</span>
-                        <span style="font-size: 0.8rem; color: #22c55e; font-weight:600;">Live<span class="live-dot"></span></span>
+                        <span><i class="fa-solid fa-tower-broadcast" style="color: var(--spectral-teal);"></i> Ghost Wire</span>
+                        <span class="live-indicator"><span class="live-dot"></span> Live</span>
                     </div>
                     <div id="feed-container">
-                        <p style="text-align:center; color:#666; padding:20px;">Loading activity...</p>
+                        <p style="text-align:center; color:#333; padding:20px;">Loading activity...</p>
                     </div>
                 </div>
 
+                <!-- Inventory -->
                 <div class="panel inventory-grid">
                     <div class="panel-header">
-                        <span><i class="fa-solid fa-backpack" style="color: var(--soul-purple); margin-right: 8px;"></i> Inventory</span>
-                        <span style="font-size: 0.8rem; color: #666; cursor: pointer;">Manage <i class="fa-solid fa-chevron-right"></i></span>
+                        <span><i class="fa-solid fa-backpack" style="color: var(--soul-purple);"></i> Inventory</span>
+                        <span style="font-size: 0.7rem; color: #333; cursor: pointer; font-weight: 600;">Manage <i class="fa-solid fa-chevron-right"></i></span>
                     </div>
                     <div class="inv-container" id="inventory-container">
-                        <p style="grid-column: 1/-1; text-align:center; color:#666; padding:20px;">Loading inventory...</p>
+                        <p style="grid-column: 1/-1; text-align:center; color:#333; padding:20px;">Loading inventory...</p>
                     </div>
                 </div>
 
-                <!-- LEADERBOARD PANEL -->
+                <!-- Leaderboard -->
                 <div class="panel leaderboard-panel">
                     <div class="panel-header">
-                        <span><i class="fa-solid fa-trophy" style="color: var(--gold); margin-right: 8px;"></i> Leaderboard</span>
-                        <span style="font-size: 0.8rem; color: #666;">Top Adventurers</span>
+                        <span><i class="fa-solid fa-trophy" style="color: var(--gold);"></i> Leaderboard</span>
+                        <span style="font-size: 0.7rem; color: #333; font-weight: 600;">Top Adventurers</span>
                     </div>
 
-                    <!-- Podium (Dynamic) -->
-                    <div class="lb-podium" id="lb-podium">
-                        <!-- Populated by JS -->
-                    </div>
+                    <div class="lb-podium" id="lb-podium"></div>
 
-                    <!-- Full Leaderboard Table (Dynamic) -->
                     <table class="lb-table">
                         <thead>
                             <tr>
@@ -1752,26 +2289,25 @@
                             </tr>
                         </thead>
                         <tbody id="lb-tbody">
-                            <tr><td colspan="4" style="text-align:center; padding:20px; color:#666;">Loading leaderboard...</td></tr>
+                            <tr><td colspan="4" style="text-align:center; padding:20px; color:#333;">Loading leaderboard...</td></tr>
                         </tbody>
                     </table>
                 </div>
 
-                <!-- AUCTION HOUSE PANEL -->
+                <!-- Auction House -->
                 <div class="panel auction-panel">
                     <div class="panel-header">
-                        <span><i class="fa-solid fa-gavel" style="color: var(--gold); margin-right: 8px;"></i> Auction House</span>
-                        <span style="font-size: 0.8rem; color: #666;">Live Bidding</span>
+                        <span><i class="fa-solid fa-gavel" style="color: var(--gold);"></i> Auction House</span>
+                        <span style="font-size: 0.7rem; color: #333; font-weight: 600;">Live Bidding</span>
                     </div>
                     <div class="auction-grid">
                         <div class="auction-items" id="auction-items">
-                            <!-- Populated by JS -->
-                            <p style="text-align:center; color:#666; padding:20px;">Loading auctions...</p>
+                            <p style="text-align:center; color:#333; padding:20px;">Loading auctions...</p>
                         </div>
                         <div class="auction-sidebar">
                             <div class="auction-stat">
                                 <div class="auction-stat-label">Your Balance</div>
-                                <div class="auction-stat-value gold" id="auction-balance">0 <span style="font-size: 0.8rem; color: #8888a0;">Gold</span></div>
+                                <div class="auction-stat-value gold" id="auction-balance">0 <span style="font-size: 0.7rem; color: #333;">Gold</span></div>
                             </div>
                             <div class="auction-stat">
                                 <div class="auction-stat-label">Active Bids</div>
@@ -1781,9 +2317,70 @@
                                 <div class="auction-stat-label">Items Listed</div>
                                 <div class="auction-stat-value" id="items-listed">0</div>
                             </div>
-                            <button class="auth-btn" style="margin-top: 0; padding: 10px; font-size: 1rem;" onclick="showToast('Auction House opened!')">
+                            <button class="auth-btn" style="margin-top: 0; padding: 12px; font-size: 0.8rem;" onclick="showToast('Auction House opened!')">
                                 <i class="fa-solid fa-plus"></i> List Item
                             </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ===== ADMIN PANEL ===== -->
+                <div class="panel admin-panel" id="adminPanel">
+                    <div class="panel-header">
+                        <span><i class="fa-solid fa-shield-halved" style="color: #ef4444;"></i> Admin Dashboard</span>
+                        <span style="font-size: 0.7rem; color: #ef4444; font-weight: 600;">🔒 Admin Access</span>
+                    </div>
+
+                    <!-- Admin Stats -->
+                    <div class="admin-stats-grid" id="adminStatsGrid">
+                        <div class="admin-stat-card">
+                            <div class="admin-stat-number" id="adminTotalUsers">0</div>
+                            <div class="admin-stat-label">Total Users</div>
+                        </div>
+                        <div class="admin-stat-card">
+                            <div class="admin-stat-number green" id="adminOnlineUsers">0</div>
+                            <div class="admin-stat-label">Online Now</div>
+                        </div>
+                        <div class="admin-stat-card">
+                            <div class="admin-stat-number red" id="adminTotalAdmins">0</div>
+                            <div class="admin-stat-label">Admins</div>
+                        </div>
+                        <div class="admin-stat-card">
+                            <div class="admin-stat-number gold" id="adminActiveSessions">0</div>
+                            <div class="admin-stat-label">Active Sessions</div>
+                        </div>
+                    </div>
+
+                    <!-- User Management -->
+                    <div style="margin-top: 1.5rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.8rem;">
+                            <h3 style="font-family: 'Orbitron', sans-serif; font-size: 0.9rem; color: var(--bone-white);">
+                                <i class="fa-solid fa-users" style="color: var(--spectral-teal);"></i> User Management
+                            </h3>
+                            <div style="display: flex; gap: 0.8rem;">
+                                <button onclick="refreshAdminPanel()" class="admin-btn">
+                                    <i class="fa-solid fa-rotate"></i> Refresh
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="admin-table-wrap">
+                            <table class="admin-table" id="adminUsersTable">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>User</th>
+                                        <th>Email</th>
+                                        <th>Role</th>
+                                        <th>Status</th>
+                                        <th>Joined</th>
+                                        <th style="text-align:center;">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="adminUsersTbody">
+                                    <tr><td colspan="7" style="text-align:center; padding:20px; color:#333;">Loading users...</td></tr>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
@@ -1791,12 +2388,14 @@
         </main>
     </div>
 
+    <!-- Tooltip -->
     <div class="tooltip" id="tooltip">
         <h4 id="tt-name">Item Name</h4>
         <p id="tt-desc">Item description goes here.</p>
         <div class="stat" id="tt-stat">+15 Attack Damage</div>
     </div>
 
+    <!-- Toast -->
     <div class="toast" id="toast">
         <i class="fa-solid fa-circle-check" style="color: var(--spectral-teal); font-size: 1.2rem;"></i>
         <span id="toast-message">Action successful!</span>
@@ -1821,8 +2420,8 @@
 
             <div class="bot-intro-dev-label">Created by</div>
             <div class="bot-intro-dev-row">
-                <div class="bot-intro-dev-pfp-fallback" id="devAvatarFallback">&#128126;</div>
-                <img class="bot-intro-dev-pfp" id="devAvatarImg" src="" alt="dev" style="display:none;" onerror="this.style.display='none';document.getElementById('devAvatarFallback').style.display='flex';">
+                <img class="bot-intro-dev-pfp" id="devAvatarImg" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%231a0a2a'/%3E%3Ctext x='50' y='58' text-anchor='middle' font-size='40' font-family='Arial' fill='%23bc13fe'%3E👻%3C/text%3E%3C/svg%3E" alt="Rerir" onerror="this.style.display='none';document.getElementById('devAvatarFallback').style.display='flex';" />
+                <div id="devAvatarFallback" class="bot-intro-dev-pfp-fallback" style="display:none;">👻</div>
                 <div class="bot-intro-dev-details">
                     <div class="bot-intro-dev-name">Rerir | DND mode</div>
                     <div class="bot-intro-dev-handle"><span>@5_sinners_nightmare</span></div>
@@ -1837,45 +2436,96 @@
     </div>
 
     <script>
-        // EmailJS / reCAPTCHA config
+        // ============================================================
+        // CONFIGURATION
+        // ============================================================
         const RECAPTCHA_SITE_KEY = "6LfdHyEtAAAAAJ34WMBrqoIc_Um2YqTE1jX-Lmkz";
         const EMAILJS_PUBLIC_KEY = "eMQUadu5q-_pONmwc";
         const EMAILJS_SERVICE_ID = "service_miabeqg";
         const EMAILJS_TEMPLATE_ID = "template_tntozpq";
+        const API_BASE = window.location.origin;
 
         let resetEmail = "";
         let resetOTP = "";
         let isDashboardInitialized = false;
         let currentUser = null;
 
-        // Initialize EmailJS
+        // ============================================================
+        // INITIALIZATION
+        // ============================================================
         if (typeof emailjs !== 'undefined') {
             emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY });
         }
 
-        // toast helper
-        function showToast(message, isError = false) {
-            const toast = document.getElementById('toast');
-            const toastMessage = document.getElementById('toast-message');
-            const toastIcon = toast.querySelector('i');
+        document.addEventListener('DOMContentLoaded', () => {
+            checkAuth();
 
-            toastMessage.innerText = message;
+            // Nav toggle
+            const sidebar = document.getElementById('sidebar');
+            const navBackdrop = document.getElementById('navBackdrop');
+            const navToggle = document.getElementById('navToggle');
 
-            if (isError) {
-                toastIcon.style.color = '#ef4444';
-                toast.style.borderLeftColor = '#ef4444';
+            navToggle.addEventListener('click', () => {
+                sidebar.classList.toggle('is-open');
+                navBackdrop.classList.toggle('is-open');
+            });
+
+            navBackdrop.addEventListener('click', () => {
+                sidebar.classList.remove('is-open');
+                navBackdrop.classList.remove('is-open');
+            });
+
+            document.querySelectorAll('.nav-links a').forEach(link => {
+                link.addEventListener('click', () => {
+                    sidebar.classList.remove('is-open');
+                    navBackdrop.classList.remove('is-open');
+                });
+            });
+
+            // OTP auto-focus
+            document.querySelectorAll('.otp-input').forEach((input, index, inputs) => {
+                input.addEventListener('input', (e) => {
+                    e.target.value = e.target.value.replace(/[^0-9]/g, '');
+                    if (e.target.value.length === 1 && index < inputs.length - 1) {
+                        inputs[index + 1].focus();
+                    }
+                });
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === "Backspace" && !e.target.value && index > 0) {
+                        inputs[index - 1].focus();
+                    }
+                    if (e.key === "Enter") {
+                        document.getElementById('otp-btn').click();
+                    }
+                });
+            });
+
+            // Discord login
+            document.querySelectorAll('.social-btn.discord').forEach(btn => {
+                btn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    showToast('Redirecting to Discord...');
+                    setTimeout(() => { window.location.href = '/login/discord'; }, 500);
+                });
+            });
+        });
+
+        // ============================================================
+        // AUTH FUNCTIONS
+        // ============================================================
+        function switchTab(tab) {
+            document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
+
+            if (tab === 'login') {
+                document.querySelector('.auth-tab:first-child').classList.add('active');
+                document.getElementById('login-form').classList.add('active');
             } else {
-                toastIcon.style.color = 'var(--spectral-teal)';
-                toast.style.borderLeftColor = 'var(--spectral-teal)';
+                document.querySelector('.auth-tab:last-child').classList.add('active');
+                document.getElementById('register-form').classList.add('active');
             }
-
-            toast.classList.add('show');
-            setTimeout(() => {
-                toast.classList.remove('show');
-            }, 3000);
         }
 
-        // show/hide password
         function togglePassword(inputId) {
             const input = document.getElementById(inputId);
             const toggleBtn = input.parentElement.querySelector('.password-toggle');
@@ -1892,49 +2542,20 @@
             }
         }
 
-        // tab switching for the auth card
-        function switchTab(tab) {
-            document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
-
-            if (tab === 'login') {
-                document.querySelector('.auth-tab:first-child').classList.add('active');
-                document.getElementById('login-form').classList.add('active');
-            } else {
-                document.querySelector('.auth-tab:last-child').classList.add('active');
-                document.getElementById('register-form').classList.add('active');
-            }
-        }
-
-        // password strength meter
         function getPasswordStrength(password) {
-            if (!password) {
-                return { score: 0, label: '', color: '#666', hint: '' };
-            }
+            if (!password) return { score: 0, label: '', color: '#666', hint: '' };
 
-            const lengthScore = Math.min(password.length / 16, 1);
             const hasLower = /[a-z]/.test(password);
             const hasUpper = /[A-Z]/.test(password);
             const hasNumber = /[0-9]/.test(password);
             const hasSymbol = /[^a-zA-Z0-9]/.test(password);
             const varietyCount = [hasLower, hasUpper, hasNumber, hasSymbol].filter(Boolean).length;
 
-            const commonPasswords = [
-                'password', 'password1', '12345678', '123456789', 'qwerty123',
-                'letmein', 'iloveyou', 'admin123', 'welcome1', 'monkey123',
-                'football', 'dragon123', 'master123', 'sunshine', 'princess'
-            ];
-            const isCommon = commonPasswords.includes(password.toLowerCase());
-            const isSequential = /^(?:0123|1234|2345|3456|4567|5678|6789|abcd|qwer|asdf)/.test(password.toLowerCase());
-
             let score = 0;
             if (password.length >= 8) score += 1;
             if (password.length >= 12) score += 1;
             if (varietyCount >= 3) score += 1;
             if (varietyCount === 4 && password.length >= 12) score += 1;
-            if (isCommon || isSequential) score = Math.min(score, 1);
-            if (password.length < 8) score = 0;
-
             score = Math.max(0, Math.min(4, score));
 
             const levels = [
@@ -1944,15 +2565,12 @@
                 { label: 'Strong', color: '#22c55e' },
                 { label: 'Very Strong', color: '#00f3ff' },
             ];
-            const level = levels[score];
 
-            let hint = '';
-            if (isCommon) hint = 'Too common — pick something less guessable';
-            else if (isSequential) hint = 'Avoid simple sequences';
-            else if (password.length < 8) hint = 'Use at least 8 characters';
-            else if (varietyCount < 3) hint = 'Add numbers, symbols, or uppercase letters';
-            else if (password.length < 12) hint = 'Longer passwords are stronger';
-            else hint = 'Great password!';
+            const level = levels[score];
+            let hint = password.length < 8 ? 'Use at least 8 characters' :
+                       varietyCount < 3 ? 'Add numbers, symbols, or uppercase' :
+                       password.length < 12 ? 'Longer passwords are stronger' :
+                       'Great password!';
 
             return { score, label: level.label, color: level.color, hint };
         }
@@ -1963,14 +2581,15 @@
             const fill = document.getElementById(`pw-strength-fill${tag}`);
             const label = document.getElementById(`pw-strength-label${tag}`);
             const hint = document.getElementById(`pw-strength-hint${tag}`);
+
             if (!wrap || !fill || !label || !hint) return;
 
             if (!password) {
                 wrap.style.display = 'none';
                 return;
             }
-            wrap.style.display = 'block';
 
+            wrap.style.display = 'block';
             const result = getPasswordStrength(password);
             const pct = (result.score / 4) * 100;
             fill.style.width = pct + '%';
@@ -1980,26 +2599,9 @@
             hint.innerText = result.hint;
         }
 
-        // Discord OAuth button
-        function handleDiscordLogin() {
-            showToast('Redirecting to Discord...');
-            setTimeout(() => {
-                window.location.href = '/login/discord';
-            }, 500);
-            return false;
-        }
-
-        document.addEventListener('DOMContentLoaded', function() {
-            const discordBtns = document.querySelectorAll('.social-btn.discord');
-            discordBtns.forEach(btn => {
-                btn.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    handleDiscordLogin();
-                });
-            });
-        });
-
-        // login form submit
+        // ============================================================
+        // AUTH HANDLERS
+        // ============================================================
         async function handleLogin(event) {
             event.preventDefault();
             const email = document.getElementById('login-email').value.trim();
@@ -2012,10 +2614,10 @@
 
             const btn = document.getElementById('login-btn');
             btn.disabled = true;
-            btn.innerText = "Verifying...";
+            btn.innerText = "VERIFYING...";
 
             try {
-                const response = await fetch('/api/login', {
+                const response = await fetch(`${API_BASE}/api/login`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ email, password })
@@ -2023,8 +2625,8 @@
                 const data = await response.json();
 
                 if (data.ok && data.logged_in) {
-                    showToast('Welcome back, ' + (data.username || 'Adventurer') + '!');
-                    showDashboard(data);
+                    showToast('Welcome back, ' + (data.user?.username || 'Adventurer') + '!');
+                    showDashboard(data.user);
                 } else {
                     showToast(data.error || 'Login failed. Check your credentials.', true);
                 }
@@ -2033,11 +2635,10 @@
                 showToast('Cannot reach server. Check your connection.', true);
             } finally {
                 btn.disabled = false;
-                btn.innerText = "Sign In";
+                btn.innerText = "SIGN IN";
             }
         }
 
-        // register form submit
         async function handleRegister(event) {
             event.preventDefault();
             const email = document.getElementById('reg-email').value.trim();
@@ -2057,11 +2658,11 @@
             }
 
             btn.disabled = true;
-            btn.innerText = "Verifying Security...";
+            btn.innerText = "VERIFYING SECURITY...";
 
             const submitRegistration = async (recaptchaToken) => {
                 try {
-                    const response = await fetch('/api/signup', {
+                    const response = await fetch(`${API_BASE}/api/signup`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ email, password: pass, recaptcha_token: recaptchaToken })
@@ -2069,8 +2670,8 @@
                     const data = await response.json();
 
                     if (data.ok && data.logged_in) {
-                        showToast('Account created! Welcome, ' + (data.username || 'Adventurer') + '!');
-                        showDashboard(data);
+                        showToast('Account created! Welcome, ' + (data.user?.username || 'Adventurer') + '!');
+                        showDashboard(data.user);
                     } else {
                         showToast(data.error || 'Registration failed. Please try again.', true);
                     }
@@ -2079,7 +2680,7 @@
                     showToast('Cannot reach server. Check your connection.', true);
                 } finally {
                     btn.disabled = false;
-                    btn.innerText = "Create Account";
+                    btn.innerText = "CREATE ACCOUNT";
                 }
             };
 
@@ -2094,122 +2695,14 @@
             }
         }
 
-        // forgot-password flow
-        async function handleForgotPassword(event) {
-            event.preventDefault();
-            const email = document.getElementById('forgot-email').value.trim();
-            const btn = document.getElementById('forgot-btn');
-
-            btn.disabled = true;
-            btn.innerText = "Sending...";
-
-            try {
-                const response = await fetch('/api/password/request-reset', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email })
-                });
-                const data = await response.json();
-
-                if (data.ok) {
-                    resetEmail = email;
-                    resetOTP = data.otp || "";
-
-                    const templateParams = {
-                        to_email: email,
-                        otp_code: resetOTP,
-                        from_name: "RPG Ghost"
-                    };
-
-                    if (typeof emailjs !== 'undefined' && resetOTP) {
-                        emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, templateParams)
-                            .then(() => showToast("Reset code sent to your email!"))
-                            .catch((err) => {
-                                console.error("EmailJS Error:", err);
-                                showToast("Email delivery failed. Demo code: " + resetOTP, true);
-                            });
-                    } else {
-                        showToast(data.message || "If that email is registered, a code has been sent.");
-                    }
-                    showOTPForm(email);
-                } else {
-                    showToast(data.error || "Could not request a reset code.", true);
-                }
-            } catch (error) {
-                console.error('Forgot password error:', error);
-                showToast('Cannot reach server. Check your connection.', true);
-            } finally {
-                btn.disabled = false;
-                btn.innerText = "Send Reset Code";
-            }
-        }
-
+        // ============================================================
+        // PASSWORD RESET
+        // ============================================================
         function showForgotPasswordForm() {
             document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
             document.getElementById('forgot-form').classList.add('active');
             document.getElementById('forgot-email').focus();
-        }
-
-        // OTP verification + new password
-        async function handleOTPSubmit(event) {
-            event.preventDefault();
-            let enteredOTP = "";
-            document.querySelectorAll('.otp-input').forEach(input => enteredOTP += input.value);
-            const newPassword = document.getElementById('otp-new-pass').value;
-            const btn = document.getElementById('otp-btn');
-
-            if (!newPassword || newPassword.length < 8) {
-                showToast("New password must be at least 8 characters.", true);
-                return;
-            }
-
-            btn.disabled = true;
-            btn.innerText = "Verifying...";
-
-            try {
-                const response = await fetch('/api/password/verify-reset', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email: resetEmail, otp: enteredOTP, new_password: newPassword })
-                });
-                const data = await response.json();
-
-                if (data.ok) {
-                    showToast(data.message || "Password updated successfully!");
-                    document.getElementById('otp-form').reset();
-                    document.querySelectorAll('.otp-input').forEach(i => i.value = "");
-                    switchTab('login');
-                } else {
-                    showToast(data.error || "Invalid or expired code.", true);
-                }
-            } catch (error) {
-                console.error('Reset verify error:', error);
-                showToast('Cannot reach server. Check your connection.', true);
-            } finally {
-                btn.disabled = false;
-                btn.innerText = "Reset Password";
-            }
-        }
-
-        // OTP Input Auto-focus
-        document.querySelectorAll('.otp-input').forEach((input, index, inputs) => {
-            input.addEventListener('input', (e) => {
-                if (e.target.value.length === 1 && index < inputs.length - 1) {
-                    inputs[index + 1].focus();
-                }
-            });
-            input.addEventListener('keydown', (e) => {
-                if (e.key === "Backspace" && !input.value && index > 0) {
-                    inputs[index - 1].focus();
-                }
-            });
-        });
-
-        function resendOTP() {
-            if (!resetEmail) return;
-            showToast("Requesting new code...");
-            document.getElementById('forgot-form').dispatchEvent(new Event('submit'));
         }
 
         function showOTPForm(email) {
@@ -2220,64 +2713,219 @@
             document.querySelectorAll('.otp-input')[0].focus();
         }
 
-        // auction house
-        function placeBid(itemName) {
-            showToast(`💰 Bid placed on ${itemName}!`);
-            // Update active bids
-            const bidsEl = document.getElementById('active-bids');
-            let currentBids = parseInt(bidsEl.textContent) || 0;
-            bidsEl.textContent = currentBids + 1;
-        }
+        async function handleForgotPassword(event) {
+            event.preventDefault();
+            const email = document.getElementById('forgot-email').value.trim();
+            const btn = document.getElementById('forgot-btn');
 
-        // Dashboard rendering
-        function showDashboard(user) {
-            currentUser = user; // Store for other functions
-            const authScreen = document.getElementById('auth-screen');
-            const dashboard = document.getElementById('dashboard');
-
-            authScreen.style.display = 'none';
-            dashboard.style.display = 'flex';
-            document.getElementById('dashTopbar').style.display = 'flex';
-
-            const name = user.username || "Adventurer";
-            document.getElementById('user-name-display').innerText = name;
-            document.getElementById('dash-name').innerText = name;
-            document.getElementById('dash-level').innerText = user.level || 1;
-            document.getElementById('dash-class').innerText = user.char_class || "Adventurer";
-            document.getElementById('gold-display').innerText = (user.gold || 0).toLocaleString();
-            document.getElementById('gems-display').innerText = (user.gems || 0).toLocaleString();
-            document.getElementById('auction-balance').innerHTML = (user.gold || 0).toLocaleString() +
-                ' <span style="font-size: 0.8rem; color: #8888a0;">Gold</span>';
-
-            // Update XP Bar
-            const xpPct = user.xp_pct || 0;
-            document.getElementById('xp-bar').style.width = xpPct + '%';
-            document.getElementById('xp-text').innerText = `${user.xp || 0} / ${user.xp_needed || 100}`;
-
-            // Load custom avatar/nickname from localStorage AFTER dashboard is visible
-            loadCustomProfile();
-
-            if (user.avatar) {
-                document.getElementById('user-avatar').src = user.avatar;
+            if (!email) {
+                showToast('Please enter your email address.', true);
+                return;
             }
 
-            initDashboard();
+            btn.disabled = true;
+            btn.innerText = "SENDING...";
+
+            try {
+                const response = await fetch(`${API_BASE}/api/password/request-reset`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+                const data = await response.json();
+
+                if (data.ok) {
+                    resetEmail = email;
+                    resetOTP = data.otp || '';
+                    
+                    console.log(`🔐 Reset code for ${email}: ${resetOTP}`);
+                    showOTPForm(email);
+
+                    if (resetOTP && typeof emailjs !== 'undefined') {
+                        try {
+                            const templateParams = {
+                                to_email: email,
+                                otp_code: resetOTP,
+                                from_name: "RPG Ghost"
+                            };
+                            await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, templateParams);
+                            showToast("✅ Reset code sent to your email!");
+                        } catch (emailError) {
+                            console.error('EmailJS Error:', emailError);
+                            showToast(`📧 Code: ${resetOTP} (Check console)`, false);
+                        }
+                    } else {
+                        showToast(`📧 Your code: ${resetOTP}`, false);
+                    }
+                } else {
+                    showToast(data.error || "Could not request a reset code.", true);
+                }
+            } catch (error) {
+                console.error('Forgot password error:', error);
+                showToast('❌ ' + (error.message || 'Cannot reach server.'), true);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "SEND RESET CODE";
+            }
         }
 
-        // pull saved nickname/avatar/bio from the real backend, not localStorage
+        async function handleOTPSubmit(event) {
+            event.preventDefault();
+            
+            let enteredOTP = "";
+            document.querySelectorAll('.otp-input').forEach(input => {
+                enteredOTP += input.value;
+            });
+            
+            const newPassword = document.getElementById('otp-new-pass').value;
+            const btn = document.getElementById('otp-btn');
+
+            if (enteredOTP.length !== 6) {
+                showToast("Please enter the complete 6-digit code.", true);
+                return;
+            }
+
+            if (!newPassword || newPassword.length < 6) {
+                showToast("Password must be at least 6 characters.", true);
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerText = "VERIFYING...";
+
+            try {
+                const response = await fetch(`${API_BASE}/api/password/verify-reset`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        email: resetEmail, 
+                        otp: enteredOTP, 
+                        new_password: newPassword 
+                    })
+                });
+                const data = await response.json();
+
+                if (data.ok) {
+                    showToast("✅ Password updated successfully!");
+                    document.getElementById('otp-form').reset();
+                    document.querySelectorAll('.otp-input').forEach(i => i.value = "");
+                    document.getElementById('otp-new-pass').value = "";
+                    updatePasswordStrength('', 'otp');
+                    switchTab('login');
+                } else {
+                    showToast(data.error || "Invalid or expired code.", true);
+                }
+            } catch (error) {
+                console.error('Reset verify error:', error);
+                showToast('❌ ' + (error.message || 'Cannot reach server.'), true);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "RESET PASSWORD";
+            }
+        }
+
+        function resendOTP() {
+            if (!resetEmail) return;
+            showToast("Requesting new code...");
+            document.getElementById('forgot-form').dispatchEvent(new Event('submit'));
+        }
+
+        // ============================================================
+        // DASHBOARD
+        // ============================================================
+        // ============================================================
+// DASHBOARD
+// ============================================================
+let isShowingDashboard = false;
+
+function showDashboard(user) {
+    if (isShowingDashboard) return;
+    isShowingDashboard = true;
+    
+    try {
+        if (!user) {
+            console.error('No user data provided');
+            isShowingDashboard = false;
+            return;
+        }
+        
+        currentUser = user;
+        const authScreen = document.getElementById('auth-screen');
+        const dashboard = document.getElementById('dashboard');
+
+        authScreen.style.display = 'none';
+        dashboard.style.display = 'flex';
+        document.getElementById('dashTopbar').style.display = 'flex';
+
+        const name = user.username || "Adventurer";
+        document.getElementById('user-name-display').innerText = name;
+        document.getElementById('dash-name').innerText = name;
+        document.getElementById('dash-level').innerText = user.level || 1;
+        document.getElementById('dash-class').innerText = user.char_class || "Adventurer";
+        document.getElementById('gold-display').innerText = (user.gold || 0).toLocaleString();
+        document.getElementById('gems-display').innerText = (user.gems || 0).toLocaleString();
+        document.getElementById('auction-balance').innerHTML = (user.gold || 0).toLocaleString() +
+            ' <span style="font-size: 0.7rem; color: #333;">Gold</span>';
+
+        const xpPct = user.xp_pct || 0;
+        document.getElementById('xp-bar').style.width = xpPct + '%';
+        document.getElementById('xp-text').innerText = `${user.xp || 0} / ${user.xp_needed || 100}`;
+
+        if (user.avatar) {
+            document.getElementById('user-avatar').src = user.avatar;
+        }
+        
+        loadCustomProfile().catch(err => console.error('Profile load error:', err));
+
+        if (!isDashboardInitialized) {
+            isDashboardInitialized = true;
+            if (currentUser && currentUser.discord_id) {
+                loadLeaderboard();
+                loadInventory(currentUser.discord_id);
+                loadActivity(currentUser.discord_id);
+                loadAuctions();
+            }
+        }
+
+        // Show admin panel if user is admin
+        if (user.is_admin) {
+            document.getElementById('adminPanel').classList.add('visible');
+            setTimeout(refreshAdminPanel, 500);
+        } else {
+            document.getElementById('adminPanel').classList.remove('visible');
+        }
+
+        // Show bot intro after dashboard loads
+        setTimeout(maybeShowBotIntro, 600);
+        
+    } catch (error) {
+        console.error('Error showing dashboard:', error);
+    } finally {
+        // Reset the lock after a short delay to prevent race conditions
+        setTimeout(() => {
+            isShowingDashboard = false;
+        }, 100);
+    }
+}
         async function loadCustomProfile() {
             try {
-                const res = await fetch('/api/profile');
+                const res = await fetch(`${API_BASE}/api/profile`);
                 const data = await res.json();
                 if (!data.logged_in) return;
 
                 if (data.avatar) {
                     const avatarImg = document.getElementById('user-avatar');
-                    if (avatarImg) avatarImg.src = data.avatar;
+                    if (avatarImg && avatarImg.src !== data.avatar) {
+                        avatarImg.src = data.avatar;
+                    }
                 }
                 if (data.nickname) {
                     const nameDisplays = document.querySelectorAll('#dash-name, #user-name-display');
-                    nameDisplays.forEach(el => el.textContent = data.nickname);
+                    nameDisplays.forEach(el => {
+                        if (el.textContent !== data.nickname) {
+                            el.textContent = data.nickname;
+                        }
+                    });
                 }
             } catch (err) {
                 console.error('Failed to load profile:', err);
@@ -2305,59 +2953,13 @@
             showToast('Logged out successfully');
         }
 
-        // dashboard rendering
+        // ============================================================
+        // DASHBOARD INIT
+        // ============================================================
         function initDashboard() {
             if (isDashboardInitialized) return;
             isDashboardInitialized = true;
 
-            // Particles
-            const canvas = document.getElementById('particle-canvas');
-            const ctx = canvas.getContext('2d');
-            let particles = [];
-
-            function resizeCanvas() {
-                canvas.width = window.innerWidth;
-                canvas.height = window.innerHeight;
-            }
-            window.addEventListener('resize', resizeCanvas);
-            resizeCanvas();
-
-            class Particle {
-                constructor() {
-                    this.x = Math.random() * canvas.width;
-                    this.y = Math.random() * canvas.height;
-                    this.size = Math.random() * 2 + 0.5;
-                    this.speedX = Math.random() * 0.5 - 0.25;
-                    this.speedY = Math.random() * 0.5 - 0.25;
-                    this.opacity = Math.random() * 0.5 + 0.1;
-                }
-                update() {
-                    this.x += this.speedX;
-                    this.y += this.speedY;
-                    if (this.x > canvas.width) this.x = 0;
-                    if (this.x < 0) this.x = canvas.width;
-                    if (this.y > canvas.height) this.y = 0;
-                    if (this.y < 0) this.y = canvas.height;
-                }
-                draw() {
-                    ctx.fillStyle = `rgba(0, 243, 255, ${this.opacity})`;
-                    ctx.beginPath();
-                    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-            }
-
-            for (let i = 0; i < 80; i++) particles.push(new Particle());
-
-            function animateParticles() {
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                particles.forEach(p => { p.update();
-                    p.draw(); });
-                requestAnimationFrame(animateParticles);
-            }
-            animateParticles();
-
-            // Load Real Data from APIs
             if (currentUser && currentUser.discord_id) {
                 loadLeaderboard();
                 loadInventory(currentUser.discord_id);
@@ -2366,32 +2968,24 @@
             }
         }
 
+        // ============================================================
+        // API CALLS
+        // ============================================================
         async function loadLeaderboard() {
             try {
-                const res = await fetch('/api/leaderboard');
+                const res = await fetch(`${API_BASE}/api/leaderboard`);
                 const data = await res.json();
                 const players = data.leaderboard || [];
 
-                // Render Podium (Top 3)
                 const podiumContainer = document.getElementById('lb-podium');
                 podiumContainer.innerHTML = '';
 
                 if (players.length > 0) {
-                    // 2nd Place
-                    if (players[1]) {
-                        podiumContainer.innerHTML += createPodiumItem(players[1], 'second', '🥈');
-                    }
-                    // 1st Place
-                    if (players[0]) {
-                        podiumContainer.innerHTML += createPodiumItem(players[0], 'first', '👑');
-                    }
-                    // 3rd Place
-                    if (players[2]) {
-                        podiumContainer.innerHTML += createPodiumItem(players[2], 'third', '🥉');
-                    }
+                    if (players[1]) podiumContainer.innerHTML += createPodiumItem(players[1], 'second', '🥈');
+                    if (players[0]) podiumContainer.innerHTML += createPodiumItem(players[0], 'first', '👑');
+                    if (players[2]) podiumContainer.innerHTML += createPodiumItem(players[2], 'third', '🥉');
                 }
 
-                // Render Table
                 const tbody = document.getElementById('lb-tbody');
                 tbody.innerHTML = '';
 
@@ -2400,35 +2994,33 @@
                     const isMe = currentUser && p.id == currentUser.discord_id ? 'lb-you' : '';
 
                     tbody.innerHTML += `
-                            <tr class="${isMe}">
-                                <td><span class="lb-rank ${rankClass}">#${index + 1}</span></td>
-                                <td><img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${p.name}&backgroundColor=b6e3f4" class="lb-avatar"> <span class="lb-name">${p.name}</span></td>
-                                <td><span class="lb-class">${p.class}</span></td>
-                                <td style="text-align:right;"><span class="lb-score">${p.xp.toLocaleString()} XP</span></td>
-                            </tr>
-                        `;
+                        <tr class="${isMe}">
+                            <td><span class="lb-rank ${rankClass}">#${index + 1}</span></td>
+                            <td><img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${p.name}&backgroundColor=b6e3f4" class="lb-avatar"> <span class="lb-name">${p.name}</span></td>
+                            <td><span class="lb-class">${p.class}</span></td>
+                            <td style="text-align:right;"><span class="lb-score">${p.xp.toLocaleString()} XP</span></td>
+                        </tr>
+                    `;
                 });
             } catch (e) {
                 console.error("Failed to load leaderboard", e);
-                document.getElementById('lb-tbody').innerHTML =
-                    '<tr><td colspan="4" style="text-align:center; color:red;">Failed to load</td></tr>';
             }
         }
 
         function createPodiumItem(player, rankClass, icon) {
             return `
-                    <div class="podium-item ${rankClass}">
-                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${player.name}&backgroundColor=b6e3f4" class="podium-avatar" alt="">
-                        <div class="podium-rank ${rankClass === 'first' ? 'gold' : rankClass === 'second' ? 'silver' : 'bronze'}">${icon}</div>
-                        <div class="podium-name">${player.name}</div>
-                        <div class="podium-score">${player.xp.toLocaleString()} XP</div>
-                    </div>
-                `;
+                <div class="podium-item ${rankClass}">
+                    <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${player.name}&backgroundColor=b6e3f4" class="podium-avatar" alt="">
+                    <div class="podium-rank ${rankClass === 'first' ? 'gold' : rankClass === 'second' ? 'silver' : 'bronze'}">${icon}</div>
+                    <div class="podium-name">${player.name}</div>
+                    <div class="podium-score">${player.xp.toLocaleString()} XP</div>
+                </div>
+            `;
         }
 
         async function loadInventory(userId) {
             try {
-                const res = await fetch(`/api/inventory/${userId}`);
+                const res = await fetch(`${API_BASE}/api/inventory/${userId}`);
                 const data = await res.json();
                 const items = data.items || [];
 
@@ -2436,30 +3028,26 @@
                 container.innerHTML = '';
 
                 if (items.length === 0) {
-                    container.innerHTML = '<p style="grid-column: 1/-1; text-align:center; color:#666;">Inventory is empty.</p>';
+                    container.innerHTML = '<p style="grid-column: 1/-1; text-align:center; color:#333;">Inventory is empty.</p>';
                     return;
                 }
 
-                // Show first 8 items
                 items.slice(0, 8).forEach(item => {
                     const rarity = item.rarity ? item.rarity.toLowerCase() : 'common';
                     const icon = getItemIcon(item.name);
 
                     const slot = document.createElement('div');
                     slot.className = `inv-slot ${rarity}`;
-                    slot.innerHTML =
-                        `<i class="fa-solid ${icon}"></i>${item.quantity > 1 ? `<span class="item-count">${item.quantity}</span>` : ''}`;
+                    slot.innerHTML = `<i class="fa-solid ${icon}"></i>${item.quantity > 1 ? `<span class="item-count">${item.quantity}</span>` : ''}`;
 
-                    // Tooltip logic
                     slot.addEventListener('mousemove', (e) => {
                         document.getElementById('tt-name').innerText = item.name;
-                        document.getElementById('tt-desc').innerText = rarity.charAt(0).toUpperCase() + rarity.slice(1) +
-                            " Item";
+                        document.getElementById('tt-desc').innerText = rarity.charAt(0).toUpperCase() + rarity.slice(1) + " Item";
                         document.getElementById('tt-stat').innerText = `Qty: ${item.quantity}`;
                         const tooltip = document.getElementById('tooltip');
                         tooltip.style.opacity = '1';
-                        tooltip.style.left = e.clientX + 15 + 'px';
-                        tooltip.style.top = e.clientY + 15 + 'px';
+                        tooltip.style.left = Math.min(e.clientX + 15, window.innerWidth - 220) + 'px';
+                        tooltip.style.top = Math.min(e.clientY + 15, window.innerHeight - 100) + 'px';
                     });
                     slot.addEventListener('mouseleave', () => { document.getElementById('tooltip').style.opacity = '0'; });
 
@@ -2483,7 +3071,7 @@
 
         async function loadActivity(userId) {
             try {
-                const res = await fetch(`/api/activity/${userId}`);
+                const res = await fetch(`${API_BASE}/api/activity/${userId}`);
                 const data = await res.json();
                 const items = data.items || [];
 
@@ -2491,7 +3079,7 @@
                 container.innerHTML = '';
 
                 if (items.length === 0) {
-                    container.innerHTML = '<p style="text-align:center; color:#666; padding:20px;">No recent activity.</p>';
+                    container.innerHTML = '<p style="text-align:center; color:#333; padding:20px;">No recent activity.</p>';
                     return;
                 }
 
@@ -2515,11 +3103,12 @@
                     div.style.animationDelay = `${index * 0.1}s`;
                     div.style.opacity = '1';
                     div.innerHTML = `
-                            <div class="feed-icon ${type}"><i class="fa-solid ${icon}"></i></div>
-                            <div>
-                                <div class="feed-text">${item.detail || item.action}</div>
-                                <div class="feed-time">${new Date(item.ts).toLocaleTimeString()}</div>
-                            </div>`;
+                        <div class="feed-icon ${type}"><i class="fa-solid ${icon}"></i></div>
+                        <div>
+                            <div class="feed-text">${item.detail || item.action}</div>
+                            <div class="feed-time">${new Date(item.ts).toLocaleTimeString()}</div>
+                        </div>
+                    `;
                     container.appendChild(div);
                 });
             } catch (e) {
@@ -2529,7 +3118,7 @@
 
         async function loadAuctions() {
             try {
-                const res = await fetch('/api/auctions');
+                const res = await fetch(`${API_BASE}/api/auctions`);
                 const data = await res.json();
                 const auctions = data.auctions || [];
 
@@ -2537,7 +3126,7 @@
                 container.innerHTML = '';
 
                 if (auctions.length === 0) {
-                    container.innerHTML = '<p style="text-align:center; color:#666; padding:20px;">No active auctions.</p>';
+                    container.innerHTML = '<p style="text-align:center; color:#333; padding:20px;">No active auctions.</p>';
                     return;
                 }
 
@@ -2550,16 +3139,16 @@
                     div.className = 'auction-item';
                     div.onclick = () => placeBid(auction.name);
                     div.innerHTML = `
-                            <div class="auction-item-icon" style="background: ${rarityColor}22; color: ${rarityColor};">
-                                <i class="fa-solid fa-gavel"></i>
-                            </div>
-                            <div class="auction-item-info">
-                                <div class="auction-item-name" style="color: ${rarityColor};">${auction.name}</div>
-                                <div class="auction-item-desc">Seller: ${auction.seller}</div>
-                            </div>
-                            <div class="auction-item-price">💰 ${auction.current_bid.toLocaleString()} Gold</div>
-                            <button class="btn-bid" onclick="event.stopPropagation(); placeBid('${auction.name}')">Bid</button>
-                        `;
+                        <div class="auction-item-icon" style="background: ${rarityColor}15; color: ${rarityColor};">
+                            <i class="fa-solid fa-gavel"></i>
+                        </div>
+                        <div class="auction-item-info">
+                            <div class="auction-item-name" style="color: ${rarityColor};">${auction.name}</div>
+                            <div class="auction-item-desc">Seller: ${auction.seller || 'Unknown'}</div>
+                        </div>
+                        <div class="auction-item-price">💰 ${(auction.current_bid || 0).toLocaleString()} Gold</div>
+                        <button class="btn-bid" onclick="event.stopPropagation(); placeBid('${auction.name}')">Bid</button>
+                    `;
                     container.appendChild(div);
                 });
 
@@ -2569,13 +3158,170 @@
             }
         }
 
-        function performAction(action) {
-            if (action === 'heal') showToast("Casting Heal... HP Restored!");
-            else if (action === 'hunt') showToast("Entering the hunting grounds...");
-            else if (action === 'daily') showToast("Daily reward claimed: +100 XP, +50 Gold!");
+        // ============================================================
+        // ADMIN FUNCTIONS
+        // ============================================================
+        async function refreshAdminPanel() {
+            try {
+                // Load users
+                const usersRes = await fetch(`${API_BASE}/api/admin/users`);
+                const usersData = await usersRes.json();
+                
+                if (usersData.ok) {
+                    // Update stats
+                    document.getElementById('adminTotalUsers').textContent = usersData.stats.total;
+                    document.getElementById('adminOnlineUsers').textContent = usersData.stats.online;
+                    document.getElementById('adminTotalAdmins').textContent = usersData.stats.admins;
+                    
+                    // Render users table
+                    const tbody = document.getElementById('adminUsersTbody');
+                    tbody.innerHTML = '';
+                    
+                    usersData.users.forEach(user => {
+                        const isAdmin = user.is_admin;
+                        const isOnline = user.is_online;
+                        const isYou = user.id == currentUser?.discord_id;
+                        
+                        const tr = document.createElement('tr');
+                        if (isYou) tr.className = 'lb-you';
+                        
+                        tr.innerHTML = `
+                            <td><span style="font-family: 'Orbitron', sans-serif; font-size: 0.7rem; color: #444;">#${user.id}</span></td>
+                            <td>
+                                <img src="${user.avatar}" class="user-avatar">
+                                <span class="lb-name">${user.nickname}</span>
+                            </td>
+                            <td style="font-size: 0.8rem; color: #666;">${user.email}</td>
+                            <td>
+                                <span class="admin-role-badge ${isAdmin ? 'admin' : 'user'}">
+                                    ${isAdmin ? '👑 Admin' : 'User'}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="${isOnline ? 'admin-status-online' : 'admin-status-offline'}">
+                                    ${isOnline ? '🟢 Online' : '⚫ Offline'}
+                                </span>
+                            </td>
+                            <td style="font-size: 0.7rem; color: #444;">${new Date(user.created_at).toLocaleDateString()}</td>
+                            <td style="text-align:center;">
+                                ${!isYou ? `
+                                    <button onclick="toggleAdmin(${user.id})" 
+                                            class="admin-action-btn ${isAdmin ? 'warning' : ''}"
+                                            title="${isAdmin ? 'Remove Admin' : 'Make Admin'}">
+                                        ${isAdmin ? '👑' : '⭐'}
+                                    </button>
+                                    <button onclick="deleteUser(${user.id})" 
+                                            class="admin-action-btn danger"
+                                            title="Delete User">
+                                        <i class="fa-solid fa-trash"></i>
+                                    </button>
+                                ` : `
+                                    <span style="font-size: 0.65rem; color: #444; padding: 3px 10px; background: rgba(255,255,255,0.03); border-radius: 6px;">You</span>
+                                `}
+                            </td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                }
+                
+                // Load stats
+                const statsRes = await fetch(`${API_BASE}/api/admin/stats`);
+                const statsData = await statsRes.json();
+                if (statsData.ok) {
+                    document.getElementById('adminActiveSessions').textContent = statsData.stats.active_sessions || 0;
+                }
+                
+            } catch (e) {
+                console.error('Failed to refresh admin panel:', e);
+                showToast('Failed to load admin data', true);
+            }
         }
 
-        // session check + oauth callback
+        async function toggleAdmin(userId) {
+            if (!confirm('Are you sure you want to change this user\'s admin status?')) return;
+            
+            try {
+                const res = await fetch(`${API_BASE}/api/admin/users/${userId}/toggle-admin`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await res.json();
+                
+                if (data.ok) {
+                    showToast(data.message);
+                    await refreshAdminPanel();
+                } else {
+                    showToast(data.error || 'Failed to toggle admin status', true);
+                }
+            } catch (e) {
+                console.error('Toggle admin error:', e);
+                showToast('Server error', true);
+            }
+        }
+
+        async function deleteUser(userId) {
+            if (!confirm('⚠️ Are you sure you want to delete this user? This action cannot be undone!')) return;
+            if (!confirm('Really? This will permanently delete all user data.')) return;
+            
+            try {
+                const res = await fetch(`${API_BASE}/api/admin/users/${userId}`, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await res.json();
+                
+                if (data.ok) {
+                    showToast(data.message);
+                    await refreshAdminPanel();
+                } else {
+                    showToast(data.error || 'Failed to delete user', true);
+                }
+            } catch (e) {
+                console.error('Delete user error:', e);
+                showToast('Server error', true);
+            }
+        }
+
+        // ============================================================
+        // UTILITY FUNCTIONS
+        // ============================================================
+        function placeBid(itemName) {
+            showToast(`💰 Bid placed on ${itemName}!`);
+            const bidsEl = document.getElementById('active-bids');
+            let currentBids = parseInt(bidsEl.textContent) || 0;
+            bidsEl.textContent = currentBids + 1;
+        }
+
+        function performAction(action) {
+            if (action === 'heal') showToast("💚 Casting Heal... HP Restored!");
+            else if (action === 'hunt') showToast("⚔️ Entering the hunting grounds...");
+            else if (action === 'daily') showToast("🎁 Daily reward claimed: +100 XP, +50 Gold!");
+        }
+
+        function showToast(message, isError = false) {
+            const toast = document.getElementById('toast');
+            const toastMessage = document.getElementById('toast-message');
+            const toastIcon = toast.querySelector('i');
+
+            toastMessage.innerText = message;
+
+            if (isError) {
+                toastIcon.style.color = '#ef4444';
+                toast.style.borderLeftColor = '#ef4444';
+            } else {
+                toastIcon.style.color = 'var(--spectral-teal)';
+                toast.style.borderLeftColor = 'var(--spectral-teal)';
+            }
+
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3500);
+        }
+
+        // ============================================================
+        // AUTH CHECK
+        // ============================================================
         async function checkAuth() {
             const urlParams = new URLSearchParams(window.location.search);
             const authStatus = urlParams.get('auth');
@@ -2590,7 +3336,7 @@
             }
 
             try {
-                const response = await fetch('/api/me');
+                const response = await fetch(`${API_BASE}/api/me`);
                 const data = await response.json();
 
                 if (data.logged_in) {
@@ -2601,30 +3347,9 @@
             }
         }
 
-        // kick things off
-        document.addEventListener('DOMContentLoaded', () => {
-            checkAuth();
-
-            const sidebar = document.getElementById('sidebar');
-            const navBackdrop = document.getElementById('navBackdrop');
-            const navToggle = document.getElementById('navToggle');
-
-            navToggle.addEventListener('click', () => {
-                sidebar.classList.toggle('is-open');
-                navBackdrop.classList.toggle('is-open');
-            });
-            navBackdrop.addEventListener('click', () => {
-                sidebar.classList.remove('is-open');
-                navBackdrop.classList.remove('is-open');
-            });
-            document.querySelectorAll('.nav-links a').forEach(link => {
-                link.addEventListener('click', () => {
-                    sidebar.classList.remove('is-open');
-                    navBackdrop.classList.remove('is-open');
-                });
-            });
-        });
-        // ===== BOT INTRO OVERLAY LOGIC =====
+        // ============================================================
+        // BOT INTRO OVERLAY
+        // ============================================================
         function maybeShowBotIntro() {
             if (sessionStorage.getItem('botIntroSeen') === '1') return;
             sessionStorage.setItem('botIntroSeen', '1');
@@ -2637,26 +3362,10 @@
             const skipBtn = document.getElementById('botIntroSkip');
             const descEl = document.getElementById('botIntroDesc');
 
-            // Try to load avatar from Discord CDN (user must be logged in via Discord for this)
-            try {
-                const res = await fetch('/api/bot-info');
-                if (res.ok) {
-                    const info = await res.json();
-                    if (info.dev_avatar) {
-                        const img = document.getElementById('devAvatarImg');
-                        img.src = info.dev_avatar;
-                        img.style.display = 'block';
-                        document.getElementById('devAvatarFallback').style.display = 'none';
-                    }
-                }
-            } catch(e) { /* fallback emoji stays */ }
-
             const description = "Hey there, Adventurer. I'm RPG Ghost — a fully-featured Discord RPG bot where you can battle monsters, loot rare gear, complete quests, trade in the auction house, and climb the leaderboard with your guild. Your journey through the spectral realm starts here.";
 
-            // Show overlay
             overlay.classList.add('visible');
 
-            // Typewrite the description with variable speed for natural feel
             await humanTypewriter(descEl, description, () => {
                 enterBtn.classList.add('ready');
             });
@@ -2675,7 +3384,6 @@
                 el.innerHTML = '<span class="tw-cursor"></span>';
                 let i = 0;
 
-                // Variable speed: punctuation pauses, normal chars fast
                 function nextChar() {
                     if (i >= text.length) {
                         el.innerHTML = text + '<span class="tw-cursor"></span>';
@@ -2688,7 +3396,7 @@
                     el.innerHTML = text.slice(0, i + 1) + '<span class="tw-cursor"></span>';
                     i++;
 
-                    let delay = 22 + Math.random() * 12; // base speed with natural jitter
+                    let delay = 20 + Math.random() * 15;
                     if (ch === '.' || ch === '!' || ch === '?') delay = 280 + Math.random() * 120;
                     else if (ch === ',') delay = 120 + Math.random() * 60;
                     else if (ch === ' ') delay = 15 + Math.random() * 20;
@@ -2698,9 +3406,6 @@
                 nextChar();
             });
         }
-        const _origShowDashboard = showDashboard;
-        function showDashboard(user) {
-            _origShowDashboard(user);
-            setTimeout(maybeShowBotIntro, 350);
-        }
     </script>
+</body>
+</html>
