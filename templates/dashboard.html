@@ -25,7 +25,7 @@
     <div class="bg-grid"></div>
 
     <!-- ===== TOPBAR ===== -->
-    <div class="topbar" id="dashTopbar" style="display:none;">
+    <div class="topbar" id="dashTopbar">
         <button class="menu-toggle" id="navToggle" aria-label="Toggle navigation">
             <i class="fa-solid fa-bars"></i>
         </button>
@@ -166,6 +166,7 @@
             </div>
             <ul class="nav-links" id="navLinksList">
                 <div class="nav-active-pill" id="navActivePill"></div>
+                <br>
     <li><a href="/dashboard" class="active" data-page="overview" title="Overview" aria-current="page"><i class="fa-solid fa-chart-pie"></i> <span>Overview</span></a></li>
     <li><a href="/battle-log" data-page="battle-log" title="Battle Log"><i class="fa-solid fa-khanda"></i> <span>Battle Log</span></a></li>
     <li><a href="/inventory" data-page="inventory" title="Inventory"><i class="fa-solid fa-sack-dollar"></i> <span>Inventory</span></a></li>
@@ -173,10 +174,7 @@
     <li><a href="/guild-hall" data-page="guild-hall" title="Guild Hall"><i class="fa-solid fa-users"></i> <span>Guild Hall</span></a></li>
     <li><a href="/settings" data-page="settings" title="Settings"><i class="fa-solid fa-gear"></i> <span>Settings</span></a></li>
 </ul>
-            <div class="sidebar-footer">
-                <i class="fa-solid fa-tower-broadcast"></i>
-                <span>Connected to the<br>Spectral Realm</span>
-            </div>
+            
         </aside>
 
         <main class="main-content">
@@ -222,18 +220,21 @@
                         <div class="char-class">Level <span id="dash-level">1</span> <span id="dash-class">Spectral Rogue</span></div>
 
                         <div class="stat-bar-row">
-                            <div class="stat-bar-label"><span>HP</span><span id="hp-text">100 / 100</span></div>
+                            <div class="stat-bar-label">HP</div>
                             <div class="stat-bar-track"><div class="stat-bar-fill hp" id="hp-bar" style="width: 100%"></div></div>
+                            <span class="stat-bar-value" id="hp-text">100 / 100</span>
                         </div>
 
                         <div class="stat-bar-row">
-                            <div class="stat-bar-label"><span>MP</span><span id="mp-text">50 / 50</span></div>
+                            <div class="stat-bar-label">MP</div>
                             <div class="stat-bar-track"><div class="stat-bar-fill mp" id="mp-bar" style="width: 100%"></div></div>
+                            <span class="stat-bar-value" id="mp-text">50 / 50</span>
                         </div>
 
                         <div class="stat-bar-row">
-                            <div class="stat-bar-label"><span>XP</span><span id="xp-text">0 / 100</span></div>
+                            <div class="stat-bar-label">XP</div>
                             <div class="stat-bar-track"><div class="stat-bar-fill xp" id="xp-bar" style="width: 0%"></div></div>
+                            <span class="stat-bar-value" id="xp-text">0 / 100</span>
                         </div>
 
                         <div class="quick-actions">
@@ -244,16 +245,7 @@
                     </div>
                 </div>
 
-                <!-- Activity Feed -->
-                <div class="panel activity-feed">
-                    <div class="panel-header">
-                        <span><i class="fa-solid fa-tower-broadcast" style="color: var(--spectral-teal);"></i> Ghost Wire</span>
-                        <span class="live-indicator"><span class="live-dot"></span> Live</span>
-                    </div>
-                    <div id="feed-container">
-                        <p style="text-align:center; color:#333; padding:20px;">Loading activity...</p>
-                    </div>
-                </div>
+                
 
                 <!-- Inventory -->
                 <div class="panel inventory-grid">
