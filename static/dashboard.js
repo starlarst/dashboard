@@ -19,7 +19,9 @@ let isShowingDashboard    = false;
 let resetEmail            = "";
 let resetOTP              = "";
 
-// ── PAGE CONFIG (which panels are visible per page) ──────────────────
+// ── PAGE CONFIG (overview is the only page rendered client-side; ────
+//    Battle Log / Inventory / Quest Board / Guild Hall / Settings are
+//    real Flask routes now — see dashboard_app.py)
 const pageConfig = {
     'overview': {
         panels: ['character-card', 'activity-feed', 'inventory-grid', 'stats-row', 'leaderboard-panel', 'auction-panel'],
@@ -29,12 +31,7 @@ const pageConfig = {
             'leaderboard-panel':'<i class="fa-solid fa-trophy" style="color:var(--gold)"></i> Leaderboard',
             'auction-panel':   '<i class="fa-solid fa-gavel" style="color:var(--gold)"></i> Auction House'
         }
-    },
-    'inventory':   { panels: ['character-card', 'inventory-grid'],   titles: {} },
-    'battle-log':  { panels: ['character-card', 'activity-feed'],    titles: { 'activity-feed': '<i class="fa-solid fa-khanda" style="color:#ef4444"></i> Battle Log' } },
-    'quest-board': { panels: ['character-card', 'auction-panel'],    titles: { 'auction-panel': '<i class="fa-solid fa-scroll" style="color:#f59e0b"></i> Quest Board' } },
-    'guild-hall':  { panels: ['character-card', 'leaderboard-panel'],titles: { 'leaderboard-panel': '<i class="fa-solid fa-users" style="color:var(--soul-purple)"></i> Guild Hall' } },
-    'settings':    { panels: ['character-card'],                     titles: {} }
+    }
 };
 
 // ════════════════════════════════════════════════════════════════════
@@ -108,9 +105,16 @@ function setupSidebar() {
     // Nav link clicks
     document.querySelectorAll('.nav-links a').forEach(link => {
         link.addEventListener('click', (e) => {
-            e.preventDefault();
             const page = link.dataset.page || 'overview';
-            navigateTo(page);
+
+            // Overview stays an in-page SPA swap (no reload needed, we're already here).
+            // Every other page is a real Flask route (/battle-log, /inventory, etc.)
+            // with its own template, so let the browser navigate there normally.
+            if (page === 'overview') {
+                e.preventDefault();
+                navigateTo(page);
+            }
+
             sidebar?.classList.remove('is-open');
             backdrop?.classList.remove('is-open');
         });
@@ -155,7 +159,7 @@ function navigateTo(page) {
     // Admin visibility
     const adminPanel = document.getElementById('adminPanel');
     if (adminPanel) {
-        if (page === 'overview' && currentUser?.is_admin) adminPanel.classList.add('visible');
+        if (currentUser?.is_admin) adminPanel.classList.add('visible');
         else adminPanel.classList.remove('visible');
     }
 
@@ -164,12 +168,6 @@ function navigateTo(page) {
         a.classList.toggle('active', a.dataset.page === page);
     });
     positionNavPill();
-
-    // Lazy-load data per page
-    if (page === 'inventory' && currentUser?.discord_id) loadInventory(currentUser.discord_id);
-    if (page === 'battle-log' && currentUser?.discord_id) loadActivity(currentUser.discord_id);
-    if (page === 'guild-hall') loadLeaderboard();
-    if (page === 'quest-board') loadAuctions();
 }
 
 // ════════════════════════════════════════════════════════════════════
