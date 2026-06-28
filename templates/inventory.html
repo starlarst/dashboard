@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RPG Ghost | Inventory</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --void-black:    #0a0a0f;
+            --dash-bg:       #08090d;
+            --spectral-teal: #00f3ff;
+            --dash-teal:     #2dd9e8;
+            --dash-teal-dim: rgba(45,217,232,0.12);
+            --soul-purple:   #bc13fe;
+            --dash-purple:   #a855f7;
+            --dash-purple-dim:rgba(168,85,247,0.12);
+            --bone-white:    #eef0f5;
+            --dash-text-dim: #8a8d9c;
+            --dash-text-faint:#4d505e;
+            --glass-bg:      rgba(15,16,24,0.78);
+            --glass-border:  rgba(255,255,255,0.07);
+            --gold:          #fbbf24;
+            --emerald:       #34d399;
+            --red:           #f87171;
+            --rarity-common:  #9ca3af;
+            --rarity-rare:    #3b82f6;
+            --rarity-epic:    #a855f7;
+            --rarity-legendary:#f59e0b;
+            --sidebar-w:     248px;
+            --ease:          cubic-bezier(0.22,1,0.36,1);
+            --ease-snap:     cubic-bezier(0.4,0,0.2,1);
+            --radius-sm:     10px;
+            --radius-md:     14px;
+            --radius-lg:     18px;
+            --shadow-card:   0 4px 24px rgba(0,0,0,0.35);
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *,*::before,*::after { animation-duration:0.001ms!important; transition-duration:0.001ms!important; }
+        }
+
+        *{ margin:0; padding:0; box-sizing:border-box; }
+
+        body {
+            font-family:'Inter',sans-serif;
+            background:var(--void-black);
+            color:var(--bone-white);
+            min-height:100vh;
+            display:flex;
+            overflow-x:hidden;
+        }
+
+        body::before {
+            content:'';
+            position:fixed; inset:0;
+            background:
+                radial-gradient(ellipse at 15% 40%, rgba(0,243,255,0.04) 0%, transparent 55%),
+                radial-gradient(ellipse at 85% 60%, rgba(188,19,254,0.03) 0%, transparent 55%);
+            pointer-events:none; z-index:0;
+        }
+
+        /* ── SIDEBAR ── */
+        .sidebar {
+            width: var(--sidebar-w);
+            background: rgba(8,9,13,0.95);
+            backdrop-filter: blur(24px);
+            border-right: 1px solid var(--glass-border);
+            padding: 1.75rem 1.25rem;
+            position: fixed; height: 100vh;
+            z-index: 100;
+            display: flex; flex-direction: column;
+        }
+
+        .logo {
+            font-family:'Orbitron',sans-serif; font-size:1.35rem; font-weight:800;
+            color:var(--spectral-teal); margin-bottom:2.5rem;
+            display:flex; align-items:center; gap:10px;
+            letter-spacing:0.5px; text-shadow:0 0 20px rgba(0,243,255,0.4);
+        }
+
+        .logo-icon {
+            width:38px; height:38px;
+            background:rgba(0,243,255,0.08); border:1px solid rgba(0,243,255,0.2);
+            border-radius:10px; display:flex; align-items:center; justify-content:center;
+            font-size:1.1rem; animation:ghostFloat 3.5s ease-in-out infinite; flex-shrink:0;
+        }
+
+        @keyframes ghostFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-5px)} }
+
+        .nav-section-label {
+            font-size:0.68rem; font-weight:600; letter-spacing:1.5px; text-transform:uppercase;
+            color:var(--dash-text-faint); padding:0 12px; margin:1.25rem 0 0.5rem;
+        }
+
+        .nav-links { list-style:none; display:flex; flex-direction:column; gap:2px; }
+
+        .nav-links li a {
+            display:flex; align-items:center; gap:11px;
+            padding:10px 13px; color:var(--dash-text-dim); text-decoration:none;
+            border-radius:var(--radius-sm); transition:all 180ms var(--ease-snap);
+            font-size:0.88rem; font-weight:500; position:relative; overflow:hidden;
+        }
+
+        .nav-icon {
+            width:28px; height:28px; display:flex; align-items:center; justify-content:center;
+            border-radius:7px; background:transparent; transition:all 180ms var(--ease-snap);
+            font-size:0.9rem; flex-shrink:0;
+        }
+
+        .nav-links li a:hover { color:var(--bone-white); background:rgba(255,255,255,0.04); }
+        .nav-links li a:hover .nav-icon { background:rgba(45,217,232,0.1); color:var(--dash-teal); }
+
+        .nav-links li a.active { color:var(--dash-teal); background:var(--dash-teal-dim); }
+        .nav-links li a.active .nav-icon { background:rgba(45,217,232,0.15); color:var(--dash-teal); }
+        .nav-links li a.active::before {
+            content:''; position:absolute; left:0; top:50%; transform:translateY(-50%);
+            width:3px; height:60%; background:var(--dash-teal);
+            border-radius:0 2px 2px 0; box-shadow:0 0 8px rgba(45,217,232,0.5);
+        }
+
+        .sidebar-footer {
+            margin-top:auto; padding-top:1.25rem; border-top:1px solid var(--glass-border);
+        }
+
+        .sidebar-user {
+            display:flex; align-items:center; gap:10px; padding:10px 12px;
+            border-radius:var(--radius-sm); background:rgba(255,255,255,0.03);
+            cursor:pointer; transition:background 180ms;
+        }
+        .sidebar-user:hover { background:rgba(255,255,255,0.06); }
+
+        .sidebar-avatar {
+            width:32px; height:32px; border-radius:50%;
+            border:1px solid rgba(45,217,232,0.3); object-fit:cover; flex-shrink:0;
+        }
+
+        .sidebar-username {
+            font-size:0.82rem; font-weight:600; color:var(--bone-white);
+            white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+        }
+
+        /* ── MAIN ── */
+        .main-content {
+            flex:1; margin-left:var(--sidebar-w); padding:2rem 2.5rem;
+            position:relative; z-index:1; min-height:100vh;
+        }
+
+        .page-hero { margin-bottom:2rem; padding-bottom:1.75rem; border-bottom:1px solid var(--glass-border); }
+
+        .page-hero-eyebrow {
+            font-size:0.72rem; font-weight:700; letter-spacing:2px; text-transform:uppercase;
+            color:var(--dash-teal); margin-bottom:0.5rem;
+            display:flex; align-items:center; gap:8px;
+        }
+        .page-hero-eyebrow::before {
+            content:''; display:inline-block; width:20px; height:1px;
+            background:var(--dash-teal); opacity:0.6;
+        }
+
+        .page-hero h1 {
+            font-family:'Orbitron',sans-serif; font-size:2rem; font-weight:800; letter-spacing:-0.5px;
+            background:linear-gradient(135deg,#fff 0%,var(--dash-teal) 100%);
+            -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+        }
+
+        .page-hero-sub { font-size:0.9rem; color:var(--dash-text-dim); margin-top:0.4rem; }
+
+        /* Topbar controls */
+        .inv-controls {
+            display:flex; align-items:center; justify-content:space-between;
+            gap:1rem; margin-bottom:1.5rem; flex-wrap:wrap;
+        }
+
+        .filter-pills { display:flex; gap:6px; flex-wrap:wrap; }
+
+        .filter-pill {
+            padding:5px 14px; border-radius:20px; font-size:0.72rem; font-weight:600;
+            letter-spacing:0.5px; cursor:pointer; border:1px solid var(--glass-border);
+            color:var(--dash-text-dim); background:transparent; transition:all 160ms;
+        }
+        .filter-pill:hover,.filter-pill.active {
+            background:var(--dash-teal-dim); border-color:rgba(45,217,232,0.3); color:var(--dash-teal);
+        }
+        .filter-pill.rarity-common.active { background:rgba(156,163,175,0.12); border-color:rgba(156,163,175,0.3); color:var(--rarity-common); }
+        .filter-pill.rarity-rare.active   { background:rgba(59,130,246,0.12);  border-color:rgba(59,130,246,0.3);  color:var(--rarity-rare); }
+        .filter-pill.rarity-epic.active   { background:rgba(168,85,247,0.12);  border-color:rgba(168,85,247,0.3);  color:var(--rarity-epic); }
+        .filter-pill.rarity-legendary.active { background:rgba(245,158,11,0.12); border-color:rgba(245,158,11,0.3); color:var(--rarity-legendary); }
+
+        .currency-strip {
+            display:flex; align-items:center; gap:0.75rem;
+        }
+
+        .currency-badge {
+            background:var(--glass-bg); border:1px solid var(--glass-border);
+            padding:7px 14px; border-radius:20px;
+            display:inline-flex; align-items:center; gap:7px;
+            font-weight:700; font-size:0.9rem; color:var(--gold);
+        }
+
+        /* ── INVENTORY GRID ── */
+        .inv-grid {
+            display:grid;
+            grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+            gap:0.875rem;
+        }
+
+        .inv-slot {
+            aspect-ratio:1;
+            background:rgba(8,9,13,0.8);
+            border:1px solid var(--glass-border);
+            border-radius:var(--radius-md);
+            display:flex; flex-direction:column;
+            align-items:center; justify-content:center;
+            position:relative; cursor:pointer;
+            transition:all 200ms var(--ease);
+            overflow:hidden;
+            animation:slotRise 0.4s var(--ease) both;
+        }
+
+        @keyframes slotRise { from{opacity:0;transform:scale(0.9)} to{opacity:1;transform:scale(1)} }
+
+        .inv-slot::before {
+            content:'';
+            position:absolute; inset:0;
+            background:radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.04) 0%, transparent 60%);
+            pointer-events:none;
+        }
+
+        /* Rarity borders + glow */
+        .inv-slot.common    { border-color: rgba(156,163,175,0.25); }
+        .inv-slot.rare      { border-color: rgba(59,130,246,0.35); box-shadow: 0 0 12px rgba(59,130,246,0.08); }
+        .inv-slot.epic      { border-color: rgba(168,85,247,0.45); box-shadow: 0 0 16px rgba(168,85,247,0.12); }
+        .inv-slot.legendary {
+            border-color: rgba(245,158,11,0.5);
+            box-shadow: 0 0 20px rgba(245,158,11,0.15), 0 0 40px rgba(245,158,11,0.05);
+            animation: slotRise 0.4s var(--ease) both, legendaryPulse 3s ease-in-out infinite 0.5s;
+        }
+
+        @keyframes legendaryPulse {
+            0%,100% { box-shadow:0 0 20px rgba(245,158,11,0.15), 0 0 40px rgba(245,158,11,0.05); }
+            50%     { box-shadow:0 0 30px rgba(245,158,11,0.3),  0 0 60px rgba(245,158,11,0.12); }
+        }
+
+        .inv-slot:hover {
+            transform:translateY(-4px) scale(1.03);
+            z-index: 2;
+        }
+
+        .inv-slot.common:hover   { border-color:var(--rarity-common); box-shadow:0 8px 24px rgba(0,0,0,0.4); }
+        .inv-slot.rare:hover     { border-color:var(--rarity-rare);   box-shadow:0 8px 24px rgba(59,130,246,0.2); }
+        .inv-slot.epic:hover     { border-color:var(--rarity-epic);   box-shadow:0 8px 24px rgba(168,85,247,0.25); }
+        .inv-slot.legendary:hover{ border-color:var(--rarity-legendary); box-shadow:0 8px 32px rgba(245,158,11,0.3); }
+
+        .item-icon {
+            font-size:1.75rem; margin-bottom:0.4rem;
+            transition:transform 200ms var(--ease);
+        }
+
+        .inv-slot:hover .item-icon { transform:scale(1.15); }
+
+        .item-name {
+            font-size:0.65rem; font-weight:600; text-align:center;
+            padding:0 6px; line-height:1.3;
+            color:var(--dash-text-dim);
+            max-width:100%;
+            display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+            overflow:hidden;
+        }
+
+        .item-qty {
+            position:absolute; bottom:5px; right:7px;
+            font-size:0.72rem; font-weight:700;
+            background:rgba(0,0,0,0.7); color:var(--bone-white);
+            padding:1px 6px; border-radius:4px;
+        }
+
+        /* rarity corner accent */
+        .rarity-corner {
+            position:absolute; top:0; right:0;
+            width:0; height:0;
+            border-style:solid; border-width:0 20px 20px 0;
+        }
+        .inv-slot.rare .rarity-corner      { border-color:transparent var(--rarity-rare) transparent transparent; }
+        .inv-slot.epic .rarity-corner      { border-color:transparent var(--rarity-epic) transparent transparent; }
+        .inv-slot.legendary .rarity-corner { border-color:transparent var(--rarity-legendary) transparent transparent; }
+
+        /* ── ITEM TOOLTIP ── */
+        .item-tooltip {
+            position:fixed; z-index:999;
+            background:rgba(8,9,13,0.97);
+            border:1px solid var(--glass-border);
+            border-radius:var(--radius-md);
+            padding:1rem 1.25rem;
+            min-width:200px;
+            pointer-events:none;
+            opacity:0;
+            transition:opacity 120ms;
+            box-shadow:0 16px 48px rgba(0,0,0,0.6);
+        }
+
+        .item-tooltip.visible { opacity:1; }
+
+        .tooltip-name {
+            font-family:'Orbitron',sans-serif; font-size:0.82rem; font-weight:700;
+            margin-bottom:0.4rem;
+        }
+
+        .tooltip-rarity {
+            font-size:0.7rem; font-weight:700; letter-spacing:1px; text-transform:uppercase;
+            margin-bottom:0.5rem;
+        }
+        .tooltip-rarity.common    { color:var(--rarity-common); }
+        .tooltip-rarity.rare      { color:var(--rarity-rare); }
+        .tooltip-rarity.epic      { color:var(--rarity-epic); }
+        .tooltip-rarity.legendary { color:var(--rarity-legendary); }
+
+        .tooltip-desc { font-size:0.78rem; color:var(--dash-text-dim); line-height:1.5; }
+
+        /* ── EMPTY STATE ── */
+        .empty-state {
+            grid-column:1/-1; display:flex; flex-direction:column;
+            align-items:center; justify-content:center;
+            padding:5rem 2rem; text-align:center; gap:1rem;
+        }
+
+        .empty-icon {
+            width:72px; height:72px; border-radius:20px;
+            background:rgba(45,217,232,0.06); border:1px solid rgba(45,217,232,0.12);
+            display:flex; align-items:center; justify-content:center;
+            font-size:1.75rem; color:var(--dash-text-faint);
+        }
+
+        .empty-title {
+            font-family:'Orbitron',sans-serif; font-size:0.9rem; font-weight:700;
+            color:var(--dash-text-dim); letter-spacing:0.5px;
+        }
+
+        .empty-sub { font-size:0.82rem; color:var(--dash-text-faint); max-width:280px; line-height:1.6; }
+
+        /* ── ANIMATIONS ── */
+        .animate-rise { opacity:0; animation:panelRise 0.55s var(--ease) forwards; }
+        @keyframes panelRise { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }
+        .delay-1{animation-delay:0.05s} .delay-2{animation-delay:0.1s} .delay-3{animation-delay:0.15s}
+
+        /* ── RESPONSIVE ── */
+        @media(max-width:900px){
+            .sidebar{transform:translateX(-100%); transition:transform 250ms var(--ease);}
+            .sidebar.open{transform:translateX(0);}
+            .main-content{margin-left:0; padding:1.25rem;}
+        }
+    </style>
+</head>
+<body>
+
+    <aside class="sidebar" id="sidebar">
+        <div class="logo">
+            <div class="logo-icon"><i class="fa-solid fa-ghost"></i></div>
+            <span>RPG Ghost</span>
+        </div>
+
+        <div class="nav-section-label">Navigation</div>
+        <ul class="nav-links">
+            <li><a href="/dashboard"><div class="nav-icon"><i class="fa-solid fa-chart-pie"></i></div>Overview</a></li>
+            <li><a href="/battle-log"><div class="nav-icon"><i class="fa-solid fa-khanda"></i></div>Battle Log</a></li>
+            <li><a href="/inventory" class="active"><div class="nav-icon"><i class="fa-solid fa-sack-dollar"></i></div>Inventory</a></li>
+            <li><a href="/quest-board"><div class="nav-icon"><i class="fa-solid fa-scroll"></i></div>Quest Board</a></li>
+            <li><a href="/guild-hall"><div class="nav-icon"><i class="fa-solid fa-users"></i></div>Guild Hall</a></li>
+        </ul>
+
+        <div class="nav-section-label">Account</div>
+        <ul class="nav-links">
+            <li><a href="/settings"><div class="nav-icon"><i class="fa-solid fa-gear"></i></div>Settings</a></li>
+        </ul>
+
+        <div class="sidebar-footer">
+            <div class="sidebar-user" onclick="window.location='/settings'">
+                <img class="sidebar-avatar" id="sidebar-avatar" src="https://api.dicebear.com/7.x/adventurer/svg?seed=ghost" alt="avatar">
+                <div>
+                    <div class="sidebar-username" id="sidebar-username">Adventurer</div>
+                    <div style="font-size:0.7rem;color:var(--dash-text-faint)">View Profile</div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <div class="page-hero animate-rise">
+            <div class="page-hero-eyebrow"><i class="fa-solid fa-sack-dollar"></i> Equipment & Loot</div>
+            <h1>Inventory</h1>
+            <p class="page-hero-sub">Your collection of weapons, armor, potions, and rare artifacts.</p>
+        </div>
+
+        <div class="inv-controls animate-rise delay-1">
+            <div class="filter-pills">
+                <button class="filter-pill active" onclick="filterInv('all',this)">All Items</button>
+                <button class="filter-pill rarity-common"    onclick="filterInv('common',this)">Common</button>
+                <button class="filter-pill rarity-rare"      onclick="filterInv('rare',this)">Rare</button>
+                <button class="filter-pill rarity-epic"      onclick="filterInv('epic',this)">Epic</button>
+                <button class="filter-pill rarity-legendary" onclick="filterInv('legendary',this)">Legendary</button>
+            </div>
+            <div class="currency-strip">
+                <div class="currency-badge">
+                    <i class="fa-solid fa-coins"></i>
+                    <span id="gold-display">—</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="inv-grid animate-rise delay-2" id="inventory-container">
+            <div class="empty-state">
+                <div class="empty-icon"><i class="fa-solid fa-spinner fa-spin"></i></div>
+                <div class="empty-title">Loading Artifacts...</div>
+                <div class="empty-sub">Reaching into the spectral vault.</div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Tooltip -->
+    <div class="item-tooltip" id="item-tooltip">
+        <div class="tooltip-name" id="tt-name"></div>
+        <div class="tooltip-rarity" id="tt-rarity"></div>
+        <div class="tooltip-desc" id="tt-desc"></div>
+    </div>
+
+<script>
+let allItems = [];
+const tooltip = document.getElementById('item-tooltip');
+
+document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        const meRes = await fetch('/api/me');
+        const me = await meRes.json();
+        if (!me.logged_in) return window.location.href = '/';
+
+        if (me.username) document.getElementById('sidebar-username').textContent = me.username;
+        if (me.avatar)   document.getElementById('sidebar-avatar').src = me.avatar;
+        document.getElementById('gold-display').textContent = (me.gold || 0).toLocaleString();
+
+        const invRes = await fetch(`/api/inventory/${me.discord_id}`);
+        const invData = await invRes.json();
+        allItems = invData.items || [];
+        renderItems(allItems);
+
+    } catch (e) {
+        console.error(e);
+        document.getElementById('inventory-container').innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                <div class="empty-title">Vault Unreachable</div>
+                <div class="empty-sub">Could not access your inventory. Try again later.</div>
+            </div>`;
+    }
+});
+
+function renderItems(items) {
+    const container = document.getElementById('inventory-container');
+    if (!items || items.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon"><i class="fa-solid fa-box-open"></i></div>
+                <div class="empty-title">The Vault is Empty</div>
+                <div class="empty-sub">Venture out and claim your first artifact. Monsters await in the Discord realm.</div>
+            </div>`;
+        return;
+    }
+
+    container.innerHTML = '';
+    items.forEach((item, idx) => {
+        const rarity = (item.rarity || 'common').toLowerCase();
+        const icon = getIcon(item.name || '');
+        const rarityColor = { common:'var(--rarity-common)', rare:'var(--rarity-rare)', epic:'var(--rarity-epic)', legendary:'var(--rarity-legendary)' };
+
+        const el = document.createElement('div');
+        el.className = `inv-slot ${rarity}`;
+        el.style.animationDelay = `${idx * 0.02}s`;
+        el.innerHTML = `
+            <div class="rarity-corner"></div>
+            <i class="fa-solid ${icon} item-icon" style="color:${rarityColor[rarity]||rarityColor.common}"></i>
+            <div class="item-name">${item.name || 'Unknown'}</div>
+            ${item.quantity > 1 ? `<span class="item-qty">×${item.quantity}</span>` : ''}
+        `;
+
+        el.addEventListener('mousemove', (e) => showTooltip(e, item, rarity));
+        el.addEventListener('mouseleave', hideTooltip);
+        container.appendChild(el);
+    });
+}
+
+function filterInv(rarity, btn) {
+    document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    if (rarity === 'all') return renderItems(allItems);
+    renderItems(allItems.filter(i => (i.rarity || 'common').toLowerCase() === rarity));
+}
+
+function showTooltip(e, item, rarity) {
+    document.getElementById('tt-name').textContent = item.name || 'Unknown';
+    const ttRarity = document.getElementById('tt-rarity');
+    ttRarity.textContent = rarity.charAt(0).toUpperCase() + rarity.slice(1);
+    ttRarity.className = `tooltip-rarity ${rarity}`;
+    document.getElementById('tt-desc').textContent = item.description || `A ${rarity} item of unknown power.`;
+
+    tooltip.style.left = (e.clientX + 16) + 'px';
+    tooltip.style.top  = Math.max(8, e.clientY - 60) + 'px';
+    tooltip.classList.add('visible');
+}
+
+function hideTooltip() { tooltip.classList.remove('visible'); }
+
+function getIcon(name) {
+    const n = name.toLowerCase();
+    if (n.includes('sword') || n.includes('blade') || n.includes('dagger')) return 'fa-khanda';
+    if (n.includes('shield') || n.includes('armor') || n.includes('plate')) return 'fa-shield-halved';
+    if (n.includes('potion') || n.includes('elixir') || n.includes('brew')) return 'fa-flask';
+    if (n.includes('gem') || n.includes('crystal') || n.includes('stone')) return 'fa-gem';
+    if (n.includes('bow') || n.includes('arrow')) return 'fa-bow-arrow';
+    if (n.includes('staff') || n.includes('wand') || n.includes('rod')) return 'fa-wand-magic-sparkles';
+    if (n.includes('helmet') || n.includes('helm')) return 'fa-helmet-safety';
+    if (n.includes('ring') || n.includes('amulet') || n.includes('necklace')) return 'fa-ring';
+    if (n.includes('scroll') || n.includes('tome') || n.includes('book')) return 'fa-scroll';
+    if (n.includes('gold') || n.includes('coin')) return 'fa-coins';
+    if (n.includes('key')) return 'fa-key';
+    return 'fa-box';
+}
+</script>
+</body>
+</html>

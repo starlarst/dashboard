@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RPG Ghost | Battle Log</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* ═══════════════════════════════════════════════
+           UNIFIED RPG GHOST DESIGN SYSTEM v2
+           Shared across all post-login pages
+        ═══════════════════════════════════════════════ */
+        :root {
+            --void-black:    #0a0a0f;
+            --dash-bg:       #08090d;
+            --dash-surface:  #0d0e15;
+            --dash-surface-2:#12131c;
+            --spectral-teal: #00f3ff;
+            --dash-teal:     #2dd9e8;
+            --dash-teal-dim: rgba(45,217,232,0.12);
+            --soul-purple:   #bc13fe;
+            --dash-purple:   #a855f7;
+            --dash-purple-dim:rgba(168,85,247,0.12);
+            --bone-white:    #eef0f5;
+            --dash-text-dim: #8a8d9c;
+            --dash-text-faint:#4d505e;
+            --glass-bg:      rgba(15,16,24,0.78);
+            --glass-border:  rgba(255,255,255,0.07);
+            --glass-border-strong:rgba(255,255,255,0.12);
+            --gold:          #fbbf24;
+            --emerald:       #34d399;
+            --red:           #f87171;
+            --rarity-common:  #9ca3af;
+            --rarity-rare:    #3b82f6;
+            --rarity-epic:    #a855f7;
+            --rarity-legendary:#f59e0b;
+            --sidebar-w:     248px;
+            --ease:          cubic-bezier(0.22,1,0.36,1);
+            --ease-snap:     cubic-bezier(0.4,0,0.2,1);
+            --radius-sm:     10px;
+            --radius-md:     14px;
+            --radius-lg:     18px;
+            --shadow-card:   0 4px 24px rgba(0,0,0,0.35), 0 1px 0 rgba(255,255,255,0.02) inset;
+            --shadow-lift:   0 16px 48px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.03) inset;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *,*::before,*::after { animation-duration:0.001ms!important; transition-duration:0.001ms!important; }
+        }
+
+        *{ margin:0; padding:0; box-sizing:border-box; }
+
+        body {
+            font-family:'Inter',sans-serif;
+            background:var(--void-black);
+            color:var(--bone-white);
+            min-height:100vh;
+            display:flex;
+            overflow-x:hidden;
+        }
+
+        /* ── Ambient Background ── */
+        body::before {
+            content:'';
+            position:fixed; inset:0;
+            background:
+                radial-gradient(ellipse at 15% 40%, rgba(0,243,255,0.04) 0%, transparent 55%),
+                radial-gradient(ellipse at 85% 60%, rgba(188,19,254,0.03) 0%, transparent 55%);
+            pointer-events:none; z-index:0;
+        }
+
+        /* ══════════════════════════════
+           SIDEBAR
+        ══════════════════════════════ */
+        .sidebar {
+            width: var(--sidebar-w);
+            background: rgba(8,9,13,0.95);
+            backdrop-filter: blur(24px);
+            border-right: 1px solid var(--glass-border);
+            padding: 1.75rem 1.25rem;
+            position: fixed;
+            height: 100vh;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+        }
+
+        .logo {
+            font-family:'Orbitron',sans-serif;
+            font-size: 1.35rem;
+            font-weight: 800;
+            color: var(--spectral-teal);
+            margin-bottom: 2.5rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            letter-spacing: 0.5px;
+            text-shadow: 0 0 20px rgba(0,243,255,0.4);
+        }
+
+        .logo-icon {
+            width: 38px; height: 38px;
+            background: rgba(0,243,255,0.08);
+            border: 1px solid rgba(0,243,255,0.2);
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.1rem;
+            animation: ghostFloat 3.5s ease-in-out infinite;
+            flex-shrink: 0;
+        }
+
+        @keyframes ghostFloat {
+            0%,100%{ transform:translateY(0); }
+            50%{ transform:translateY(-5px); }
+        }
+
+        .nav-section-label {
+            font-size: 0.68rem;
+            font-weight: 600;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            color: var(--dash-text-faint);
+            padding: 0 12px;
+            margin: 1.25rem 0 0.5rem;
+        }
+
+        .nav-links { list-style:none; display:flex; flex-direction:column; gap:2px; }
+
+        .nav-links li a {
+            display: flex;
+            align-items: center;
+            gap: 11px;
+            padding: 10px 13px;
+            color: var(--dash-text-dim);
+            text-decoration: none;
+            border-radius: var(--radius-sm);
+            transition: all 180ms var(--ease-snap);
+            font-size: 0.88rem;
+            font-weight: 500;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .nav-links li a .nav-icon {
+            width: 28px; height: 28px;
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 7px;
+            background: transparent;
+            transition: all 180ms var(--ease-snap);
+            font-size: 0.9rem;
+            flex-shrink: 0;
+        }
+
+        .nav-links li a:hover {
+            color: var(--bone-white);
+            background: rgba(255,255,255,0.04);
+        }
+
+        .nav-links li a:hover .nav-icon {
+            background: rgba(45,217,232,0.1);
+            color: var(--dash-teal);
+        }
+
+        .nav-links li a.active {
+            color: var(--dash-teal);
+            background: var(--dash-teal-dim);
+        }
+
+        .nav-links li a.active .nav-icon {
+            background: rgba(45,217,232,0.15);
+            color: var(--dash-teal);
+        }
+
+        .nav-links li a.active::before {
+            content:'';
+            position: absolute;
+            left: 0; top: 50%;
+            transform: translateY(-50%);
+            width: 3px; height: 60%;
+            background: var(--dash-teal);
+            border-radius: 0 2px 2px 0;
+            box-shadow: 0 0 8px rgba(45,217,232,0.5);
+        }
+
+        .sidebar-footer {
+            margin-top: auto;
+            padding-top: 1.25rem;
+            border-top: 1px solid var(--glass-border);
+        }
+
+        .sidebar-user {
+            display: flex; align-items: center; gap: 10px;
+            padding: 10px 12px;
+            border-radius: var(--radius-sm);
+            background: rgba(255,255,255,0.03);
+            cursor: pointer;
+            transition: background 180ms;
+        }
+        .sidebar-user:hover { background: rgba(255,255,255,0.06); }
+
+        .sidebar-avatar {
+            width: 32px; height: 32px;
+            border-radius: 50%;
+            border: 1px solid rgba(45,217,232,0.3);
+            object-fit: cover;
+            flex-shrink: 0;
+        }
+
+        .sidebar-username {
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--bone-white);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* ══════════════════════════════
+           MAIN CONTENT
+        ══════════════════════════════ */
+        .main-content {
+            flex: 1;
+            margin-left: var(--sidebar-w);
+            padding: 2rem 2.5rem;
+            position: relative;
+            z-index: 1;
+            min-height: 100vh;
+        }
+
+        /* Page header */
+        .page-hero {
+            margin-bottom: 2.5rem;
+            padding-bottom: 2rem;
+            border-bottom: 1px solid var(--glass-border);
+        }
+
+        .page-hero-eyebrow {
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--dash-teal);
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .page-hero-eyebrow::before {
+            content:'';
+            display: inline-block;
+            width: 20px; height: 1px;
+            background: var(--dash-teal);
+            opacity: 0.6;
+        }
+
+        .page-hero h1 {
+            font-family:'Orbitron',sans-serif;
+            font-size: 2rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #fff 0%, var(--dash-teal) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            line-height: 1.1;
+        }
+
+        .page-hero-sub {
+            font-size: 0.9rem;
+            color: var(--dash-text-dim);
+            margin-top: 0.4rem;
+        }
+
+        /* ── Section labels ── */
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 1.25rem;
+        }
+
+        .section-header h2 {
+            font-family:'Orbitron',sans-serif;
+            font-size: 0.85rem;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            color: var(--dash-text-dim);
+        }
+
+        .section-header .section-line {
+            flex: 1;
+            height: 1px;
+            background: var(--glass-border);
+        }
+
+        .section-header .section-count {
+            font-size: 0.72rem;
+            color: var(--dash-text-faint);
+            font-weight: 600;
+        }
+
+        /* ══════════════════════════════
+           STAT CARDS ROW
+        ══════════════════════════════ */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 1rem;
+            margin-bottom: 2.5rem;
+        }
+
+        @media(max-width:1200px){ .stats-grid{ grid-template-columns:repeat(3,1fr); } }
+        @media(max-width:768px){ .stats-grid{ grid-template-columns:repeat(2,1fr); } }
+
+        .stat-card {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-md);
+            padding: 1.25rem 1.5rem;
+            position: relative;
+            overflow: hidden;
+            transition: transform 200ms var(--ease), border-color 200ms, box-shadow 200ms;
+        }
+
+        .stat-card::after {
+            content:'';
+            position:absolute; inset:0;
+            background: radial-gradient(ellipse at 80% 0%, rgba(45,217,232,0.06) 0%, transparent 60%);
+            pointer-events:none;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-3px);
+            border-color: rgba(45,217,232,0.25);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.35), 0 0 0 1px rgba(45,217,232,0.05) inset;
+        }
+
+        .stat-card-icon {
+            width: 36px; height: 36px;
+            border-radius: 9px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .stat-card-icon.teal { background: rgba(45,217,232,0.12); color: var(--dash-teal); }
+        .stat-card-icon.purple { background: rgba(168,85,247,0.12); color: var(--dash-purple); }
+        .stat-card-icon.gold { background: rgba(251,191,36,0.12); color: var(--gold); }
+        .stat-card-icon.emerald { background: rgba(52,211,153,0.12); color: var(--emerald); }
+        .stat-card-icon.red { background: rgba(248,113,113,0.12); color: var(--red); }
+
+        .stat-value {
+            font-family:'Orbitron',sans-serif;
+            font-size: 1.8rem;
+            font-weight: 800;
+            color: var(--bone-white);
+            line-height: 1;
+            margin-bottom: 0.3rem;
+        }
+
+        .stat-label {
+            font-size: 0.72rem;
+            font-weight: 600;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: var(--dash-text-dim);
+        }
+
+        .stat-delta {
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-top: 0.5rem;
+        }
+
+        .stat-delta.up { color: var(--emerald); }
+        .stat-delta.down { color: var(--red); }
+
+        /* ══════════════════════════════
+           BATTLE LOG TABLE
+        ══════════════════════════════ */
+        .log-panel {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+            box-shadow: var(--shadow-card);
+        }
+
+        .log-panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid var(--glass-border);
+            background: rgba(0,0,0,0.2);
+        }
+
+        .log-panel-title {
+            font-family:'Orbitron',sans-serif;
+            font-size: 0.82rem;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: var(--dash-text-dim);
+        }
+
+        .filter-pills {
+            display: flex;
+            gap: 6px;
+        }
+
+        .filter-pill {
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            border: 1px solid var(--glass-border);
+            color: var(--dash-text-dim);
+            background: transparent;
+            transition: all 160ms;
+        }
+
+        .filter-pill:hover, .filter-pill.active {
+            background: var(--dash-teal-dim);
+            border-color: rgba(45,217,232,0.3);
+            color: var(--dash-teal);
+        }
+
+        .log-body { padding: 0.5rem 0; }
+
+        .log-entry {
+            display: grid;
+            grid-template-columns: 44px 1fr auto;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.875rem 1.5rem;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            transition: background 160ms;
+            animation: entryRise 0.4s var(--ease) both;
+        }
+
+        .log-entry:last-child { border-bottom: none; }
+
+        .log-entry:hover { background: rgba(255,255,255,0.02); }
+
+        @keyframes entryRise {
+            from { opacity:0; transform:translateY(10px); }
+            to   { opacity:1; transform:translateY(0); }
+        }
+
+        .log-icon {
+            width: 40px; height: 40px;
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1rem;
+            flex-shrink: 0;
+        }
+
+        .log-icon.victory  { background: rgba(52,211,153,0.12); color: var(--emerald); }
+        .log-icon.defeat   { background: rgba(248,113,113,0.12); color: var(--red); }
+        .log-icon.boss     { background: rgba(251,191,36,0.12);  color: var(--gold); }
+        .log-icon.pvp      { background: rgba(168,85,247,0.12);  color: var(--dash-purple); }
+        .log-icon.default  { background: rgba(45,217,232,0.1);   color: var(--dash-teal); }
+
+        .log-detail { min-width: 0; }
+
+        .log-action {
+            font-size: 0.88rem;
+            font-weight: 600;
+            color: var(--bone-white);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .log-time {
+            font-size: 0.75rem;
+            color: var(--dash-text-faint);
+            margin-top: 2px;
+        }
+
+        .log-badge {
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            white-space: nowrap;
+        }
+
+        .badge-win    { background: rgba(52,211,153,0.12); color: var(--emerald); border: 1px solid rgba(52,211,153,0.2); }
+        .badge-loss   { background: rgba(248,113,113,0.12); color: var(--red);    border: 1px solid rgba(248,113,113,0.2); }
+        .badge-boss   { background: rgba(251,191,36,0.12);  color: var(--gold);   border: 1px solid rgba(251,191,36,0.2); }
+        .badge-pvp    { background: rgba(168,85,247,0.12);  color: var(--dash-purple); border: 1px solid rgba(168,85,247,0.2); }
+
+        /* ══════════════════════════════
+           EMPTY STATE
+        ══════════════════════════════ */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 4rem 2rem;
+            text-align: center;
+            gap: 1rem;
+        }
+
+        .empty-icon {
+            width: 72px; height: 72px;
+            border-radius: 20px;
+            background: rgba(45,217,232,0.06);
+            border: 1px solid rgba(45,217,232,0.12);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.75rem;
+            color: var(--dash-text-faint);
+            margin-bottom: 0.5rem;
+        }
+
+        .empty-title {
+            font-family:'Orbitron',sans-serif;
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: var(--dash-text-dim);
+            letter-spacing: 0.5px;
+        }
+
+        .empty-sub {
+            font-size: 0.82rem;
+            color: var(--dash-text-faint);
+            max-width: 280px;
+            line-height: 1.6;
+        }
+
+        /* ══════════════════════════════
+           ENTRANCE ANIMATIONS
+        ══════════════════════════════ */
+        .animate-rise {
+            opacity: 0;
+            animation: panelRise 0.55s var(--ease) forwards;
+        }
+
+        @keyframes panelRise {
+            from { opacity:0; transform:translateY(18px); }
+            to   { opacity:1; transform:translateY(0); }
+        }
+
+        .delay-1 { animation-delay: 0.05s; }
+        .delay-2 { animation-delay: 0.10s; }
+        .delay-3 { animation-delay: 0.15s; }
+        .delay-4 { animation-delay: 0.20s; }
+        .delay-5 { animation-delay: 0.25s; }
+
+        /* ══════════════════════════════
+           RESPONSIVE
+        ══════════════════════════════ */
+        @media(max-width:900px){
+            .sidebar { transform: translateX(-100%); transition: transform 250ms var(--ease); }
+            .sidebar.open { transform: translateX(0); }
+            .main-content { margin-left: 0; padding: 1.25rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <aside class="sidebar" id="sidebar">
+        <div class="logo">
+            <div class="logo-icon"><i class="fa-solid fa-ghost"></i></div>
+            <span>RPG Ghost</span>
+        </div>
+
+        <div class="nav-section-label">Navigation</div>
+        <ul class="nav-links">
+            <li><a href="/dashboard">
+                <div class="nav-icon"><i class="fa-solid fa-chart-pie"></i></div>Overview
+            </a></li>
+            <li><a href="/battle-log" class="active">
+                <div class="nav-icon"><i class="fa-solid fa-khanda"></i></div>Battle Log
+            </a></li>
+            <li><a href="/inventory">
+                <div class="nav-icon"><i class="fa-solid fa-sack-dollar"></i></div>Inventory
+            </a></li>
+            <li><a href="/quest-board">
+                <div class="nav-icon"><i class="fa-solid fa-scroll"></i></div>Quest Board
+            </a></li>
+            <li><a href="/guild-hall">
+                <div class="nav-icon"><i class="fa-solid fa-users"></i></div>Guild Hall
+            </a></li>
+        </ul>
+
+        <div class="nav-section-label">Account</div>
+        <ul class="nav-links">
+            <li><a href="/settings">
+                <div class="nav-icon"><i class="fa-solid fa-gear"></i></div>Settings
+            </a></li>
+        </ul>
+
+        <div class="sidebar-footer">
+            <div class="sidebar-user" onclick="window.location='/settings'">
+                <img class="sidebar-avatar" id="sidebar-avatar" src="https://api.dicebear.com/7.x/adventurer/svg?seed=ghost" alt="avatar">
+                <div>
+                    <div class="sidebar-username" id="sidebar-username">Adventurer</div>
+                    <div style="font-size:0.7rem;color:var(--dash-text-faint);">View Profile</div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <!-- Page Hero -->
+        <div class="page-hero animate-rise">
+            <div class="page-hero-eyebrow"><i class="fa-solid fa-khanda"></i> Combat Chronicles</div>
+            <h1>Battle Log</h1>
+            <p class="page-hero-sub">Your complete history of victories, defeats, and legendary encounters.</p>
+        </div>
+
+        <!-- Stats Row -->
+        <div class="stats-grid animate-rise delay-1" id="stats-container">
+            <div class="stat-card">
+                <div class="stat-card-icon teal"><i class="fa-solid fa-spinner fa-spin"></i></div>
+                <div class="stat-value">—</div>
+                <div class="stat-label">Loading</div>
+            </div>
+        </div>
+
+        <!-- Battle History -->
+        <div class="section-header animate-rise delay-2">
+            <h2>Recent Combat</h2>
+            <div class="section-line"></div>
+            <span class="section-count" id="log-count">Loading...</span>
+        </div>
+
+        <div class="log-panel animate-rise delay-3">
+            <div class="log-panel-header">
+                <span class="log-panel-title">Combat History</span>
+                <div class="filter-pills">
+                    <button class="filter-pill active" onclick="filterLog('all',this)">All</button>
+                    <button class="filter-pill" onclick="filterLog('victory',this)">Wins</button>
+                    <button class="filter-pill" onclick="filterLog('defeat',this)">Losses</button>
+                    <button class="filter-pill" onclick="filterLog('boss',this)">Boss</button>
+                    <button class="filter-pill" onclick="filterLog('pvp',this)">PvP</button>
+                </div>
+            </div>
+            <div class="log-body" id="log-container">
+                <div class="empty-state">
+                    <div class="empty-icon"><i class="fa-solid fa-spinner fa-spin"></i></div>
+                    <div class="empty-title">Consulting the War Archives...</div>
+                    <div class="empty-sub">Retrieving your combat history from the spectral realm.</div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+<script>
+let allLogs = [];
+
+document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        const meRes = await fetch('/api/me');
+        const me = await meRes.json();
+        if (!me.logged_in) return window.location.href = '/';
+
+        if (me.username) document.getElementById('sidebar-username').textContent = me.username;
+        if (me.avatar)   document.getElementById('sidebar-avatar').src = me.avatar;
+
+        // Fetch stats
+        const statsRes = await fetch(`/api/battle-stats/${me.discord_id}`);
+        const stats = await statsRes.json();
+
+        const pvpLabel = `${stats.pvp_wins || 0}W / ${stats.pvp_losses || 0}L`;
+        const winRate = stats.battles_won && (stats.battles_won + stats.battles_lost) > 0
+            ? Math.round((stats.battles_won / (stats.battles_won + stats.battles_lost)) * 100) : 0;
+
+        document.getElementById('stats-container').innerHTML = `
+            <div class="stat-card animate-rise delay-1">
+                <div class="stat-card-icon emerald"><i class="fa-solid fa-trophy"></i></div>
+                <div class="stat-value" id="sv-wins">${stats.battles_won || 0}</div>
+                <div class="stat-label">Victories</div>
+                <div class="stat-delta up"><i class="fa-solid fa-arrow-up"></i> Win rate ${winRate}%</div>
+            </div>
+            <div class="stat-card animate-rise delay-2">
+                <div class="stat-card-icon red"><i class="fa-solid fa-skull"></i></div>
+                <div class="stat-value" id="sv-loss">${stats.battles_lost || 0}</div>
+                <div class="stat-label">Defeats</div>
+            </div>
+            <div class="stat-card animate-rise delay-3">
+                <div class="stat-card-icon purple"><i class="fa-solid fa-swords"></i></div>
+                <div class="stat-value" style="font-size:1.2rem;margin-top:0.2rem;">${pvpLabel}</div>
+                <div class="stat-label">PvP Record</div>
+            </div>
+            <div class="stat-card animate-rise delay-4">
+                <div class="stat-card-icon gold"><i class="fa-solid fa-dragon"></i></div>
+                <div class="stat-value" id="sv-boss">${stats.world_boss_kills || 0}</div>
+                <div class="stat-label">Boss Kills</div>
+            </div>
+            <div class="stat-card animate-rise delay-5">
+                <div class="stat-card-icon teal"><i class="fa-solid fa-star"></i></div>
+                <div class="stat-value" style="font-size:1.4rem">${(stats.xp || 0).toLocaleString()}</div>
+                <div class="stat-label">XP Earned</div>
+            </div>
+        `;
+
+        // Counter animations
+        countUp('sv-wins', stats.battles_won || 0);
+        countUp('sv-loss', stats.battles_lost || 0);
+        countUp('sv-boss', stats.world_boss_kills || 0);
+
+        // Fetch activity
+        const actRes = await fetch(`/api/activity/${me.discord_id}`);
+        const actData = await actRes.json();
+
+        allLogs = (actData.items || []).filter(i =>
+            i.action.includes('battle') || i.action.includes('kill') ||
+            i.action.includes('pvp') || i.action.includes('boss') ||
+            i.action.includes('defeat') || i.action.includes('win') ||
+            i.action.includes('victory')
+        );
+
+        renderLog(allLogs);
+
+    } catch (e) {
+        console.error(e);
+        document.getElementById('log-container').innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                <div class="empty-title">Spirits Are Silent</div>
+                <div class="empty-sub">Failed to retrieve battle records. Try again later.</div>
+            </div>`;
+    }
+});
+
+function classifyLog(log) {
+    const a = (log.action || '').toLowerCase();
+    if (a.includes('boss')) return 'boss';
+    if (a.includes('pvp')) return 'pvp';
+    if (a.includes('win') || a.includes('victory') || a.includes('won')) return 'victory';
+    if (a.includes('defeat') || a.includes('loss') || a.includes('lost') || a.includes('kill')) return 'defeat';
+    return 'default';
+}
+
+function renderLog(logs) {
+    const container = document.getElementById('log-container');
+    document.getElementById('log-count').textContent = logs.length + ' entries';
+
+    if (logs.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon"><i class="fa-solid fa-khanda"></i></div>
+                <div class="empty-title">No Battles on Record</div>
+                <div class="empty-sub">Your chronicle is empty. Go face worthy opponents in the Discord realm.</div>
+            </div>`;
+        return;
+    }
+
+    const iconMap = { victory:'fa-trophy', defeat:'fa-skull', boss:'fa-dragon', pvp:'fa-swords', default:'fa-khanda' };
+    const badgeMap = {
+        victory: '<span class="log-badge badge-win">Victory</span>',
+        defeat:  '<span class="log-badge badge-loss">Defeat</span>',
+        boss:    '<span class="log-badge badge-boss">Boss</span>',
+        pvp:     '<span class="log-badge badge-pvp">PvP</span>',
+        default: ''
+    };
+
+    container.innerHTML = '';
+    logs.slice(0, 30).forEach((log, idx) => {
+        const type = classifyLog(log);
+        const icon = iconMap[type] || iconMap.default;
+        const badge = badgeMap[type] || '';
+        const timeStr = log.ts ? new Date(log.ts).toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
+
+        const div = document.createElement('div');
+        div.className = 'log-entry';
+        div.style.animationDelay = `${idx * 0.035}s`;
+        div.innerHTML = `
+            <div class="log-icon ${type}"><i class="fa-solid ${icon}"></i></div>
+            <div class="log-detail">
+                <div class="log-action">${log.detail || log.action || 'Combat event'}</div>
+                <div class="log-time">${timeStr}</div>
+            </div>
+            ${badge}
+        `;
+        container.appendChild(div);
+    });
+}
+
+function filterLog(type, btn) {
+    document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    if (type === 'all') return renderLog(allLogs);
+    renderLog(allLogs.filter(l => classifyLog(l) === type));
+}
+
+function countUp(id, target, duration=900) {
+    const el = document.getElementById(id);
+    if (!el || !target) return;
+    const start = performance.now();
+    (function tick(now){
+        const p = Math.min((now-start)/duration, 1);
+        const eased = 1 - Math.pow(1-p, 3);
+        el.textContent = Math.round(target * eased).toLocaleString();
+        if (p < 1) requestAnimationFrame(tick);
+    })(start);
+}
+</script>
+</body>
+</html>
