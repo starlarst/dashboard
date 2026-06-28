@@ -1,4 +1,3 @@
-
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
         animation-duration: 0.001ms !important;
@@ -584,18 +583,28 @@ body {
     .sidebar.is-collapsed { width: var(--sidebar-w-collapsed); }
     .sidebar.is-collapsed .sidebar-head { justify-content: center; padding: 1.5rem 0.75rem 0; }
     .sidebar.is-collapsed .logo span,
-    .sidebar.is-collapsed .nav-links li a span,
     .sidebar.is-collapsed .nav-section-label,
     .sidebar.is-collapsed .sidebar-user-name,
     .sidebar.is-collapsed .sidebar-user-role,
     .sidebar.is-collapsed .nav-badge { display: none; }
-    .sidebar.is-collapsed .nav-links li a { justify-content: center; padding: 10px; }
+
+    /* Hide any nav-link content that isn't the icon itself — covers markup
+       that wraps the label in a <span> AND markup that doesn't. */
+    .sidebar.is-collapsed .nav-links li a > *:not(.nav-icon) { display: none; }
+
+    .sidebar.is-collapsed .nav-links li a {
+        justify-content: flex-start;
+        padding: 10px 0 10px 7px;
+        overflow: hidden;        /* clip any raw trailing label text safely */
+        white-space: nowrap;
+    }
     .sidebar.is-collapsed .nav-links li a.active::before { display: none; }
     .sidebar.is-collapsed .sidebar-user { justify-content: center; padding: 8px; }
     .sidebar.is-collapsed .sidebar-collapse-btn i { transform: rotate(180deg); }
     .sidebar.is-collapsed .nav-active-pill { display: none; }
 
-    .dashboard-container.is-collapsed .main-content {
+    .dashboard-container.is-collapsed .main-content,
+    body.sidebar-is-collapsed .main-content {
         margin-left: var(--sidebar-w-collapsed);
     }
 }
@@ -618,9 +627,11 @@ body {
     margin-left: var(--sidebar-w);
     padding: 2.5rem 3rem 3rem;
     transition: margin-left 0.3s var(--ease);
-    position: relative; z-index: 1;
-    max-width: 1600px;
-    margin-right: auto;
+    position: relative;
+    z-index: 1;
+    width: calc(100% - var(--sidebar-w));
+    max-width: none;
+    margin-right: 0;
 }
 
 @media (max-width: 1100px) {
@@ -720,9 +731,12 @@ body {
 ══════════════════════════════════════════════════════════════════ */
 .dashboard-grid {
     display: grid;
-    grid-template-columns: 320px 1fr;
+    width: 100%;
+    grid-template-columns:
+        minmax(320px, 360px)
+        minmax(0, 1fr);
     grid-auto-rows: min-content;
-    gap: 1.25rem;
+    gap: 24px;
     align-items: start;
 }
 
@@ -737,6 +751,7 @@ body {
     transition: border-color 0.25s var(--ease-snap), box-shadow 0.25s var(--ease-snap), transform 0.25s var(--ease-snap);
     animation: panelFade 0.5s var(--ease) both;
     position: relative; overflow: hidden;
+    width: 100%;
 }
 
 .panel.hidden { display: none !important; }
@@ -780,7 +795,7 @@ body {
 ══════════════════════════════════════════════════════════════════ */
 .character-card {
     grid-column: 1 / 2;
-    grid-row: 1 / 3;   /* spans both rows on the left */
+    grid-row: 1 / 2;
     background:
         radial-gradient(circle at 50% 0%, rgba(45, 217, 232, 0.06), transparent 65%),
         linear-gradient(160deg, rgba(18, 19, 28, 0.97), rgba(13, 14, 21, 0.95));
@@ -984,6 +999,10 @@ body {
 /* ══════════════════════════════════════════════════════════════════
    INVENTORY PREVIEW
 ══════════════════════════════════════════════════════════════════ */
+.inventory-grid {
+    width: 100%;
+    height: 100%;
+}
 .inventory-grid { grid-column: 2 / 3; grid-row: 1 / 2; }
 
 .inv-container {
@@ -1044,7 +1063,7 @@ body {
 /* ══════════════════════════════════════════════════════════════════
    STATS ROW (quick number widgets)
 ══════════════════════════════════════════════════════════════════ */
-.stats-row { grid-column: 2 / 3; grid-row: 2 / 3; }
+.stats-row { grid-column: 1 / 3; }
 
 .stats-inner {
     display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem;
