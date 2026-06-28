@@ -24,9 +24,8 @@ let resetOTP              = "";
 //    real Flask routes now — see dashboard_app.py)
 const pageConfig = {
     'overview': {
-        panels: ['character-card', 'activity-feed', 'inventory-grid', 'stats-row', 'leaderboard-panel', 'auction-panel'],
+        panels: ['character-card', 'inventory-grid', 'stats-row', 'leaderboard-panel', 'auction-panel'],
         titles: {
-            'activity-feed':   '<i class="fa-solid fa-tower-broadcast" style="color:var(--spectral-teal)"></i> Ghost Wire',
             'inventory-grid':  '<i class="fa-solid fa-backpack" style="color:var(--soul-purple)"></i> Inventory',
             'leaderboard-panel':'<i class="fa-solid fa-trophy" style="color:var(--gold)"></i> Leaderboard',
             'auction-panel':   '<i class="fa-solid fa-gavel" style="color:var(--gold)"></i> Auction House'
@@ -218,7 +217,6 @@ function showDashboard(user) {
             if (user.discord_id) {
                 loadLeaderboard();
                 loadInventory(user.discord_id);
-                loadActivity(user.discord_id);
                 loadAuctions();
             }
         }
@@ -640,40 +638,6 @@ function getItemIcon(name) {
     if (n.includes('scroll') || n.includes('map'))    return 'fa-scroll';
     if (n.includes('coin')   || n.includes('gold'))   return 'fa-coins';
     return 'fa-box';
-}
-
-async function loadActivity(userId) {
-    try {
-        const res   = await fetch(`${API_BASE}/api/activity/${userId}`);
-        const data  = await res.json();
-        const items = data.items || [];
-        const cont  = document.getElementById('feed-container');
-        if (!cont) return;
-
-        cont.innerHTML = '';
-        if (items.length === 0) {
-            cont.innerHTML = '<p style="text-align:center;color:#333;padding:20px;">No recent activity.</p>';
-            return;
-        }
-
-        items.slice(0, 5).forEach((item, idx) => {
-            let icon = 'fa-circle-info', type = 'notification';
-            if (item.action.includes('battle') || item.action.includes('kill')) { icon = 'fa-skull';  type = 'combat'; }
-            else if (item.action.includes('loot') || item.action.includes('get')) { icon = 'fa-gem'; type = 'loot'; }
-            else if (item.action.includes('quest')) { icon = 'fa-scroll'; type = 'quest'; }
-
-            const div = document.createElement('div');
-            div.className = 'feed-item';
-            div.style.animationDelay = `${idx * 0.1}s`;
-            div.innerHTML = `
-                <div class="feed-icon ${type}"><i class="fa-solid ${icon}"></i></div>
-                <div>
-                    <div class="feed-text">${item.detail || item.action}</div>
-                    <div class="feed-time">${new Date(item.ts).toLocaleTimeString()}</div>
-                </div>`;
-            cont.appendChild(div);
-        });
-    } catch (e) { console.error('Activity error:', e); }
 }
 
 async function loadAuctions() {
