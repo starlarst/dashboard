@@ -1,11 +1,4 @@
-/* ═══════════════════════════════════════════════════════════════════
-   RPG GHOST — DASHBOARD DESIGN SYSTEM v2
-   dashboard.css
-   Covers: tokens, auth (untouched), sidebar, main layout,
-           hero, cards, widgets, animations, responsive.
-═══════════════════════════════════════════════════════════════════ */
 
-/* ── 0. REDUCED MOTION ── */
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
         animation-duration: 0.001ms !important;
@@ -14,9 +7,9 @@
     }
 }
 
-/* ── 1. DESIGN TOKENS ── */
+
 :root {
-    /* Brand identity — preserved exactly */
+ 
     --void-black:       #0a0a0f;
     --void-light:       #11111f;
     --spectral-teal:    #00f3ff;
@@ -32,7 +25,7 @@
     --silver:           #94a3b8;
     --bronze:           #d97706;
 
-    /* Dashboard surfaces */
+    
     --dash-bg:          #08090d;
     --dash-surface:     #0d0e15;
     --dash-surface-2:   #12131c;
