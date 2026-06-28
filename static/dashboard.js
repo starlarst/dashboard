@@ -1,4 +1,3 @@
-
 const RECAPTCHA_SITE_KEY = "6LfdHyEtAAAAAJ34WMBrqoIc_Um2YqTE1jX-Lmkz";
 const EMAILJS_PUBLIC_KEY  = "eMQUadu5q-_pONmwc";
 const EMAILJS_SERVICE_ID  = "service_miabeqg";
@@ -86,10 +85,11 @@ function setupSidebar() {
     }
 
     // Desktop collapse
-    if (collapseBtn && sidebar && container) {
+    if (collapseBtn && sidebar) {
         collapseBtn.addEventListener('click', () => {
             sidebar.classList.toggle('is-collapsed');
-            container.classList.toggle('is-collapsed');
+            container?.classList.toggle('is-collapsed');
+            document.body.classList.toggle('sidebar-is-collapsed');
             positionNavPill();
         });
     }
@@ -175,7 +175,6 @@ function showDashboard(user) {
 
         document.getElementById('auth-screen').style.display   = 'none';
         document.getElementById('dashboard').style.display     = 'flex';
-        document.getElementById('dashTopbar').style.display    = 'flex';
 
         const name = user.username || 'Adventurer';
         setEl('user-name-display', name);
@@ -257,7 +256,6 @@ async function logout() {
     try { await fetch('/logout'); } catch (e) { console.error(e); }
 
     document.getElementById('dashboard').style.display  = 'none';
-    document.getElementById('dashTopbar').style.display = 'none';
     document.getElementById('auth-screen').style.display = 'flex';
     document.getElementById('login-form').reset();
     document.getElementById('register-form').reset();
@@ -893,9 +891,6 @@ function showToast(message, isError = false) {
     setTimeout(() => toast.classList.remove('show'), 3500);
 }
 
-// ════════════════════════════════════════════════════════════════════
-// UTILITIES
-// ════════════════════════════════════════════════════════════════════
 function setEl(id, value) {
     const el = document.getElementById(id);
     if (el) el.textContent = value;
