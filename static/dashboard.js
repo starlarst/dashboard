@@ -1,11 +1,4 @@
-/* ═══════════════════════════════════════════════════════════════════
-   RPG GHOST — DASHBOARD JAVASCRIPT
-   dashboard.js
-   All post-login and auth logic. Auth screens untouched.
-   Requires: emailjs SDK, recaptcha SDK (loaded in HTML).
-═══════════════════════════════════════════════════════════════════ */
 
-// ── CONFIG ──────────────────────────────────────────────────────────
 const RECAPTCHA_SITE_KEY = "6LfdHyEtAAAAAJ34WMBrqoIc_Um2YqTE1jX-Lmkz";
 const EMAILJS_PUBLIC_KEY  = "eMQUadu5q-_pONmwc";
 const EMAILJS_SERVICE_ID  = "service_miabeqg";
