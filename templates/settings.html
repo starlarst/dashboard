@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RPG Ghost | Settings</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --void-black:    #0a0a0f;
+            --spectral-teal: #00f3ff;
+            --dash-teal:     #2dd9e8;
+            --dash-teal-dim: rgba(45,217,232,0.12);
+            --soul-purple:   #bc13fe;
+            --dash-purple:   #a855f7;
+            --dash-purple-dim:rgba(168,85,247,0.12);
+            --bone-white:    #eef0f5;
+            --dash-text-dim: #8a8d9c;
+            --dash-text-faint:#4d505e;
+            --glass-bg:      rgba(15,16,24,0.78);
+            --glass-border:  rgba(255,255,255,0.07);
+            --gold:          #fbbf24;
+            --emerald:       #34d399;
+            --red:           #f87171;
+            --sidebar-w:     248px;
+            --ease:          cubic-bezier(0.22,1,0.36,1);
+            --ease-snap:     cubic-bezier(0.4,0,0.2,1);
+            --radius-sm:     10px;
+            --radius-md:     14px;
+            --radius-lg:     18px;
+        }
+
+        @media(prefers-reduced-motion:reduce){ *,*::before,*::after{animation-duration:0.001ms!important;transition-duration:0.001ms!important;} }
+        *{ margin:0; padding:0; box-sizing:border-box; }
+
+        body{
+            font-family:'Inter',sans-serif; background:var(--void-black); color:var(--bone-white);
+            min-height:100vh; display:flex; overflow-x:hidden;
+        }
+        body::before{
+            content:''; position:fixed; inset:0;
+            background:radial-gradient(ellipse at 15% 40%,rgba(0,243,255,0.04) 0%,transparent 55%),
+                        radial-gradient(ellipse at 85% 60%,rgba(188,19,254,0.03) 0%,transparent 55%);
+            pointer-events:none; z-index:0;
+        }
+
+        /* ── SIDEBAR ── */
+        .sidebar{
+            width:var(--sidebar-w); background:rgba(8,9,13,0.95); backdrop-filter:blur(24px);
+            border-right:1px solid var(--glass-border); padding:1.75rem 1.25rem;
+            position:fixed; height:100vh; z-index:100; display:flex; flex-direction:column;
+        }
+        .logo{
+            font-family:'Orbitron',sans-serif; font-size:1.35rem; font-weight:800;
+            color:var(--spectral-teal); margin-bottom:2.5rem; display:flex; align-items:center;
+            gap:10px; letter-spacing:0.5px; text-shadow:0 0 20px rgba(0,243,255,0.4);
+        }
+        .logo-icon{
+            width:38px; height:38px; background:rgba(0,243,255,0.08); border:1px solid rgba(0,243,255,0.2);
+            border-radius:10px; display:flex; align-items:center; justify-content:center;
+            font-size:1.1rem; animation:ghostFloat 3.5s ease-in-out infinite; flex-shrink:0;
+        }
+        @keyframes ghostFloat{ 0%,100%{transform:translateY(0)} 50%{transform:translateY(-5px)} }
+
+        .nav-section-label{
+            font-size:0.68rem; font-weight:600; letter-spacing:1.5px; text-transform:uppercase;
+            color:var(--dash-text-faint); padding:0 12px; margin:1.25rem 0 0.5rem;
+        }
+        .nav-links{ list-style:none; display:flex; flex-direction:column; gap:2px; }
+        .nav-links li a{
+            display:flex; align-items:center; gap:11px; padding:10px 13px;
+            color:var(--dash-text-dim); text-decoration:none; border-radius:var(--radius-sm);
+            transition:all 180ms var(--ease-snap); font-size:0.88rem; font-weight:500;
+            position:relative; overflow:hidden;
+        }
+        .nav-icon{
+            width:28px; height:28px; display:flex; align-items:center; justify-content:center;
+            border-radius:7px; background:transparent; transition:all 180ms var(--ease-snap);
+            font-size:0.9rem; flex-shrink:0;
+        }
+        .nav-links li a:hover{ color:var(--bone-white); background:rgba(255,255,255,0.04); }
+        .nav-links li a:hover .nav-icon{ background:rgba(45,217,232,0.1); color:var(--dash-teal); }
+        .nav-links li a.active{ color:var(--dash-teal); background:var(--dash-teal-dim); }
+        .nav-links li a.active .nav-icon{ background:rgba(45,217,232,0.15); color:var(--dash-teal); }
+        .nav-links li a.active::before{
+            content:''; position:absolute; left:0; top:50%; transform:translateY(-50%);
+            width:3px; height:60%; background:var(--dash-teal);
+            border-radius:0 2px 2px 0; box-shadow:0 0 8px rgba(45,217,232,0.5);
+        }
+        .sidebar-footer{ margin-top:auto; padding-top:1.25rem; border-top:1px solid var(--glass-border); }
+        .sidebar-user{
+            display:flex; align-items:center; gap:10px; padding:10px 12px;
+            border-radius:var(--radius-sm); background:rgba(255,255,255,0.03); cursor:pointer; transition:background 180ms;
+        }
+        .sidebar-user:hover{ background:rgba(255,255,255,0.06); }
+        .sidebar-avatar{ width:32px; height:32px; border-radius:50%; border:1px solid rgba(45,217,232,0.3); object-fit:cover; flex-shrink:0; }
+        .sidebar-username{ font-size:0.82rem; font-weight:600; color:var(--bone-white); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+        /* ── MAIN ── */
+        .main-content{
+            flex:1; margin-left:var(--sidebar-w); padding:2rem 2.5rem;
+            position:relative; z-index:1;
+        }
+
+        .page-hero{ margin-bottom:2rem; padding-bottom:1.75rem; border-bottom:1px solid var(--glass-border); }
+        .page-hero-eyebrow{
+            font-size:0.72rem; font-weight:700; letter-spacing:2px; text-transform:uppercase;
+            color:var(--dash-teal); margin-bottom:0.5rem; display:flex; align-items:center; gap:8px;
+        }
+        .page-hero-eyebrow::before{ content:''; display:inline-block; width:20px; height:1px; background:var(--dash-teal); opacity:0.6; }
+        .page-hero h1{
+            font-family:'Orbitron',sans-serif; font-size:2rem; font-weight:800; letter-spacing:-0.5px;
+            background:linear-gradient(135deg,#fff 0%,var(--dash-teal) 100%);
+            -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+        }
+        .page-hero-sub{ font-size:0.9rem; color:var(--dash-text-dim); margin-top:0.4rem; }
+
+        /* ── SETTINGS LAYOUT ── */
+        .settings-layout{
+            display:grid; grid-template-columns:220px 1fr; gap:2rem; max-width:900px;
+        }
+
+        @media(max-width:768px){ .settings-layout{ grid-template-columns:1fr; } }
+
+        /* ── SETTINGS NAV ── */
+        .settings-nav{ display:flex; flex-direction:column; gap:4px; }
+
+        .settings-nav-item{
+            display:flex; align-items:center; gap:10px;
+            padding:10px 14px; border-radius:var(--radius-sm);
+            font-size:0.85rem; font-weight:500; color:var(--dash-text-dim);
+            cursor:pointer; transition:all 160ms; border:none; background:none;
+            width:100%; text-align:left;
+        }
+
+        .settings-nav-item:hover{ background:rgba(255,255,255,0.04); color:var(--bone-white); }
+        .settings-nav-item.active{ background:var(--dash-teal-dim); color:var(--dash-teal); }
+        .settings-nav-item .sn-icon{
+            width:26px; height:26px; border-radius:7px;
+            display:flex; align-items:center; justify-content:center;
+            background:rgba(255,255,255,0.04); font-size:0.82rem; flex-shrink:0;
+            transition:all 160ms;
+        }
+        .settings-nav-item.active .sn-icon{ background:rgba(45,217,232,0.15); color:var(--dash-teal); }
+        .settings-nav-item.danger{ color:var(--red); }
+        .settings-nav-item.danger:hover{ background:rgba(248,113,113,0.08); }
+        .settings-nav-item.danger .sn-icon{ background:rgba(248,113,113,0.08); color:var(--red); }
+
+        /* ── SETTINGS PANEL ── */
+        .settings-panel{
+            background:var(--glass-bg); border:1px solid var(--glass-border);
+            border-radius:var(--radius-lg); overflow:hidden;
+            box-shadow:0 4px 24px rgba(0,0,0,0.3);
+            display:none;
+        }
+        .settings-panel.active{ display:block; }
+
+        .panel-header{
+            padding:1.375rem 1.75rem; border-bottom:1px solid var(--glass-border);
+            background:rgba(0,0,0,0.2);
+        }
+
+        .panel-header h2{
+            font-family:'Orbitron',sans-serif; font-size:0.9rem; font-weight:700;
+            letter-spacing:1px; text-transform:uppercase; color:var(--bone-white);
+        }
+
+        .panel-header p{ font-size:0.8rem; color:var(--dash-text-dim); margin-top:3px; }
+
+        .panel-body{ padding:1.75rem; }
+
+        /* ── PROFILE AVATAR ── */
+        .avatar-section{
+            display:flex; align-items:center; gap:1.5rem; margin-bottom:2rem;
+        }
+
+        .avatar-wrap{
+            position:relative; flex-shrink:0;
+        }
+
+        .avatar-img{
+            width:80px; height:80px; border-radius:50%;
+            border:2px solid rgba(45,217,232,0.3); object-fit:cover;
+            box-shadow:0 0 24px rgba(45,217,232,0.12);
+            transition:border-color 200ms;
+        }
+
+        .avatar-img:hover{ border-color:rgba(45,217,232,0.6); }
+
+        .avatar-online{
+            position:absolute; bottom:3px; right:3px;
+            width:14px; height:14px; border-radius:50%;
+            background:var(--emerald); border:2px solid var(--void-black);
+            box-shadow:0 0 8px rgba(52,211,153,0.5);
+        }
+
+        .avatar-info{}
+        .avatar-label{ font-weight:600; font-size:0.9rem; color:var(--bone-white); margin-bottom:3px; }
+        .avatar-sub{ font-size:0.78rem; color:var(--dash-text-dim); }
+
+        /* ── FORM ── */
+        .form-group{ margin-bottom:1.5rem; }
+
+        .form-label{
+            display:block; font-size:0.78rem; font-weight:600;
+            letter-spacing:0.5px; color:var(--dash-text-dim);
+            text-transform:uppercase; margin-bottom:0.5rem;
+        }
+
+        .form-input, .form-textarea{
+            width:100%; background:rgba(0,0,0,0.35);
+            border:1px solid var(--glass-border);
+            border-radius:var(--radius-sm); padding:12px 14px;
+            color:var(--bone-white); font-family:'Inter',sans-serif;
+            font-size:0.9rem; outline:none;
+            transition:border-color 160ms, box-shadow 160ms;
+        }
+
+        .form-input:focus, .form-textarea:focus{
+            border-color:rgba(45,217,232,0.35);
+            box-shadow:0 0 0 3px rgba(45,217,232,0.06);
+        }
+
+        .form-input::placeholder, .form-textarea::placeholder{ color:var(--dash-text-faint); }
+        .form-textarea{ resize:vertical; min-height:100px; }
+
+        .form-hint{ font-size:0.73rem; color:var(--dash-text-faint); margin-top:5px; }
+
+        .char-count{ font-size:0.73rem; color:var(--dash-text-faint); text-align:right; margin-top:4px; }
+
+        /* ── BUTTONS ── */
+        .btn{
+            display:inline-flex; align-items:center; gap:8px;
+            padding:11px 22px; border-radius:var(--radius-sm);
+            font-family:'Orbitron',sans-serif; font-size:0.82rem; font-weight:700;
+            letter-spacing:0.5px; cursor:pointer; border:none;
+            transition:all 180ms var(--ease-snap);
+        }
+
+        .btn-primary{
+            background:linear-gradient(135deg,rgba(45,217,232,0.9),rgba(45,217,232,0.7));
+            color:#000814;
+            box-shadow:0 4px 16px rgba(45,217,232,0.2);
+        }
+        .btn-primary:hover{
+            background:linear-gradient(135deg,var(--dash-teal),rgba(45,217,232,0.85));
+            box-shadow:0 6px 24px rgba(45,217,232,0.35);
+            transform:translateY(-1px);
+        }
+        .btn-primary:active{ transform:translateY(0); }
+
+        .btn-ghost{
+            background:transparent; color:var(--dash-text-dim);
+            border:1px solid var(--glass-border);
+        }
+        .btn-ghost:hover{ background:rgba(255,255,255,0.04); color:var(--bone-white); border-color:rgba(255,255,255,0.12); }
+
+        .btn-danger{
+            background:rgba(248,113,113,0.08);
+            color:var(--red); border:1px solid rgba(248,113,113,0.2);
+        }
+        .btn-danger:hover{
+            background:rgba(248,113,113,0.15); border-color:rgba(248,113,113,0.35);
+            box-shadow:0 0 20px rgba(248,113,113,0.1);
+        }
+
+        /* ── DIVIDER ── */
+        .form-divider{ border:none; border-top:1px solid var(--glass-border); margin:2rem 0; }
+
+        /* ── DANGER ZONE ── */
+        .danger-zone-desc{
+            font-size:0.85rem; color:var(--dash-text-dim); margin-bottom:1.5rem; line-height:1.6;
+        }
+        .danger-zone-desc strong{ color:var(--red); }
+
+        /* ── INFO ROWS ── */
+        .info-row{
+            display:flex; align-items:center; justify-content:space-between;
+            padding:0.875rem 0; border-bottom:1px solid rgba(255,255,255,0.04);
+        }
+        .info-row:last-child{ border-bottom:none; }
+        .info-row-label{ font-size:0.82rem; color:var(--dash-text-dim); font-weight:500; }
+        .info-row-value{ font-size:0.82rem; color:var(--bone-white); font-weight:600; }
+        .info-row-value.muted{ color:var(--dash-text-faint); }
+
+        /* ── TOAST ── */
+        .toast{
+            position:fixed; bottom:24px; right:24px;
+            background:rgba(8,9,13,0.97); border:1px solid var(--glass-border);
+            border-left:3px solid var(--dash-teal);
+            padding:1rem 1.25rem; border-radius:var(--radius-md);
+            display:flex; align-items:center; gap:10px;
+            box-shadow:0 8px 32px rgba(0,0,0,0.4);
+            transform:translateX(calc(100% + 32px));
+            transition:transform 280ms var(--ease);
+            z-index:1000; min-width:250px;
+        }
+        .toast.show{ transform:translateX(0); }
+        .toast-icon{ font-size:0.95rem; }
+        .toast-msg{ font-size:0.85rem; font-weight:500; color:var(--bone-white); }
+
+        /* ── ANIMATIONS ── */
+        .animate-rise{ opacity:0; animation:panelRise 0.55s var(--ease) forwards; }
+        @keyframes panelRise{ from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }
+        .delay-1{animation-delay:0.05s} .delay-2{animation-delay:0.1s} .delay-3{animation-delay:0.15s}
+
+        @media(max-width:900px){
+            .sidebar{transform:translateX(-100%); transition:transform 250ms var(--ease);}
+            .sidebar.open{transform:translateX(0);}
+            .main-content{margin-left:0; padding:1.25rem;}
+        }
+    </style>
+</head>
+<body>
+    <aside class="sidebar" id="sidebar">
+        <div class="logo">
+            <div class="logo-icon"><i class="fa-solid fa-ghost"></i></div>
+            <span>RPG Ghost</span>
+        </div>
+
+        <div class="nav-section-label">Navigation</div>
+        <ul class="nav-links">
+            <li><a href="/dashboard"><div class="nav-icon"><i class="fa-solid fa-chart-pie"></i></div>Overview</a></li>
+            <li><a href="/battle-log"><div class="nav-icon"><i class="fa-solid fa-khanda"></i></div>Battle Log</a></li>
+            <li><a href="/inventory"><div class="nav-icon"><i class="fa-solid fa-sack-dollar"></i></div>Inventory</a></li>
+            <li><a href="/quest-board"><div class="nav-icon"><i class="fa-solid fa-scroll"></i></div>Quest Board</a></li>
+            <li><a href="/guild-hall"><div class="nav-icon"><i class="fa-solid fa-users"></i></div>Guild Hall</a></li>
+        </ul>
+
+        <div class="nav-section-label">Account</div>
+        <ul class="nav-links">
+            <li><a href="/settings" class="active"><div class="nav-icon"><i class="fa-solid fa-gear"></i></div>Settings</a></li>
+        </ul>
+
+        <div class="sidebar-footer">
+            <div class="sidebar-user" onclick="window.location='/settings'">
+                <img class="sidebar-avatar" id="sidebar-avatar" src="https://api.dicebear.com/7.x/adventurer/svg?seed=ghost" alt="avatar">
+                <div>
+                    <div class="sidebar-username" id="sidebar-username">Adventurer</div>
+                    <div style="font-size:0.7rem;color:var(--dash-text-faint)">View Profile</div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <div class="page-hero animate-rise">
+            <div class="page-hero-eyebrow"><i class="fa-solid fa-gear"></i> Account Management</div>
+            <h1>Settings</h1>
+            <p class="page-hero-sub">Manage your adventurer profile and account preferences.</p>
+        </div>
+
+        <div class="settings-layout animate-rise delay-1">
+            <!-- Settings Nav -->
+            <nav class="settings-nav">
+                <button class="settings-nav-item active" onclick="showPanel('profile',this)">
+                    <span class="sn-icon"><i class="fa-solid fa-user-pen"></i></span>Profile
+                </button>
+                <button class="settings-nav-item" onclick="showPanel('account',this)">
+                    <span class="sn-icon"><i class="fa-solid fa-shield-halved"></i></span>Account Info
+                </button>
+                <button class="settings-nav-item danger" onclick="showPanel('danger',this)">
+                    <span class="sn-icon"><i class="fa-solid fa-triangle-exclamation"></i></span>Danger Zone
+                </button>
+            </nav>
+
+            <!-- Panels -->
+            <div>
+                <!-- Profile Panel -->
+                <div class="settings-panel active" id="panel-profile">
+                    <div class="panel-header">
+                        <h2>Profile Identity</h2>
+                        <p>Customize how you appear to other adventurers.</p>
+                    </div>
+                    <div class="panel-body">
+                        <div class="avatar-section">
+                            <div class="avatar-wrap">
+                                <img class="avatar-img" id="avatar-preview" src="https://api.dicebear.com/7.x/adventurer/svg?seed=ghost" alt="avatar">
+                                <div class="avatar-online"></div>
+                            </div>
+                            <div class="avatar-info">
+                                <div class="avatar-label" id="display-name">Adventurer</div>
+                                <div class="avatar-sub">Discord-synced avatar</div>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="nickname">Display Name</label>
+                            <input class="form-input" type="text" id="nickname" maxlength="50" placeholder="Your adventurer name...">
+                            <div class="char-count"><span id="nick-count">0</span>/50</div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="bio">Battle Cry / Bio</label>
+                            <textarea class="form-textarea" id="bio" rows="4" maxlength="500" placeholder="Tell the realm who you are..."></textarea>
+                            <div class="char-count"><span id="bio-count">0</span>/500</div>
+                            <div class="form-hint">Shown on your public profile card.</div>
+                        </div>
+
+                        <div style="display:flex;gap:0.75rem;">
+                            <button class="btn btn-primary" onclick="saveProfile()">
+                                <i class="fa-solid fa-floppy-disk"></i> Save Changes
+                            </button>
+                            <button class="btn btn-ghost" onclick="loadProfile()">
+                                <i class="fa-solid fa-rotate-left"></i> Reset
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Account Info Panel -->
+                <div class="settings-panel" id="panel-account">
+                    <div class="panel-header">
+                        <h2>Account Info</h2>
+                        <p>Your linked account details and session info.</p>
+                    </div>
+                    <div class="panel-body">
+                        <div class="info-row">
+                            <span class="info-row-label">Discord ID</span>
+                            <span class="info-row-value" id="acc-discord-id">—</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-row-label">Username</span>
+                            <span class="info-row-value" id="acc-username">—</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-row-label">Auth Method</span>
+                            <span class="info-row-value" id="acc-method">—</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-row-label">Character Level</span>
+                            <span class="info-row-value" id="acc-level">—</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-row-label">Gold</span>
+                            <span class="info-row-value" style="color:var(--gold);" id="acc-gold">—</span>
+                        </div>
+
+                        <hr class="form-divider">
+
+                        <button class="btn btn-ghost" onclick="window.location='/logout'">
+                            <i class="fa-solid fa-right-from-bracket"></i> Sign Out
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Danger Zone Panel -->
+                <div class="settings-panel" id="panel-danger">
+                    <div class="panel-header" style="border-top:2px solid rgba(248,113,113,0.3);">
+                        <h2 style="color:var(--red);">Danger Zone</h2>
+                        <p>Irreversible actions. Proceed with caution.</p>
+                    </div>
+                    <div class="panel-body">
+                        <div class="danger-zone-desc">
+                            Deleting your account will <strong>permanently destroy</strong> all your character progress, inventory, quest history, and guild memberships. This cannot be undone by anyone, including the server administrator.
+                        </div>
+                        <button class="btn btn-danger" onclick="deleteAccount()">
+                            <i class="fa-solid fa-skull"></i> Delete My Account
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Toast -->
+    <div class="toast" id="toast">
+        <i class="fa-solid fa-check-circle toast-icon" id="toast-icon"></i>
+        <span class="toast-msg" id="toast-msg">Saved!</span>
+    </div>
+
+<script>
+let currentUser = null;
+
+document.addEventListener('DOMContentLoaded', async () => {
+    const meRes = await fetch('/api/me');
+    currentUser = await meRes.json();
+    if (!currentUser.logged_in) return window.location.href = '/';
+
+    if (currentUser.username) {
+        document.getElementById('sidebar-username').textContent = currentUser.username;
+        document.getElementById('display-name').textContent = currentUser.username;
+        document.getElementById('acc-username').textContent = currentUser.username;
+    }
+    if (currentUser.avatar) {
+        document.getElementById('sidebar-avatar').src = currentUser.avatar;
+        document.getElementById('avatar-preview').src = currentUser.avatar;
+    }
+    if (currentUser.discord_id) document.getElementById('acc-discord-id').textContent = currentUser.discord_id;
+    if (currentUser.level)      document.getElementById('acc-level').textContent = `Level ${currentUser.level}`;
+    if (currentUser.gold !== undefined) document.getElementById('acc-gold').textContent = `${(currentUser.gold || 0).toLocaleString()} Gold`;
+
+    const method = currentUser.auth_provider || (currentUser.discord_id ? 'Discord OAuth' : 'Local');
+    document.getElementById('acc-method').textContent = method;
+
+    loadProfile();
+
+    // Character counts
+    document.getElementById('nickname').addEventListener('input', function() {
+        document.getElementById('nick-count').textContent = this.value.length;
+    });
+    document.getElementById('bio').addEventListener('input', function() {
+        document.getElementById('bio-count').textContent = this.value.length;
+    });
+});
+
+async function loadProfile() {
+    try {
+        const profRes = await fetch('/api/profile');
+        const profile = await profRes.json();
+        if (profile.avatar) document.getElementById('avatar-preview').src = profile.avatar;
+        if (profile.nickname) {
+            document.getElementById('nickname').value = profile.nickname;
+            document.getElementById('nick-count').textContent = profile.nickname.length;
+            document.getElementById('display-name').textContent = profile.nickname;
+        }
+        if (profile.bio) {
+            document.getElementById('bio').value = profile.bio;
+            document.getElementById('bio-count').textContent = profile.bio.length;
+        }
+    } catch(e) { console.error(e); }
+}
+
+async function saveProfile() {
+    const nickname = document.getElementById('nickname').value.trim();
+    const bio = document.getElementById('bio').value.trim();
+    try {
+        const res = await fetch('/api/profile', {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({nickname, bio})
+        });
+        const data = await res.json();
+        if (data.ok) {
+            showToast('Profile saved successfully', false);
+            if (nickname) document.getElementById('display-name').textContent = nickname;
+        } else {
+            showToast(data.error || 'Failed to save', true);
+        }
+    } catch(e) { showToast('Server error', true); }
+}
+
+async function deleteAccount() {
+    const pw = prompt("Enter your password to confirm deletion (Local accounts only):");
+    if (!pw) return;
+    if (!confirm("Are you absolutely sure? All progress will be lost forever.")) return;
+    try {
+        const res = await fetch('/api/delete-account', {
+            method:'DELETE',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({password:pw})
+        });
+        const data = await res.json();
+        if (data.ok) {
+            alert("Account deleted.");
+            window.location.href = '/logout';
+        } else {
+            alert(data.error || "Deletion failed.");
+        }
+    } catch(e) { alert("Server error during deletion."); }
+}
+
+function showPanel(id, btn) {
+    document.querySelectorAll('.settings-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.settings-nav-item').forEach(b => b.classList.remove('active'));
+    document.getElementById('panel-' + id).classList.add('active');
+    btn.classList.add('active');
+}
+
+function showToast(msg, isError) {
+    const toast = document.getElementById('toast');
+    const icon  = document.getElementById('toast-icon');
+    document.getElementById('toast-msg').textContent = msg;
+    toast.style.borderLeftColor = isError ? 'var(--red)' : 'var(--dash-teal)';
+    icon.className = `fa-solid ${isError ? 'fa-triangle-exclamation' : 'fa-check-circle'} toast-icon`;
+    icon.style.color = isError ? 'var(--red)' : 'var(--dash-teal)';
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 3500);
+}
+</script>
+</body>
+</html>
