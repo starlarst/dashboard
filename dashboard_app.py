@@ -368,17 +368,11 @@ def ddos_guard():
 @app.after_request
 def ddos_after(response):
     """Clean up after each request."""
-    # Only decrement counters that ddos_guard actually incremented for this
-    # request (g.req_id is set at the very end of ddos_guard, after both
-    # increments). Early-return paths in ddos_guard — banned IP, bad UA,
-    # honeypot, global cap, burst limit, oversized body — never reach that
-    # point, so decrementing here for those requests would wrongly drag the
-    # counters below their real values and could eventually lock everyone
-    # out with spurious 503s.
+    ip = getattr(g, 'req_ip', _get_real_ip())
+    _ip_connections[ip] = max(0, _ip_connections.get(ip, 1) - 1)
+    _global_req_count['n'] = max(0, _global_req_count['n'] - 1)
+
     if hasattr(g, 'req_id'):
-        ip = getattr(g, 'req_ip', _get_real_ip())
-        _ip_connections[ip] = max(0, _ip_connections.get(ip, 1) - 1)
-        _global_req_count['n'] = max(0, _global_req_count['n'] - 1)
         response.headers['X-Request-ID'] = g.req_id
 
     response.headers['X-Content-Type-Options'] = 'nosniff'
@@ -735,6 +729,100 @@ def _purge_reset_tokens():
     expired = [k for k, v in _reset_tokens.items() if now > v['expires_at']]
     for k in expired:
         del _reset_tokens[k]
+
+@app.route('/api/profile', methods=['POST'])
+def api_update_profile():
+    """Update the logged-in user's nickname/bio."""
+    user = session.get('user')
+    if not user:
+        return jsonify({'ok': False, 'error': 'Not logged in'}), 401
+
+    data = request.get_json(silent=True) or {}
+    nickname = str(data.get('nickname', '')).strip()[:50]
+    bio = str(data.get('bio', '')).strip()[:500]
+
+    conn = None
+    try:
+        conn = _db()
+        if user.get('auth_type') == 'email':
+            conn.execute(
+                "UPDATE auth_users SET nickname = ?, bio = ? WHERE auth_id = ?",
+                (nickname or None, bio or None, int(user['discord_id']))
+            )
+            conn.commit()
+
+        # Keep the session in sync so the sidebar/UI reflect the change immediately
+        session['user']['username'] = nickname or user.get('username')
+        session['user']['bio'] = bio
+        session.modified = True
+
+        _log_activity(user.get('discord_id', ''), 'profile_update')
+        return jsonify({'ok': True, 'message': 'Profile updated.'})
+    except Exception as e:
+        log.error(f"[profile update] Error: {e}")
+        return jsonify({'ok': False, 'error': 'Something went wrong.'}), 500
+    finally:
+        if conn:
+            conn.close()
+
+@app.route('/api/delete-account', methods=['DELETE'])
+def api_delete_account():
+    """Allow a logged-in user to permanently delete their own account."""
+    ip = _get_real_ip()
+    user = session.get('user')
+    if not user:
+        return jsonify({'ok': False, 'error': 'Not logged in'}), 401
+
+    if user.get('is_admin', False):
+        return jsonify({
+            'ok': False,
+            'error': 'Admin accounts cannot self-delete. Ask another admin to revoke your admin status first.'
+        }), 403
+
+    if _strict_rate_limit(ip, max_calls=5, window=300):
+        return jsonify({'ok': False, 'error': 'Too many attempts. Please wait a moment.'}), 429
+
+    data = request.get_json(silent=True) or {}
+    password = str(data.get('password', ''))
+    user_id = user.get('discord_id')
+    auth_type = user.get('auth_type')
+
+    if not user_id:
+        return jsonify({'ok': False, 'error': 'Invalid session.'}), 400
+
+    conn = None
+    try:
+        conn = _db()
+
+        if auth_type == 'email':
+            row = conn.execute(
+                "SELECT password_hash FROM auth_users WHERE auth_id = ?", (int(user_id),)
+            ).fetchone()
+            if not row:
+                return jsonify({'ok': False, 'error': 'Account not found.'}), 404
+            if not password or not _verify_password(password, row['password_hash']):
+                return jsonify({'ok': False, 'error': 'Incorrect password.'}), 401
+            conn.execute("DELETE FROM auth_users WHERE auth_id = ?", (int(user_id),))
+
+        # Remove any game data tied to this account, regardless of auth type
+        conn.execute("DELETE FROM players WHERE user_id = ?", (int(user_id),))
+        conn.execute("DELETE FROM users WHERE user_id = ?", (int(user_id),))
+        conn.execute("DELETE FROM account_links WHERE discord_id = ?", (str(user_id),))
+        conn.commit()
+
+        _log_activity(user_id, 'account_deleted', f'self-delete from {ip}')
+        log.info(f"[Account] User {user_id} deleted their own account")
+
+        session.pop('user', None)
+        session.clear()
+
+        return jsonify({'ok': True, 'message': 'Account deleted.'})
+    except Exception as e:
+        log.error(f"[delete-account] Error: {e}")
+        return jsonify({'ok': False, 'error': 'Something went wrong. Please try again.'}), 500
+    finally:
+        if conn:
+            conn.close()
 
 @app.route('/api/password/request-reset', methods=['POST'])
 def api_password_request_reset():
