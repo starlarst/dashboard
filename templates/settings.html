@@ -71,7 +71,7 @@
         .nav-links li a{
             display:flex; align-items:center; gap:11px; padding:10px 13px;
             color:var(--dash-text-dim); text-decoration:none; border-radius:var(--radius-sm);
-            transition:all 180ms var(--ease-snap); font-size:0.88rem; font-weight:500;
+            transition:all 180ms var(--ease-snap); font-size:0.95rem; font-weight:500;
             position:relative; overflow:hidden;
         }
         .nav-icon{
@@ -114,7 +114,7 @@
             background:linear-gradient(135deg,#fff 0%,var(--dash-teal) 100%);
             -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
         }
-        .page-hero-sub{ font-size:0.9rem; color:var(--dash-text-dim); margin-top:0.4rem; }
+        .page-hero-sub{ font-size:0.98rem; color:var(--dash-text-dim); margin-top:0.4rem; }
 
         /* ── SETTINGS LAYOUT ── */
         .settings-layout{
@@ -129,7 +129,7 @@
         .settings-nav-item{
             display:flex; align-items:center; gap:10px;
             padding:10px 14px; border-radius:var(--radius-sm);
-            font-size:0.85rem; font-weight:500; color:var(--dash-text-dim);
+            font-size:0.94rem; font-weight:500; color:var(--dash-text-dim);
             cursor:pointer; transition:all 160ms; border:none; background:none;
             width:100%; text-align:left;
         }
@@ -162,11 +162,11 @@
         }
 
         .panel-header h2{
-            font-family:'Orbitron',sans-serif; font-size:0.9rem; font-weight:700;
+            font-family:'Orbitron',sans-serif; font-size:1.05rem; font-weight:700;
             letter-spacing:1px; text-transform:uppercase; color:var(--bone-white);
         }
 
-        .panel-header p{ font-size:0.8rem; color:var(--dash-text-dim); margin-top:3px; }
+        .panel-header p{ font-size:0.9rem; color:var(--dash-text-dim); margin-top:3px; }
 
         .panel-body{ padding:1.75rem; }
 
@@ -196,14 +196,14 @@
         }
 
         .avatar-info{}
-        .avatar-label{ font-weight:600; font-size:0.9rem; color:var(--bone-white); margin-bottom:3px; }
-        .avatar-sub{ font-size:0.78rem; color:var(--dash-text-dim); }
+        .avatar-label{ font-weight:600; font-size:1rem; color:var(--bone-white); margin-bottom:3px; }
+        .avatar-sub{ font-size:0.85rem; color:var(--dash-text-dim); }
 
         /* ── FORM ── */
         .form-group{ margin-bottom:1.5rem; }
 
         .form-label{
-            display:block; font-size:0.78rem; font-weight:600;
+            display:block; font-size:0.86rem; font-weight:600;
             letter-spacing:0.5px; color:var(--dash-text-dim);
             text-transform:uppercase; margin-bottom:0.5rem;
         }
@@ -213,7 +213,7 @@
             border:1px solid var(--glass-border);
             border-radius:var(--radius-sm); padding:12px 14px;
             color:var(--bone-white); font-family:'Inter',sans-serif;
-            font-size:0.9rem; outline:none;
+            font-size:0.98rem; outline:none;
             transition:border-color 160ms, box-shadow 160ms;
         }
 
@@ -225,15 +225,15 @@
         .form-input::placeholder, .form-textarea::placeholder{ color:var(--dash-text-faint); }
         .form-textarea{ resize:vertical; min-height:100px; }
 
-        .form-hint{ font-size:0.73rem; color:var(--dash-text-faint); margin-top:5px; }
+        .form-hint{ font-size:0.82rem; color:var(--dash-text-faint); margin-top:5px; }
 
-        .char-count{ font-size:0.73rem; color:var(--dash-text-faint); text-align:right; margin-top:4px; }
+        .char-count{ font-size:0.8rem; color:var(--dash-text-faint); text-align:right; margin-top:4px; }
 
         /* ── BUTTONS ── */
         .btn{
             display:inline-flex; align-items:center; gap:8px;
             padding:11px 22px; border-radius:var(--radius-sm);
-            font-family:'Orbitron',sans-serif; font-size:0.82rem; font-weight:700;
+            font-family:'Orbitron',sans-serif; font-size:0.88rem; font-weight:700;
             letter-spacing:0.5px; cursor:pointer; border:none;
             transition:all 180ms var(--ease-snap);
         }
@@ -270,7 +270,7 @@
 
         /* ── DANGER ZONE ── */
         .danger-zone-desc{
-            font-size:0.85rem; color:var(--dash-text-dim); margin-bottom:1.5rem; line-height:1.6;
+            font-size:0.94rem; color:var(--dash-text-dim); margin-bottom:1.5rem; line-height:1.65;
         }
         .danger-zone-desc strong{ color:var(--red); }
 
@@ -280,9 +280,49 @@
             padding:0.875rem 0; border-bottom:1px solid rgba(255,255,255,0.04);
         }
         .info-row:last-child{ border-bottom:none; }
-        .info-row-label{ font-size:0.82rem; color:var(--dash-text-dim); font-weight:500; }
-        .info-row-value{ font-size:0.82rem; color:var(--bone-white); font-weight:600; }
+        .info-row-label{ font-size:0.92rem; color:var(--dash-text-dim); font-weight:500; }
+        .info-row-value{ font-size:0.92rem; color:var(--bone-white); font-weight:600; }
         .info-row-value.muted{ color:var(--dash-text-faint); }
+
+        /* ── ADMIN PANEL ── */
+        .admin-stats{
+            display:flex; gap:0.75rem; margin-bottom:1.5rem; flex-wrap:wrap;
+        }
+        .admin-stat{
+            background:rgba(255,255,255,0.03); border:1px solid var(--glass-border);
+            border-radius:var(--radius-sm); padding:10px 16px; flex:1; min-width:110px;
+        }
+        .admin-stat-num{ font-family:'Orbitron',sans-serif; font-size:1.3rem; font-weight:700; color:var(--dash-teal); }
+        .admin-stat-label{ font-size:0.75rem; color:var(--dash-text-dim); text-transform:uppercase; letter-spacing:0.5px; margin-top:2px; }
+        .admin-table-wrap{ overflow-x:auto; border:1px solid var(--glass-border); border-radius:var(--radius-sm); }
+        .admin-table{ width:100%; border-collapse:collapse; font-size:0.9rem; }
+        .admin-table th{
+            text-align:left; padding:10px 14px; background:rgba(255,255,255,0.03);
+            color:var(--dash-text-dim); font-size:0.75rem; text-transform:uppercase;
+            letter-spacing:0.5px; font-weight:600; border-bottom:1px solid var(--glass-border);
+        }
+        .admin-table td{ padding:10px 14px; border-bottom:1px solid rgba(255,255,255,0.04); vertical-align:middle; }
+        .admin-table tr:last-child td{ border-bottom:none; }
+        .admin-user-cell{ display:flex; align-items:center; gap:10px; }
+        .admin-user-avatar{ width:30px; height:30px; border-radius:50%; object-fit:cover; flex-shrink:0; }
+        .admin-user-name{ font-weight:600; color:var(--bone-white); }
+        .admin-badge{
+            display:inline-block; padding:3px 10px; border-radius:20px;
+            font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.4px;
+        }
+        .admin-badge.admin{ background:rgba(168,85,247,0.15); color:var(--dash-purple); }
+        .admin-badge.member{ background:rgba(255,255,255,0.06); color:var(--dash-text-dim); }
+        .admin-actions{ display:flex; gap:8px; }
+        .admin-btn{
+            border:none; border-radius:8px; padding:7px 12px; font-size:0.78rem;
+            font-weight:600; cursor:pointer; transition:all 150ms;
+        }
+        .admin-btn.toggle{ background:rgba(45,217,232,0.1); color:var(--dash-teal); }
+        .admin-btn.toggle:hover{ background:rgba(45,217,232,0.2); }
+        .admin-btn.delete{ background:rgba(248,113,113,0.1); color:var(--red); }
+        .admin-btn.delete:hover{ background:rgba(248,113,113,0.2); }
+        .admin-btn:disabled{ opacity:0.35; cursor:not-allowed; }
+        .admin-loading{ text-align:center; color:var(--dash-text-dim); padding:1.5rem !important; }
 
         /* ── TOAST ── */
         .toast{
@@ -298,7 +338,7 @@
         }
         .toast.show{ transform:translateX(0); }
         .toast-icon{ font-size:0.95rem; }
-        .toast-msg{ font-size:0.85rem; font-weight:500; color:var(--bone-white); }
+        .toast-msg{ font-size:0.92rem; font-weight:500; color:var(--bone-white); }
 
         /* ── ANIMATIONS ── */
         .animate-rise{ opacity:0; animation:panelRise 0.55s var(--ease) forwards; }
@@ -362,6 +402,9 @@
                 </button>
                 <button class="settings-nav-item danger" onclick="showPanel('danger',this)">
                     <span class="sn-icon"><i class="fa-solid fa-triangle-exclamation"></i></span>Danger Zone
+                </button>
+                <button class="settings-nav-item" id="admin-nav-item" style="display:none;" onclick="showPanel('admin',this)">
+                    <span class="sn-icon"><i class="fa-solid fa-user-shield"></i></span>Admin Panel
                 </button>
             </nav>
 
@@ -460,6 +503,33 @@
                         </button>
                     </div>
                 </div>
+
+                <!-- Admin Panel -->
+                <div class="settings-panel" id="panel-admin">
+                    <div class="panel-header">
+                        <h2>Admin Panel</h2>
+                        <p>Manage every registered account on the server.</p>
+                    </div>
+                    <div class="panel-body">
+                        <div class="admin-stats" id="admin-stats"></div>
+                        <div class="admin-table-wrap">
+                            <table class="admin-table">
+                                <thead>
+                                    <tr>
+                                        <th>User</th>
+                                        <th>Email</th>
+                                        <th>Role</th>
+                                        <th>Last Login</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="admin-users-body">
+                                    <tr><td colspan="5" class="admin-loading">Loading users…</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </main>
@@ -493,6 +563,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const method = currentUser.auth_provider || (currentUser.discord_id ? 'Discord OAuth' : 'Local');
     document.getElementById('acc-method').textContent = method;
+
+    if (currentUser.is_admin) {
+        document.getElementById('admin-nav-item').style.display = 'flex';
+    }
 
     loadProfile();
 
@@ -542,8 +616,11 @@ async function saveProfile() {
 }
 
 async function deleteAccount() {
-    const pw = prompt("Enter your password to confirm deletion (Local accounts only):");
-    if (!pw) return;
+    let pw = '';
+    if (currentUser.auth_type === 'email') {
+        pw = prompt("Enter your password to confirm deletion:");
+        if (!pw) return;
+    }
     if (!confirm("Are you absolutely sure? All progress will be lost forever.")) return;
     try {
         const res = await fetch('/api/delete-account', {
@@ -566,6 +643,90 @@ function showPanel(id, btn) {
     document.querySelectorAll('.settings-nav-item').forEach(b => b.classList.remove('active'));
     document.getElementById('panel-' + id).classList.add('active');
     btn.classList.add('active');
+    if (id === 'admin') loadAdminUsers();
+}
+
+// ── Admin Panel ──────────────────────────────────────────────────────────
+async function loadAdminUsers() {
+    const tbody = document.getElementById('admin-users-body');
+    try {
+        const res = await fetch('/api/admin/users');
+        const data = await res.json();
+        if (!data.ok) {
+            tbody.innerHTML = `<tr><td colspan="5" class="admin-loading">${data.error || 'Failed to load users'}</td></tr>`;
+            return;
+        }
+
+        document.getElementById('admin-stats').innerHTML = `
+            <div class="admin-stat"><div class="admin-stat-num">${data.stats.total}</div><div class="admin-stat-label">Total Users</div></div>
+            <div class="admin-stat"><div class="admin-stat-num">${data.stats.online}</div><div class="admin-stat-label">Online</div></div>
+            <div class="admin-stat"><div class="admin-stat-num">${data.stats.admins}</div><div class="admin-stat-label">Admins</div></div>
+        `;
+
+        if (data.users.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5" class="admin-loading">No users found.</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = data.users.map(u => {
+            const isSelf = String(u.id) === String(currentUser.discord_id);
+            return `
+            <tr>
+                <td>
+                    <div class="admin-user-cell">
+                        <img class="admin-user-avatar" src="${u.avatar}" alt="">
+                        <span class="admin-user-name">${escapeHtml(u.nickname)}</span>
+                    </div>
+                </td>
+                <td>${escapeHtml(u.email)}</td>
+                <td><span class="admin-badge ${u.is_admin ? 'admin' : 'member'}">${u.is_admin ? 'Admin' : 'Member'}</span></td>
+                <td>${u.last_login === 'Never' ? 'Never' : new Date(u.last_login).toLocaleString()}</td>
+                <td class="admin-actions">
+                    <button class="admin-btn toggle" ${isSelf ? 'disabled' : ''} onclick="adminToggleAdmin(${u.id})">
+                        ${u.is_admin ? 'Revoke Admin' : 'Make Admin'}
+                    </button>
+                    <button class="admin-btn delete" ${(isSelf || u.is_admin) ? 'disabled' : ''} onclick="adminDeleteUser(${u.id}, '${escapeHtml(u.nickname).replace(/'/g, "\\'")}')">
+                        Delete
+                    </button>
+                </td>
+            </tr>`;
+        }).join('');
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="5" class="admin-loading">Server error loading users.</td></tr>`;
+    }
+}
+
+async function adminDeleteUser(userId, name) {
+    if (!confirm(`Permanently delete ${name}'s account? This cannot be undone.`)) return;
+    try {
+        const res = await fetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.ok) {
+            showToast('User deleted', false);
+            loadAdminUsers();
+        } else {
+            showToast(data.error || 'Delete failed', true);
+        }
+    } catch (e) { showToast('Server error', true); }
+}
+
+async function adminToggleAdmin(userId) {
+    try {
+        const res = await fetch(`/api/admin/users/${userId}/toggle-admin`, { method: 'POST' });
+        const data = await res.json();
+        if (data.ok) {
+            showToast(data.message || 'Updated', false);
+            loadAdminUsers();
+        } else {
+            showToast(data.error || 'Update failed', true);
+        }
+    } catch (e) { showToast('Server error', true); }
+}
+
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str == null ? '' : String(str);
+    return div.innerHTML;
 }
 
 function showToast(msg, isError) {
