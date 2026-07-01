@@ -1,4 +1,4 @@
-const RECAPTCHA_SITE_KEY = "6LfdHyEtAAAAAJ34WMBrqoIc_Um2YqTE1jX-Lmkz";
+const RECAPTCHA_SITE_KEY = "6LdvvT8tAAAAAKDmzCl0RaBvPr8ndJbdmFNQaqk7";
 const EMAILJS_PUBLIC_KEY  = "eMQUadu5q-_pONmwc";
 const EMAILJS_SERVICE_ID  = "service_miabeqg";
 const EMAILJS_TEMPLATE_ID = "template_tntozpq";
