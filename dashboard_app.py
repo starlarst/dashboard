@@ -330,8 +330,10 @@ def ddos_guard():
         log.info(f"[DDoS] Blocked banned IP: {ip}")
         return Response("Forbidden", status=403)
 
+    is_local = ip in ('127.0.0.1', '::1', 'localhost')
+
     ua = (request.user_agent.string or '').lower()
-    if any(frag in ua for frag in DDOS_BLOCKED_UA_FRAGS):
+    if not is_local and any(frag in ua for frag in DDOS_BLOCKED_UA_FRAGS):
         _ban_ip(ip, f"bad UA: {ua[:60]}")
         return Response("Forbidden", status=403)
 
@@ -340,7 +342,7 @@ def ddos_guard():
         '/phpinfo', '/config.php', '/xmlrpc', '/shell',
         '/.git', '/etc/passwd', '/proc/self',
     ]
-    if any(request.path.startswith(p) for p in honey_paths):
+    if not is_local and any(request.path.startswith(p) for p in honey_paths):
         _ban_ip(ip, f"honeypot: {request.path}")
         return Response("Not Found", status=404)
 
