@@ -1,12 +1,19 @@
-from flask import Flask, render_template, jsonify, request, redirect, session, Response, g
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse, RedirectResponse, PlainTextResponse
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
 from dotenv import load_dotenv
 import json, os, threading, time, secrets, hashlib, hmac
 from urllib.parse import urlencode
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, timedelta, timezone,UTC
 from collections import defaultdict
 import sqlite3
 import requests as http_requests
 import logging
+import socket
+import uvicorn
 
 load_dotenv()
 
@@ -63,6 +70,11 @@ DDOS_BLOCKED_UA_FRAGS = [
     'sqlmap', 'nikto', 'nmap', 'masscan', 'zgrab',
     'python-requests/2.18', 'curl/7.29', 'dirbuster',
     'go-http-client/1', 'libwww-perl',
+]
+DDOS_HONEYPOT_PATHS = [
+    '/wp-admin', '/wp-login', '/.env', '/admin.php',
+    '/phpinfo', '/config.php', '/xmlrpc', '/shell',
+    '/.git', '/etc/passwd', '/proc/self',
 ]
 
 # ── Database Initialization ──────────────────────────────────────────────────
@@ -173,9 +185,7 @@ def init_db():
     conn.commit()
     conn.close()
 
-# ── Flask App Setup ──────────────────────────────────────────────────────────
-app = Flask(__name__)
-
+# ── Secret Key ─────────────────────────────────────────────────────────────
 def _get_or_create_secret_key():
     """Use FLASK_SECRET if set, otherwise persist a generated key to disk."""
     env_secret = os.environ.get('FLASK_SECRET')
@@ -200,8 +210,8 @@ def _get_or_create_secret_key():
         log.warning(f"[secret_key] could not persist {secret_file}: {e}")
     return new_secret
 
-app.secret_key = _get_or_create_secret_key()
-app.permanent_session_lifetime = timedelta(days=30)
+SECRET_KEY = _get_or_create_secret_key()
+SESSION_LIFETIME_SECONDS = int(timedelta(days=30).total_seconds())
 
 UPDATE_INTERVAL = 30
 cached_data = {}
@@ -254,12 +264,12 @@ def _log_activity(user_id, action, detail=""):
     except Exception as e:
         log.warning(f"[activity_log] write failed: {e}")
 
-def _get_real_ip():
+def _get_real_ip(request: Request):
     """Get the real client IP."""
     xff = request.headers.get('X-Forwarded-For', '')
     if xff:
         return xff.split(',')[0].strip()
-    return request.remote_addr or '0.0.0.0'
+    return request.client.host if request.client else '0.0.0.0'
 
 def _is_banned(ip):
     """Check if an IP is currently banned."""
@@ -289,6 +299,17 @@ def _strict_rate_limit(ip, max_calls=3, window=60):
     _rate_limits[key].append(now)
     return False
 
+def _json(content: dict, status_code: int = 200):
+    """Helper mirroring Flask's `jsonify(...), status_code` pattern."""
+    return JSONResponse(content=content, status_code=status_code)
+
+async def _get_json(request: Request) -> dict:
+    """Helper mirroring Flask's `request.get_json(silent=True) or {}`."""
+    try:
+        return await request.json()
+    except Exception:
+        return {}
+
 # ── Admin Configuration ──────────────────────────────────────────────────────
 ADMIN_EMAIL = 'Admin@gmail.com'
 ADMIN_PASSWORD = 'Rerir@123DND'
@@ -302,14 +323,14 @@ def ensure_admin_user():
         existing = conn.execute(
             "SELECT auth_id FROM auth_users WHERE email = ?", (ADMIN_EMAIL,)
         ).fetchone()
-        
+
         if not existing:
             conn.execute(
                 """INSERT INTO auth_users (email, password_hash, nickname, avatar, bio, is_admin, created_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (ADMIN_EMAIL, ADMIN_PASSWORD_HASH, "Admin", 
-                 "https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=bc13fe", 
-                 "System Administrator", 1, datetime.now(UTC).isoformat())
+                (ADMIN_EMAIL, ADMIN_PASSWORD_HASH, "Admin",
+                 "https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=bc13fe",
+                 "System Administrator", 1, datetime.now(timezone.utc).isoformat())
             )
             conn.commit()
             log.info(f"[Admin] Admin account created with email: {ADMIN_EMAIL}")
@@ -319,767 +340,7 @@ def ensure_admin_user():
         if conn:
             conn.close()
 
-# ── DDoS Protection Middleware ──────────────────────────────────────────────
-@app.before_request
-def ddos_guard():
-    """Protect the app from DDoS and abuse."""
-    global _req_id_counter
-    ip = _get_real_ip()
-
-    if _is_banned(ip):
-        log.info(f"[DDoS] Blocked banned IP: {ip}")
-        return Response("Forbidden", status=403)
-
-    is_local = ip in ('127.0.0.1', '::1', 'localhost')
-
-    ua = (request.user_agent.string or '').lower()
-    if not is_local and any(frag in ua for frag in DDOS_BLOCKED_UA_FRAGS):
-        _ban_ip(ip, f"bad UA: {ua[:60]}")
-        return Response("Forbidden", status=403)
-
-    honey_paths = [
-        '/wp-admin', '/wp-login', '/.env', '/admin.php',
-        '/phpinfo', '/config.php', '/xmlrpc', '/shell',
-        '/.git', '/etc/passwd', '/proc/self',
-    ]
-    if not is_local and any(request.path.startswith(p) for p in honey_paths):
-        _ban_ip(ip, f"honeypot: {request.path}")
-        return Response("Not Found", status=404)
-
-    if _global_req_count['n'] >= DDOS_GLOBAL_CAP:
-        log.warning(f"[DDoS] Global cap hit ({_global_req_count['n']} reqs)")
-        return Response("Service Unavailable", status=503, headers={'Retry-After': '5'})
-
-    _ip_connections[ip] += 1
-    if _ip_connections[ip] > DDOS_BURST_LIMIT:
-        _ban_ip(ip, f"burst: {_ip_connections[ip]} concurrent")
-        _ip_connections[ip] = 0
-        return Response("Too Many Requests", status=429, headers={'Retry-After': '60'})
-
-    cl = request.content_length
-    if cl and cl > DDOS_MAX_BODY_BYTES:
-        log.warning(f"[DDoS] Body too large from {ip}: {cl} bytes")
-        return Response("Request Too Large", status=413)
-
-    _global_req_count['n'] += 1
-    _req_id_counter += 1
-    g.req_id = f"{_req_id_counter:08x}"
-    g.req_ip = ip
-    g.req_start = time.monotonic()
-
-@app.after_request
-def ddos_after(response):
-    """Clean up after each request."""
-    ip = getattr(g, 'req_ip', _get_real_ip())
-    _ip_connections[ip] = max(0, _ip_connections.get(ip, 1) - 1)
-    _global_req_count['n'] = max(0, _global_req_count['n'] - 1)
-
-    if hasattr(g, 'req_id'):
-        response.headers['X-Request-ID'] = g.req_id
-
-    response.headers['X-Content-Type-Options'] = 'nosniff'
-    response.headers['X-Frame-Options'] = 'DENY'
-    response.headers['X-XSS-Protection'] = '1; mode=block'
-    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-
-    return response
-
-# ── Discord OAuth ─────────────────────────────────────────────────────────────
-@app.route('/login/discord')
-def discord_login():
-    """Redirect user to Discord for OAuth."""
-    params = {
-        'client_id': DISCORD_CLIENT_ID,
-        'redirect_uri': DISCORD_REDIRECT_URI,
-        'response_type': 'code',
-        'scope': 'identify email',
-    }
-    oauth_url = f"{DISCORD_API}/oauth2/authorize?{urlencode(params)}"
-    return redirect(oauth_url)
-
-@app.route('/callback')
-def discord_callback():
-    """Handle Discord OAuth callback."""
-    ip = _get_real_ip()
-    code = request.args.get('code')
-    error = request.args.get('error')
-
-    if error or not code:
-        log.warning(f"[OAuth] callback error param={error} code_present={bool(code)}")
-        return redirect('/?auth=failed')
-
-    token_res = http_requests.post(
-        f'{DISCORD_API}/oauth2/token',
-        data={
-            'client_id': DISCORD_CLIENT_ID,
-            'client_secret': DISCORD_CLIENT_SECRET,
-            'grant_type': 'authorization_code',
-            'code': code,
-            'redirect_uri': DISCORD_REDIRECT_URI,
-        },
-        headers={'Content-Type': 'application/x-www-form-urlencoded'},
-    )
-
-    if token_res.status_code != 200:
-        log.warning(f'[OAuth] Token exchange failed ({token_res.status_code}): {token_res.text}')
-        return redirect('/?auth=failed')
-
-    access_token = token_res.json().get('access_token')
-
-    user_res = http_requests.get(
-        f'{DISCORD_API}/users/@me',
-        headers={'Authorization': f'Bearer {access_token}'},
-    )
-
-    if user_res.status_code != 200:
-        log.warning(f'[OAuth] /users/@me failed ({user_res.status_code}): {user_res.text}')
-        return redirect('/?auth=failed')
-
-    discord_user = user_res.json()
-    user_id = int(discord_user['id'])
-    avatar_hash = discord_user.get('avatar')
-    avatar_url = (
-        f"https://cdn.discordapp.com/avatars/{user_id}/{avatar_hash}.png"
-        if avatar_hash
-        else f"https://cdn.discordapp.com/embed/avatars/{user_id % 5}.png"
-    )
-
-    game_data = get_player_game_data(user_id)
-
-    session['user'] = {
-        'discord_id': str(user_id),
-        'username': discord_user.get('global_name') or discord_user.get('username', 'Player'),
-        'email': discord_user.get('email', ''),
-        'avatar': avatar_url,
-        'level': game_data.get('level', 1),
-        'gold': game_data.get('gold', 0),
-        'gems': game_data.get('gems', 0),
-        'special_coins': game_data.get('special_coins', 0),
-        'char_class': game_data.get('char_class', '—'),
-        'xp': game_data.get('xp', 0),
-        'xp_needed': game_data.get('xp_needed', 100),
-        'login_at': datetime.now(UTC).isoformat(),
-        'ip': ip,
-        'auth_type': 'discord',
-        'is_admin': False
-    }
-
-    sid = str(user_id)
-    _session_log.setdefault(sid, []).append({
-        'ip': ip,
-        'ua': request.user_agent.string[:120],
-        'at': datetime.now(UTC).isoformat(),
-    })
-    _session_log[sid] = _session_log[sid][-10:]
-
-    try:
-        conn = _db()
-        conn.execute(
-            "INSERT INTO account_links (discord_id, last_login) VALUES (?,?) "
-            "ON CONFLICT(discord_id) DO UPDATE SET last_login=excluded.last_login",
-            (sid, datetime.now(UTC).isoformat()),
-        )
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        log.warning(f"[login] account_links update failed: {e}")
-
-    _log_activity(user_id, "login", f"from {ip}")
-    log.info(f"[OAuth] Logged in: {session['user']['username']} (ID: {user_id})")
-
-    return redirect('/?auth=success')
-
-# ── Auth Routes ──────────────────────────────────────────────────────────────
-@app.route('/api/signup', methods=['POST'])
-def api_signup():
-    """Register a new email/password account."""
-    ip = _get_real_ip()
-
-    if _strict_rate_limit(ip, max_calls=8, window=600):
-        return jsonify({
-            'ok': False,
-            'error': 'Too many signup attempts. Please wait a few minutes.'
-        }), 429
-
-    data = request.get_json(silent=True) or {}
-    email = str(data.get('email', '')).strip().lower()
-    password = str(data.get('password', '')).strip()
-    nickname = str(data.get('nickname', '')).strip() or email.split('@')[0]
-    recaptcha_token = data.get('recaptcha_token')
-
-    if not email or '@' not in email:
-        return jsonify({'ok': False, 'error': 'Please enter a valid email address.'}), 400
-
-    if not password or len(password) < 6:
-        return jsonify({'ok': False, 'error': 'Password must be at least 6 characters.'}), 400
-
-    if len(password) > 128:
-        return jsonify({'ok': False, 'error': 'Password is too long.'}), 400
-
-    common_passwords = ['password', 'password1', '12345678', '123456789', 'qwerty123',
-                        'letmein', 'iloveyou', 'admin123', 'welcome1', 'monkey123']
-    if password.lower() in common_passwords:
-        return jsonify({'ok': False, 'error': 'That password is too common.'}), 400
-
-    conn = None
-    try:
-        conn = _db()
-        existing = conn.execute(
-            "SELECT auth_id FROM auth_users WHERE email = ?", (email,)
-        ).fetchone()
-
-        if existing:
-            return jsonify({
-                'ok': False,
-                'error': 'This email is already registered.'
-            }), 400
-
-        password_hash = _hash_password(password)
-        avatar_url = f"https://ui-avatars.com/api/?name={nickname}&background=5865F2&color=fff&size=64"
-
-        cursor = conn.execute(
-            """INSERT INTO auth_users (email, password_hash, nickname, avatar, created_at)
-               VALUES (?, ?, ?, ?, ?)""",
-            (email, password_hash, nickname, avatar_url, datetime.now(UTC).isoformat())
-        )
-        auth_id = cursor.lastrowid
-        conn.commit()
-
-        _log_activity(auth_id, 'signup', f'email={email}')
-        log.info(f"[Signup] New account created: {email} (ID: {auth_id})")
-
-        session['user'] = {
-            'discord_id': str(auth_id),
-            'username': nickname,
-            'email': email,
-            'avatar': avatar_url,
-            'level': 1,
-            'gold': 100,
-            'gems': 10,
-            'special_coins': 0,
-            'char_class': 'Adventurer',
-            'xp': 0,
-            'xp_needed': 100,
-            'login_at': datetime.now(UTC).isoformat(),
-            'ip': ip,
-            'auth_type': 'email',
-            'is_admin': False
-        }
-
-        sid = str(auth_id)
-        _session_log.setdefault(sid, []).append({
-            'ip': ip,
-            'ua': request.user_agent.string[:120],
-            'at': datetime.now(UTC).isoformat(),
-        })
-        _session_log[sid] = _session_log[sid][-10:]
-
-        return jsonify({
-            'ok': True,
-            'logged_in': True,
-            'message': 'Welcome to RPG Ghost! 🎮',
-            'user': session['user'],
-            'is_admin': False
-        }), 201
-
-    except Exception as e:
-        log.error(f"[Signup] Database error: {e}")
-        return jsonify({
-            'ok': False,
-            'error': 'Something went wrong. Please try again.'
-        }), 500
-    finally:
-        if conn:
-            conn.close()
-
-@app.route('/api/login', methods=['POST'])
-def api_login():
-    """Log in with email and password."""
-    ip = _get_real_ip()
-
-    if _strict_rate_limit(ip, max_calls=10, window=300):
-        return jsonify({
-            'ok': False,
-            'error': 'Too many login attempts. Please wait a moment.'
-        }), 429
-
-    data = request.get_json(silent=True) or {}
-    email = str(data.get('email', '')).strip()
-    password = str(data.get('password', '')).strip()
-    keep_signed_in = bool(data.get('keep_signed_in', False))
-
-    if not email or not password:
-        return jsonify({'ok': False, 'error': 'Please fill in all fields.'}), 400
-
-    conn = None
-    try:
-        conn = _db()
-        user = conn.execute(
-            "SELECT auth_id, email, password_hash, nickname, avatar, bio, is_admin, created_at, last_login "
-            "FROM auth_users WHERE email = ?",
-            (email,)
-        ).fetchone()
-
-        if not user:
-            return jsonify({
-                'ok': False,
-                'error': 'Invalid email or password.'
-            }), 401
-
-        if not _verify_password(password, user['password_hash']):
-            return jsonify({
-                'ok': False,
-                'error': 'Invalid email or password.'
-            }), 401
-
-        # Update last login
-        conn.execute(
-            "UPDATE auth_users SET last_login = ? WHERE auth_id = ?",
-            (datetime.now(UTC).isoformat(), user['auth_id'])
-        )
-        conn.commit()
-
-        nickname = user['nickname'] or email.split('@')[0]
-        avatar_url = user['avatar'] or f"https://ui-avatars.com/api/?name={nickname}&background=5865F2&color=fff&size=64"
-
-        session.permanent = keep_signed_in
-
-        session['user'] = {
-            'discord_id': str(user['auth_id']),
-            'username': nickname,
-            'email': user['email'],
-            'avatar': avatar_url,
-            'bio': user['bio'] or '',
-            'level': 1,
-            'gold': 100,
-            'gems': 10,
-            'special_coins': 0,
-            'char_class': 'Adventurer',
-            'xp': 0,
-            'xp_needed': 100,
-            'login_at': datetime.now(UTC).isoformat(),
-            'ip': ip,
-            'auth_type': 'email',
-            'is_admin': bool(user['is_admin'])
-        }
-
-        sid = str(user['auth_id'])
-        _session_log.setdefault(sid, []).append({
-            'ip': ip,
-            'ua': request.user_agent.string[:120],
-            'at': datetime.now(UTC).isoformat(),
-        })
-        _session_log[sid] = _session_log[sid][-10:]
-
-        _log_activity(user['auth_id'], 'login', f'from {ip}')
-        log.info(f"[Login] {email} logged in successfully")
-
-        return jsonify({
-            'ok': True,
-            'logged_in': True,
-            'message': f'Welcome back, {nickname}! 🎉',
-            'user': session['user'],
-            'is_admin': bool(user['is_admin'])
-        })
-
-    except Exception as e:
-        log.error(f"[Login] Error: {e}")
-        return jsonify({
-            'ok': False,
-            'error': 'Something went wrong. Please try again.'
-        }), 500
-    finally:
-        if conn:
-            conn.close()
-
-@app.route('/api/register', methods=['POST'])
-def api_register_alias():
-    """Alias for /api/signup."""
-    return api_signup()
-
-@app.route('/api/me')
-def api_me():
-    """Get current user info."""
-    user = session.get('user')
-    if not user:
-        return jsonify({'logged_in': False})
-    return jsonify({'logged_in': True, **user})
-
-@app.route('/api/check-auth')
-def api_check_auth():
-    """Check if user is logged in."""
-    user = session.get('user')
-    if not user:
-        return jsonify({'logged_in': False})
-    return jsonify({'logged_in': True, 'user': user})
-
-@app.route('/logout')
-def logout():
-    """Log out the current user."""
-    u = session.pop('user', None)
-    if u:
-        _log_activity(u.get('discord_id', ''), "logout")
-    session.clear()
-    return redirect('/')
-
-# ── Password Reset ──────────────────────────────────────────────────────────
-_reset_tokens = {}
-
-def _purge_reset_tokens():
-    """Remove expired password-reset tokens."""
-    now = datetime.now(UTC)
-    expired = [k for k, v in _reset_tokens.items() if now > v['expires_at']]
-    for k in expired:
-        del _reset_tokens[k]
-
-@app.route('/api/profile', methods=['POST'])
-def api_update_profile():
-    """Update the logged-in user's nickname/bio."""
-    user = session.get('user')
-    if not user:
-        return jsonify({'ok': False, 'error': 'Not logged in'}), 401
-
-    data = request.get_json(silent=True) or {}
-    nickname = str(data.get('nickname', '')).strip()[:50]
-    bio = str(data.get('bio', '')).strip()[:500]
-
-    conn = None
-    try:
-        conn = _db()
-        if user.get('auth_type') == 'email':
-            conn.execute(
-                "UPDATE auth_users SET nickname = ?, bio = ? WHERE auth_id = ?",
-                (nickname or None, bio or None, int(user['discord_id']))
-            )
-            conn.commit()
-
-        # Keep the session in sync so the sidebar/UI reflect the change immediately
-        session['user']['username'] = nickname or user.get('username')
-        session['user']['bio'] = bio
-        session.modified = True
-
-        _log_activity(user.get('discord_id', ''), 'profile_update')
-        return jsonify({'ok': True, 'message': 'Profile updated.'})
-    except Exception as e:
-        log.error(f"[profile update] Error: {e}")
-        return jsonify({'ok': False, 'error': 'Something went wrong.'}), 500
-    finally:
-        if conn:
-            conn.close()
-
-@app.route('/api/delete-account', methods=['DELETE'])
-def api_delete_account():
-    """Allow a logged-in user to permanently delete their own account."""
-    ip = _get_real_ip()
-    user = session.get('user')
-    if not user:
-        return jsonify({'ok': False, 'error': 'Not logged in'}), 401
-
-    if user.get('is_admin', False):
-        return jsonify({
-            'ok': False,
-            'error': 'Admin accounts cannot self-delete. Ask another admin to revoke your admin status first.'
-        }), 403
-
-    if _strict_rate_limit(ip, max_calls=5, window=300):
-        return jsonify({'ok': False, 'error': 'Too many attempts. Please wait a moment.'}), 429
-
-    data = request.get_json(silent=True) or {}
-    password = str(data.get('password', ''))
-    user_id = user.get('discord_id')
-    auth_type = user.get('auth_type')
-
-    if not user_id:
-        return jsonify({'ok': False, 'error': 'Invalid session.'}), 400
-
-    conn = None
-    try:
-        conn = _db()
-
-        if auth_type == 'email':
-            row = conn.execute(
-                "SELECT password_hash FROM auth_users WHERE auth_id = ?", (int(user_id),)
-            ).fetchone()
-            if not row:
-                return jsonify({'ok': False, 'error': 'Account not found.'}), 404
-            if not password or not _verify_password(password, row['password_hash']):
-                return jsonify({'ok': False, 'error': 'Incorrect password.'}), 401
-            conn.execute("DELETE FROM auth_users WHERE auth_id = ?", (int(user_id),))
-
-        # Remove any game data tied to this account, regardless of auth type
-        conn.execute("DELETE FROM players WHERE user_id = ?", (int(user_id),))
-        conn.execute("DELETE FROM users WHERE user_id = ?", (int(user_id),))
-        conn.execute("DELETE FROM account_links WHERE discord_id = ?", (str(user_id),))
-        conn.commit()
-
-        _log_activity(user_id, 'account_deleted', f'self-delete from {ip}')
-        log.info(f"[Account] User {user_id} deleted their own account")
-
-        session.pop('user', None)
-        session.clear()
-
-        return jsonify({'ok': True, 'message': 'Account deleted.'})
-    except Exception as e:
-        log.error(f"[delete-account] Error: {e}")
-        return jsonify({'ok': False, 'error': 'Something went wrong. Please try again.'}), 500
-    finally:
-        if conn:
-            conn.close()
-
-@app.route('/api/password/request-reset', methods=['POST'])
-def api_password_request_reset():
-    """Request a password reset code."""
-    ip = _get_real_ip()
-
-    if _strict_rate_limit(ip, max_calls=5, window=600):
-        return jsonify({'ok': False, 'error': 'Too many requests. Please wait a few minutes.'}), 429
-
-    data = request.get_json(silent=True) or {}
-    email = str(data.get('email', '')).strip().lower()
-
-    if not email or '@' not in email:
-        return jsonify({'ok': False, 'error': 'Please enter a valid email address.'}), 400
-
-    _purge_reset_tokens()
-
-    otp = str(secrets.randbelow(900000) + 100000)
-    _reset_tokens[email] = {
-        'otp': otp,
-        'expires_at': datetime.now(UTC) + timedelta(minutes=5)
-    }
-
-    log.info(f'[Password Reset] OTP generated for {email[:20]}')
-
-    return jsonify({
-        'ok': True,
-        'message': 'If that email is registered, you will receive a reset code.',
-        'otp': otp
-    })
-
-@app.route('/api/password/verify-reset', methods=['POST'])
-def api_password_reset():
-    """Reset password using OTP."""
-    ip = _get_real_ip()
-
-    if _strict_rate_limit(ip, max_calls=8, window=300):
-        return jsonify({'ok': False, 'error': 'Too many attempts. Please wait a moment.'}), 429
-
-    data = request.get_json(silent=True) or {}
-    email = str(data.get('email', '')).strip().lower()
-    otp = str(data.get('otp', '')).strip()
-    new_password = str(data.get('new_password', '')).strip()
-
-    if not email:
-        return jsonify({'ok': False, 'error': 'Email address is required.'}), 400
-
-    if not otp or len(otp) != 6:
-        return jsonify({'ok': False, 'error': 'Please enter the 6-digit code.'}), 400
-
-    if len(new_password) < 6:
-        return jsonify({'ok': False, 'error': 'Password must be at least 6 characters.'}), 400
-
-    _purge_reset_tokens()
-    record = _reset_tokens.get(email)
-    if not record:
-        return jsonify({'ok': False, 'error': 'No reset request found.'}), 400
-
-    if datetime.now(UTC) > record['expires_at']:
-        _reset_tokens.pop(email, None)
-        return jsonify({'ok': False, 'error': 'The code has expired.'}), 400
-
-    if not hmac.compare_digest(record['otp'], otp):
-        return jsonify({'ok': False, 'error': 'Incorrect code.'}), 400
-
-    conn = None
-    try:
-        conn = _db()
-        existing = conn.execute("SELECT auth_id FROM auth_users WHERE email = ?", (email,)).fetchone()
-        if not existing:
-            return jsonify({'ok': False, 'error': 'No account found for that email.'}), 404
-
-        new_hash = _hash_password(new_password)
-        conn.execute("UPDATE auth_users SET password_hash = ? WHERE email = ?", (new_hash, email))
-        conn.commit()
-
-        _reset_tokens.pop(email, None)
-        _log_activity(existing['auth_id'], 'password_reset')
-
-        return jsonify({'ok': True, 'message': 'Password updated successfully!'})
-
-    except Exception as e:
-        log.error(f"[Password Reset] Error: {e}")
-        return jsonify({'ok': False, 'error': 'Something went wrong.'}), 500
-    finally:
-        if conn:
-            conn.close()
-
-# ── Admin Routes ─────────────────────────────────────────────────────────────
-@app.route('/api/admin/users')
-def api_admin_users():
-    """Get all users for admin panel."""
-    user = session.get('user')
-    if not user:
-        return jsonify({'ok': False, 'error': 'Not logged in'}), 401
-    
-    if not user.get('is_admin', False):
-        return jsonify({'ok': False, 'error': 'Admin access required'}), 403
-    
-    conn = None
-    try:
-        conn = _db()
-        users = conn.execute(
-            """SELECT auth_id, email, nickname, avatar, bio, is_admin, 
-                      created_at, last_login 
-               FROM auth_users 
-               ORDER BY auth_id DESC"""
-        ).fetchall()
-        
-        user_list = []
-        for u in users:
-            user_list.append({
-                'id': u['auth_id'],
-                'email': u['email'],
-                'nickname': u['nickname'] or '—',
-                'avatar': u['avatar'] or 'https://api.dicebear.com/7.x/avataaars/svg?seed=default',
-                'bio': u['bio'] or '—',
-                'is_admin': bool(u['is_admin']),
-                'created_at': u['created_at'],
-                'last_login': u['last_login'] or 'Never',
-                'is_online': str(u['auth_id']) in _session_log and bool(_session_log.get(str(u['auth_id'])))
-            })
-        
-        total_users = len(user_list)
-        online_users = sum(1 for u in user_list if u.get('is_online'))
-        
-        conn.close()
-        return jsonify({
-            'ok': True,
-            'users': user_list,
-            'stats': {
-                'total': total_users,
-                'online': online_users,
-                'admins': sum(1 for u in user_list if u['is_admin'])
-            }
-        })
-        
-    except Exception as e:
-        log.error(f"[Admin/users] Error: {e}")
-        return jsonify({'ok': False, 'error': str(e)}), 500
-    finally:
-        if conn:
-            conn.close()
-
-@app.route('/api/admin/users/<int:user_id>', methods=['DELETE'])
-def api_admin_delete_user(user_id):
-    """Delete a user (admin only)."""
-    user = session.get('user')
-    if not user or not user.get('is_admin', False):
-        return jsonify({'ok': False, 'error': 'Admin access required'}), 403
-    
-    if str(user_id) == user.get('discord_id'):
-        return jsonify({'ok': False, 'error': 'Cannot delete your own account'}), 400
-    
-    conn = None
-    try:
-        conn = _db()
-        existing = conn.execute(
-            "SELECT auth_id, is_admin FROM auth_users WHERE auth_id = ?", (user_id,)
-        ).fetchone()
-        
-        if not existing:
-            return jsonify({'ok': False, 'error': 'User not found'}), 404
-        
-        if existing['is_admin']:
-            return jsonify({'ok': False, 'error': 'Cannot delete admin accounts'}), 403
-        
-        conn.execute("DELETE FROM auth_users WHERE auth_id = ?", (user_id,))
-        conn.commit()
-        
-        log.info(f"[Admin] User {user_id} deleted by admin")
-        return jsonify({'ok': True, 'message': 'User deleted successfully'})
-        
-    except Exception as e:
-        log.error(f"[Admin/delete] Error: {e}")
-        return jsonify({'ok': False, 'error': str(e)}), 500
-    finally:
-        if conn:
-            conn.close()
-
-@app.route('/api/admin/users/<int:user_id>/toggle-admin', methods=['POST'])
-def api_admin_toggle_admin(user_id):
-    """Toggle admin status for a user."""
-    user = session.get('user')
-    if not user or not user.get('is_admin', False):
-        return jsonify({'ok': False, 'error': 'Admin access required'}), 403
-    
-    if str(user_id) == user.get('discord_id'):
-        return jsonify({'ok': False, 'error': 'Cannot modify your own admin status'}), 400
-    
-    conn = None
-    try:
-        conn = _db()
-        existing = conn.execute(
-            "SELECT auth_id, is_admin FROM auth_users WHERE auth_id = ?", (user_id,)
-        ).fetchone()
-        
-        if not existing:
-            return jsonify({'ok': False, 'error': 'User not found'}), 404
-        
-        new_status = 0 if existing['is_admin'] else 1
-        conn.execute(
-            "UPDATE auth_users SET is_admin = ? WHERE auth_id = ?",
-            (new_status, user_id)
-        )
-        conn.commit()
-        
-        return jsonify({
-            'ok': True, 
-            'is_admin': bool(new_status),
-            'message': f"Admin status {'granted' if new_status else 'revoked'}"
-        })
-        
-    except Exception as e:
-        log.error(f"[Admin/toggle-admin] Error: {e}")
-        return jsonify({'ok': False, 'error': str(e)}), 500
-    finally:
-        if conn:
-            conn.close()
-
-@app.route('/api/admin/stats')
-def api_admin_stats():
-    """Get admin statistics."""
-    user = session.get('user')
-    if not user or not user.get('is_admin', False):
-        return jsonify({'ok': False, 'error': 'Admin access required'}), 403
-    
-    try:
-        conn = _db()
-        total_users = conn.execute("SELECT COUNT(*) FROM auth_users").fetchone()[0]
-        active_sessions = len(_session_log)
-        
-        recent_activity = conn.execute(
-            "SELECT action, detail, ts FROM activity_log ORDER BY ts DESC LIMIT 20"
-        ).fetchall()
-        
-        conn.close()
-        
-        return jsonify({
-            'ok': True,
-            'stats': {
-                'total_users': total_users,
-                'active_sessions': active_sessions,
-                'total_requests': _global_req_count.get('n', 0),
-                'banned_ips': len([v for v in _ip_banned.values() if time.time() < v])
-            },
-            'recent_activity': [
-                {'action': r['action'], 'detail': r['detail'], 'ts': r['ts']} 
-                for r in recent_activity
-            ]
-        })
-    except Exception as e:
-        return jsonify({'ok': False, 'error': str(e)}), 500
-
-# ── Game Data Routes ─────────────────────────────────────────────────────────
+# ── Game Data Helpers ────────────────────────────────────────────────────────
 def get_player_game_data(user_id):
     """Get player game data from database."""
     conn = None
@@ -1134,7 +395,7 @@ def load_game_data():
 
         with _lock:
             cached_data = {'players': players, 'guilds': guilds, 'world_state': world_state}
-            last_updated = datetime.now(UTC)
+            last_updated = datetime.now(timezone.utc)
 
         log.info(f"[Dashboard] Refreshed — {len(players)} players, {len(guilds)} guilds")
     except Exception as e:
@@ -1146,9 +407,795 @@ def _bg_updater():
         load_game_data()
         time.sleep(UPDATE_INTERVAL)
 
-@app.route('/')
-@app.route('/dashboard')
-def index():
+# ── Password Reset (in-memory) ────────────────────────────────────────────
+_reset_tokens = {}
+
+def _purge_reset_tokens():
+    """Remove expired password-reset tokens."""
+    now = datetime.now(timezone.utc)
+    expired = [k for k, v in _reset_tokens.items() if now > v['expires_at']]
+    for k in expired:
+        del _reset_tokens[k]
+
+# ── FastAPI App Setup ─────────────────────────────────────────────────────────
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup/shutdown lifecycle, replacing Flask's imperative run_dashboard() setup."""
+    init_db()
+    ensure_admin_user()
+    load_game_data()
+    threading.Thread(target=_bg_updater, daemon=True).start()
+    yield
+    # (no shutdown cleanup needed)
+
+app = FastAPI(lifespan=lifespan)
+
+app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, max_age=SESSION_LIFETIME_SECONDS, same_site="lax")
+
+templates = Jinja2Templates(directory=os.path.join(BASE_DIR, 'templates'))
+
+STATIC_DIR = os.path.join(BASE_DIR, 'static')
+if not os.path.isdir(STATIC_DIR):
+    try:
+        os.makedirs(STATIC_DIR, exist_ok=True)
+        log.info(f"[static] Created missing static directory at {STATIC_DIR}")
+    except Exception as e:
+        log.warning(f"[static] Could not create static dir {STATIC_DIR}: {e}")
+app.mount('/static', StaticFiles(directory=STATIC_DIR), name='static')
+
+# ── DDoS Protection Middleware ──────────────────────────────────────────────
+def _add_security_headers(response, req_id=None):
+    """Shared header injection, applied on every exit path (mirrors Flask's
+    after_request, which runs even when before_request short-circuits)."""
+    if req_id:
+        response.headers['X-Request-ID'] = req_id
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    return response
+
+@app.middleware("http")
+async def ddos_guard(request: Request, call_next):
+    """Protect the app from DDoS and abuse (replaces before_request/after_request)."""
+    global _req_id_counter
+    ip = _get_real_ip(request)
+
+    if _is_banned(ip):
+        log.info(f"[DDoS] Blocked banned IP: {ip}")
+        return _add_security_headers(PlainTextResponse("Forbidden", status_code=403))
+
+    ua = (request.headers.get('user-agent', '') or '').lower()
+    if any(frag in ua for frag in DDOS_BLOCKED_UA_FRAGS):
+        _ban_ip(ip, f"bad UA: {ua[:60]}")
+        return _add_security_headers(PlainTextResponse("Forbidden", status_code=403))
+
+    if any(request.url.path.startswith(p) for p in DDOS_HONEYPOT_PATHS):
+        _ban_ip(ip, f"honeypot: {request.url.path}")
+        return _add_security_headers(PlainTextResponse("Not Found", status_code=404))
+
+    if _global_req_count['n'] >= DDOS_GLOBAL_CAP:
+        log.warning(f"[DDoS] Global cap hit ({_global_req_count['n']} reqs)")
+        return _add_security_headers(
+            PlainTextResponse("Service Unavailable", status_code=503, headers={'Retry-After': '5'})
+        )
+
+    _ip_connections[ip] += 1
+    if _ip_connections[ip] > DDOS_BURST_LIMIT:
+        _ban_ip(ip, f"burst: {_ip_connections[ip]} concurrent")
+        _ip_connections[ip] = 0
+        return _add_security_headers(
+            PlainTextResponse("Too Many Requests", status_code=429, headers={'Retry-After': '60'})
+        )
+
+    cl = request.headers.get('content-length')
+    if cl and int(cl) > DDOS_MAX_BODY_BYTES:
+        log.warning(f"[DDoS] Body too large from {ip}: {cl} bytes")
+        # Roll back the connection count we already incremented above.
+        _ip_connections[ip] = max(0, _ip_connections.get(ip, 1) - 1)
+        return _add_security_headers(PlainTextResponse("Request Too Large", status_code=413))
+
+    _global_req_count['n'] += 1
+    _req_id_counter += 1
+    request.state.req_id = f"{_req_id_counter:08x}"
+    request.state.req_ip = ip
+    request.state.req_start = time.monotonic()
+
+    response = await call_next(request)
+
+    _ip_connections[ip] = max(0, _ip_connections.get(ip, 1) - 1)
+    _global_req_count['n'] = max(0, _global_req_count['n'] - 1)
+
+    return _add_security_headers(response, req_id=getattr(request.state, 'req_id', None))
+
+# ── Discord OAuth ─────────────────────────────────────────────────────────────
+@app.get('/login/discord')
+async def discord_login():
+    """Redirect user to Discord for OAuth."""
+    params = {
+        'client_id': DISCORD_CLIENT_ID,
+        'redirect_uri': DISCORD_REDIRECT_URI,
+        'response_type': 'code',
+        'scope': 'identify email',
+    }
+    oauth_url = f"{DISCORD_API}/oauth2/authorize?{urlencode(params)}"
+    return RedirectResponse(oauth_url)
+
+@app.get('/callback')
+async def discord_callback(request: Request):
+    """Handle Discord OAuth callback."""
+    ip = _get_real_ip(request)
+    code = request.query_params.get('code')
+    error = request.query_params.get('error')
+
+    if error or not code:
+        log.warning(f"[OAuth] callback error param={error} code_present={bool(code)}")
+        return RedirectResponse('/?auth=failed')
+
+    token_res = http_requests.post(
+        f'{DISCORD_API}/oauth2/token',
+        data={
+            'client_id': DISCORD_CLIENT_ID,
+            'client_secret': DISCORD_CLIENT_SECRET,
+            'grant_type': 'authorization_code',
+            'code': code,
+            'redirect_uri': DISCORD_REDIRECT_URI,
+        },
+        headers={'Content-Type': 'application/x-www-form-urlencoded'},
+    )
+
+    if token_res.status_code != 200:
+        log.warning(f'[OAuth] Token exchange failed ({token_res.status_code}): {token_res.text}')
+        return RedirectResponse('/?auth=failed')
+
+    access_token = token_res.json().get('access_token')
+
+    user_res = http_requests.get(
+        f'{DISCORD_API}/users/@me',
+        headers={'Authorization': f'Bearer {access_token}'},
+    )
+
+    if user_res.status_code != 200:
+        log.warning(f'[OAuth] /users/@me failed ({user_res.status_code}): {user_res.text}')
+        return RedirectResponse('/?auth=failed')
+
+    discord_user = user_res.json()
+    user_id = int(discord_user['id'])
+    avatar_hash = discord_user.get('avatar')
+    avatar_url = (
+        f"https://cdn.discordapp.com/avatars/{user_id}/{avatar_hash}.png"
+        if avatar_hash
+        else f"https://cdn.discordapp.com/embed/avatars/{user_id % 5}.png"
+    )
+
+    game_data = get_player_game_data(user_id)
+
+    request.session['user'] = {
+        'discord_id': str(user_id),
+        'username': discord_user.get('global_name') or discord_user.get('username', 'Player'),
+        'email': discord_user.get('email', ''),
+        'avatar': avatar_url,
+        'level': game_data.get('level', 1),
+        'gold': game_data.get('gold', 0),
+        'gems': game_data.get('gems', 0),
+        'special_coins': game_data.get('special_coins', 0),
+        'char_class': game_data.get('char_class', '—'),
+        'xp': game_data.get('xp', 0),
+        'xp_needed': game_data.get('xp_needed', 100),
+        'login_at': datetime.now(UTC).isoformat(),
+        'ip': ip,
+        'auth_type': 'discord',
+        'is_admin': False
+    }
+
+    sid = str(user_id)
+    _session_log.setdefault(sid, []).append({
+        'ip': ip,
+        'ua': request.headers.get('user-agent', '')[:120],
+        'at': datetime.now(UTC).isoformat(),
+    })
+    _session_log[sid] = _session_log[sid][-10:]
+
+    try:
+        conn = _db()
+        conn.execute(
+            "INSERT INTO account_links (discord_id, last_login) VALUES (?,?) "
+            "ON CONFLICT(discord_id) DO UPDATE SET last_login=excluded.last_login",
+            (sid, datetime.now(UTC).isoformat()),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        log.warning(f"[login] account_links update failed: {e}")
+
+    _log_activity(user_id, "login", f"from {ip}")
+    log.info(f"[OAuth] Logged in: {request.session['user']['username']} (ID: {user_id})")
+
+    return RedirectResponse('/?auth=success')
+
+# ── Auth Routes ──────────────────────────────────────────────────────────────
+@app.post('/api/signup')
+async def api_signup(request: Request):
+    """Register a new email/password account."""
+    ip = _get_real_ip(request)
+
+    if _strict_rate_limit(ip, max_calls=8, window=600):
+        return _json({
+            'ok': False,
+            'error': 'Too many signup attempts. Please wait a few minutes.'
+        }, 429)
+
+    data = await _get_json(request)
+    email = str(data.get('email', '')).strip().lower()
+    password = str(data.get('password', '')).strip()
+    nickname = str(data.get('nickname', '')).strip() or email.split('@')[0]
+    recaptcha_token = data.get('recaptcha_token')
+
+    if not email or '@' not in email:
+        return _json({'ok': False, 'error': 'Please enter a valid email address.'}, 400)
+
+    if not password or len(password) < 6:
+        return _json({'ok': False, 'error': 'Password must be at least 6 characters.'}, 400)
+
+    if len(password) > 128:
+        return _json({'ok': False, 'error': 'Password is too long.'}, 400)
+
+    common_passwords = ['password', 'password1', '12345678', '123456789', 'qwerty123',
+                        'letmein', 'iloveyou', 'admin123', 'welcome1', 'monkey123']
+    if password.lower() in common_passwords:
+        return _json({'ok': False, 'error': 'That password is too common.'}, 400)
+
+    conn = None
+    try:
+        conn = _db()
+        existing = conn.execute(
+            "SELECT auth_id FROM auth_users WHERE email = ?", (email,)
+        ).fetchone()
+
+        if existing:
+            return _json({
+                'ok': False,
+                'error': 'This email is already registered.'
+            }, 400)
+
+        password_hash = _hash_password(password)
+        avatar_url = f"https://ui-avatars.com/api/?name={nickname}&background=5865F2&color=fff&size=64"
+
+        cursor = conn.execute(
+            """INSERT INTO auth_users (email, password_hash, nickname, avatar, created_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (email, password_hash, nickname, avatar_url, datetime.now(UTC).isoformat())
+        )
+        auth_id = cursor.lastrowid
+        conn.commit()
+
+        _log_activity(auth_id, 'signup', f'email={email}')
+        log.info(f"[Signup] New account created: {email} (ID: {auth_id})")
+
+        request.session['user'] = {
+            'discord_id': str(auth_id),
+            'username': nickname,
+            'email': email,
+            'avatar': avatar_url,
+            'level': 1,
+            'gold': 100,
+            'gems': 10,
+            'special_coins': 0,
+            'char_class': 'Adventurer',
+            'xp': 0,
+            'xp_needed': 100,
+            'login_at': datetime.now(UTC).isoformat(),
+            'ip': ip,
+            'auth_type': 'email',
+            'is_admin': False
+        }
+
+        sid = str(auth_id)
+        _session_log.setdefault(sid, []).append({
+            'ip': ip,
+            'ua': request.headers.get('user-agent', '')[:120],
+            'at': datetime.now(UTC).isoformat(),
+        })
+        _session_log[sid] = _session_log[sid][-10:]
+
+        return _json({
+            'ok': True,
+            'logged_in': True,
+            'message': 'Welcome to RPG Ghost! 🎮',
+            'user': request.session['user'],
+            'is_admin': False
+        }, 201)
+
+    except Exception as e:
+        log.error(f"[Signup] Database error: {e}")
+        return _json({
+            'ok': False,
+            'error': 'Something went wrong. Please try again.'
+        }, 500)
+    finally:
+        if conn:
+            conn.close()
+
+@app.post('/api/login')
+async def api_login(request: Request):
+    """Log in with email and password."""
+    ip = _get_real_ip(request)
+
+    if _strict_rate_limit(ip, max_calls=10, window=300):
+        return _json({
+            'ok': False,
+            'error': 'Too many login attempts. Please wait a moment.'
+        }, 429)
+
+    data = await _get_json(request)
+    email = str(data.get('email', '')).strip()
+    password = str(data.get('password', '')).strip()
+    keep_signed_in = bool(data.get('keep_signed_in', False))  # noqa: F841 (see session note above)
+
+    if not email or not password:
+        return _json({'ok': False, 'error': 'Please fill in all fields.'}, 400)
+
+    conn = None
+    try:
+        conn = _db()
+        user = conn.execute(
+            "SELECT auth_id, email, password_hash, nickname, avatar, bio, is_admin, created_at, last_login "
+            "FROM auth_users WHERE email = ?",
+            (email,)
+        ).fetchone()
+
+        if not user:
+            return _json({
+                'ok': False,
+                'error': 'Invalid email or password.'
+            }, 401)
+
+        if not _verify_password(password, user['password_hash']):
+            return _json({
+                'ok': False,
+                'error': 'Invalid email or password.'
+            }, 401)
+
+        # Update last login
+        conn.execute(
+            "UPDATE auth_users SET last_login = ? WHERE auth_id = ?",
+            (datetime.now(UTC).isoformat(), user['auth_id'])
+        )
+        conn.commit()
+
+        nickname = user['nickname'] or email.split('@')[0]
+        avatar_url = user['avatar'] or f"https://ui-avatars.com/api/?name={nickname}&background=5865F2&color=fff&size=64"
+
+        request.session['user'] = {
+            'discord_id': str(user['auth_id']),
+            'username': nickname,
+            'email': user['email'],
+            'avatar': avatar_url,
+            'bio': user['bio'] or '',
+            'level': 1,
+            'gold': 100,
+            'gems': 10,
+            'special_coins': 0,
+            'char_class': 'Adventurer',
+            'xp': 0,
+            'xp_needed': 100,
+            'login_at': datetime.now(UTC).isoformat(),
+            'ip': ip,
+            'auth_type': 'email',
+            'is_admin': bool(user['is_admin'])
+        }
+
+        sid = str(user['auth_id'])
+        _session_log.setdefault(sid, []).append({
+            'ip': ip,
+            'ua': request.headers.get('user-agent', '')[:120],
+            'at': datetime.now(UTC).isoformat(),
+        })
+        _session_log[sid] = _session_log[sid][-10:]
+
+        _log_activity(user['auth_id'], 'login', f'from {ip}')
+        log.info(f"[Login] {email} logged in successfully")
+
+        return _json({
+            'ok': True,
+            'logged_in': True,
+            'message': f'Welcome back, {nickname}! 🎉',
+            'user': request.session['user'],
+            'is_admin': bool(user['is_admin'])
+        })
+
+    except Exception as e:
+        log.error(f"[Login] Error: {e}")
+        return _json({
+            'ok': False,
+            'error': 'Something went wrong. Please try again.'
+        }, 500)
+    finally:
+        if conn:
+            conn.close()
+
+@app.post('/api/register')
+async def api_register_alias(request: Request):
+    """Alias for /api/signup."""
+    return await api_signup(request)
+
+@app.get('/api/me')
+async def api_me(request: Request):
+    """Get current user info."""
+    user = request.session.get('user')
+    if not user:
+        return {'logged_in': False}
+    return {'logged_in': True, **user}
+
+@app.get('/api/check-auth')
+async def api_check_auth(request: Request):
+    """Check if user is logged in."""
+    user = request.session.get('user')
+    if not user:
+        return {'logged_in': False}
+    return {'logged_in': True, 'user': user}
+
+@app.get('/logout')
+async def logout(request: Request):
+    """Log out the current user."""
+    u = request.session.pop('user', None)
+    if u:
+        _log_activity(u.get('discord_id', ''), "logout")
+    request.session.clear()
+    return RedirectResponse('/')
+
+@app.post('/api/profile')
+async def api_update_profile(request: Request):
+    """Update the logged-in user's nickname/bio."""
+    user = request.session.get('user')
+    if not user:
+        return _json({'ok': False, 'error': 'Not logged in'}, 401)
+
+    data = await _get_json(request)
+    nickname = str(data.get('nickname', '')).strip()[:50]
+    bio = str(data.get('bio', '')).strip()[:500]
+
+    conn = None
+    try:
+        conn = _db()
+        if user.get('auth_type') == 'email':
+            conn.execute(
+                "UPDATE auth_users SET nickname = ?, bio = ? WHERE auth_id = ?",
+                (nickname or None, bio or None, int(user['discord_id']))
+            )
+            conn.commit()
+
+        # Keep the session in sync so the sidebar/UI reflect the change immediately
+        session_user = dict(request.session['user'])
+        session_user['username'] = nickname or user.get('username')
+        session_user['bio'] = bio
+        request.session['user'] = session_user
+
+        _log_activity(user.get('discord_id', ''), 'profile_update')
+        return {'ok': True, 'message': 'Profile updated.'}
+    except Exception as e:
+        log.error(f"[profile update] Error: {e}")
+        return _json({'ok': False, 'error': 'Something went wrong.'}, 500)
+    finally:
+        if conn:
+            conn.close()
+
+@app.delete('/api/delete-account')
+async def api_delete_account(request: Request):
+    """Allow a logged-in user to permanently delete their own account."""
+    ip = _get_real_ip(request)
+    user = request.session.get('user')
+    if not user:
+        return _json({'ok': False, 'error': 'Not logged in'}, 401)
+
+    if user.get('is_admin', False):
+        return _json({
+            'ok': False,
+            'error': 'Admin accounts cannot self-delete. Ask another admin to revoke your admin status first.'
+        }, 403)
+
+    if _strict_rate_limit(ip, max_calls=5, window=300):
+        return _json({'ok': False, 'error': 'Too many attempts. Please wait a moment.'}, 429)
+
+    data = await _get_json(request)
+    password = str(data.get('password', ''))
+    user_id = user.get('discord_id')
+    auth_type = user.get('auth_type')
+
+    if not user_id:
+        return _json({'ok': False, 'error': 'Invalid session.'}, 400)
+
+    conn = None
+    try:
+        conn = _db()
+
+        if auth_type == 'email':
+            row = conn.execute(
+                "SELECT password_hash FROM auth_users WHERE auth_id = ?", (int(user_id),)
+            ).fetchone()
+            if not row:
+                return _json({'ok': False, 'error': 'Account not found.'}, 404)
+            if not password or not _verify_password(password, row['password_hash']):
+                return _json({'ok': False, 'error': 'Incorrect password.'}, 401)
+            conn.execute("DELETE FROM auth_users WHERE auth_id = ?", (int(user_id),))
+
+        # Remove any game data tied to this account, regardless of auth type
+        conn.execute("DELETE FROM players WHERE user_id = ?", (int(user_id),))
+        conn.execute("DELETE FROM users WHERE user_id = ?", (int(user_id),))
+        conn.execute("DELETE FROM account_links WHERE discord_id = ?", (str(user_id),))
+        conn.commit()
+
+        _log_activity(user_id, 'account_deleted', f'self-delete from {ip}')
+        log.info(f"[Account] User {user_id} deleted their own account")
+
+        request.session.pop('user', None)
+        request.session.clear()
+
+        return {'ok': True, 'message': 'Account deleted.'}
+    except Exception as e:
+        log.error(f"[delete-account] Error: {e}")
+        return _json({'ok': False, 'error': 'Something went wrong. Please try again.'}, 500)
+    finally:
+        if conn:
+            conn.close()
+
+@app.post('/api/password/request-reset')
+async def api_password_request_reset(request: Request):
+    """Request a password reset code."""
+    ip = _get_real_ip(request)
+
+    if _strict_rate_limit(ip, max_calls=5, window=600):
+        return _json({'ok': False, 'error': 'Too many requests. Please wait a few minutes.'}, 429)
+
+    data = await _get_json(request)
+    email = str(data.get('email', '')).strip().lower()
+
+    if not email or '@' not in email:
+        return _json({'ok': False, 'error': 'Please enter a valid email address.'}, 400)
+
+    _purge_reset_tokens()
+
+    otp = str(secrets.randbelow(900000) + 100000)
+    _reset_tokens[email] = {
+        'otp': otp,
+        'expires_at': datetime.now(UTC) + timedelta(minutes=5)
+    }
+
+    log.info(f'[Password Reset] OTP generated for {email[:20]}')
+
+    return {
+        'ok': True,
+        'message': 'If that email is registered, you will receive a reset code.',
+        'otp': otp
+    }
+
+@app.post('/api/password/verify-reset')
+async def api_password_reset(request: Request):
+    """Reset password using OTP."""
+    ip = _get_real_ip(request)
+
+    if _strict_rate_limit(ip, max_calls=8, window=300):
+        return _json({'ok': False, 'error': 'Too many attempts. Please wait a moment.'}, 429)
+
+    data = await _get_json(request)
+    email = str(data.get('email', '')).strip().lower()
+    otp = str(data.get('otp', '')).strip()
+    new_password = str(data.get('new_password', '')).strip()
+
+    if not email:
+        return _json({'ok': False, 'error': 'Email address is required.'}, 400)
+
+    if not otp or len(otp) != 6:
+        return _json({'ok': False, 'error': 'Please enter the 6-digit code.'}, 400)
+
+    if len(new_password) < 6:
+        return _json({'ok': False, 'error': 'Password must be at least 6 characters.'}, 400)
+
+    _purge_reset_tokens()
+    record = _reset_tokens.get(email)
+    if not record:
+        return _json({'ok': False, 'error': 'No reset request found.'}, 400)
+
+    if datetime.now(UTC) > record['expires_at']:
+        _reset_tokens.pop(email, None)
+        return _json({'ok': False, 'error': 'The code has expired.'}, 400)
+
+    if not hmac.compare_digest(record['otp'], otp):
+        return _json({'ok': False, 'error': 'Incorrect code.'}, 400)
+
+    conn = None
+    try:
+        conn = _db()
+        existing = conn.execute("SELECT auth_id FROM auth_users WHERE email = ?", (email,)).fetchone()
+        if not existing:
+            return _json({'ok': False, 'error': 'No account found for that email.'}, 404)
+
+        new_hash = _hash_password(new_password)
+        conn.execute("UPDATE auth_users SET password_hash = ? WHERE email = ?", (new_hash, email))
+        conn.commit()
+
+        _reset_tokens.pop(email, None)
+        _log_activity(existing['auth_id'], 'password_reset')
+
+        return {'ok': True, 'message': 'Password updated successfully!'}
+
+    except Exception as e:
+        log.error(f"[Password Reset] Error: {e}")
+        return _json({'ok': False, 'error': 'Something went wrong.'}, 500)
+    finally:
+        if conn:
+            conn.close()
+
+# ── Admin Routes ─────────────────────────────────────────────────────────────
+@app.get('/api/admin/users')
+async def api_admin_users(request: Request):
+    """Get all users for admin panel."""
+    user = request.session.get('user')
+    if not user:
+        return _json({'ok': False, 'error': 'Not logged in'}, 401)
+
+    if not user.get('is_admin', False):
+        return _json({'ok': False, 'error': 'Admin access required'}, 403)
+
+    conn = None
+    try:
+        conn = _db()
+        users = conn.execute(
+            """SELECT auth_id, email, nickname, avatar, bio, is_admin,
+                      created_at, last_login
+               FROM auth_users
+               ORDER BY auth_id DESC"""
+        ).fetchall()
+
+        user_list = []
+        for u in users:
+            user_list.append({
+                'id': u['auth_id'],
+                'email': u['email'],
+                'nickname': u['nickname'] or '—',
+                'avatar': u['avatar'] or 'https://api.dicebear.com/7.x/avataaars/svg?seed=default',
+                'bio': u['bio'] or '—',
+                'is_admin': bool(u['is_admin']),
+                'created_at': u['created_at'],
+                'last_login': u['last_login'] or 'Never',
+                'is_online': str(u['auth_id']) in _session_log and bool(_session_log.get(str(u['auth_id'])))
+            })
+
+        total_users = len(user_list)
+        online_users = sum(1 for u in user_list if u.get('is_online'))
+
+        conn.close()
+        return {
+            'ok': True,
+            'users': user_list,
+            'stats': {
+                'total': total_users,
+                'online': online_users,
+                'admins': sum(1 for u in user_list if u['is_admin'])
+            }
+        }
+
+    except Exception as e:
+        log.error(f"[Admin/users] Error: {e}")
+        return _json({'ok': False, 'error': str(e)}, 500)
+    finally:
+        if conn:
+            conn.close()
+
+@app.delete('/api/admin/users/{user_id}')
+async def api_admin_delete_user(user_id: int, request: Request):
+    """Delete a user (admin only)."""
+    user = request.session.get('user')
+    if not user or not user.get('is_admin', False):
+        return _json({'ok': False, 'error': 'Admin access required'}, 403)
+
+    if str(user_id) == user.get('discord_id'):
+        return _json({'ok': False, 'error': 'Cannot delete your own account'}, 400)
+
+    conn = None
+    try:
+        conn = _db()
+        existing = conn.execute(
+            "SELECT auth_id, is_admin FROM auth_users WHERE auth_id = ?", (user_id,)
+        ).fetchone()
+
+        if not existing:
+            return _json({'ok': False, 'error': 'User not found'}, 404)
+
+        if existing['is_admin']:
+            return _json({'ok': False, 'error': 'Cannot delete admin accounts'}, 403)
+
+        conn.execute("DELETE FROM auth_users WHERE auth_id = ?", (user_id,))
+        conn.commit()
+
+        log.info(f"[Admin] User {user_id} deleted by admin")
+        return {'ok': True, 'message': 'User deleted successfully'}
+
+    except Exception as e:
+        log.error(f"[Admin/delete] Error: {e}")
+        return _json({'ok': False, 'error': str(e)}, 500)
+    finally:
+        if conn:
+            conn.close()
+
+@app.post('/api/admin/users/{user_id}/toggle-admin')
+async def api_admin_toggle_admin(user_id: int, request: Request):
+    """Toggle admin status for a user."""
+    user = request.session.get('user')
+    if not user or not user.get('is_admin', False):
+        return _json({'ok': False, 'error': 'Admin access required'}, 403)
+
+    if str(user_id) == user.get('discord_id'):
+        return _json({'ok': False, 'error': 'Cannot modify your own admin status'}, 400)
+
+    conn = None
+    try:
+        conn = _db()
+        existing = conn.execute(
+            "SELECT auth_id, is_admin FROM auth_users WHERE auth_id = ?", (user_id,)
+        ).fetchone()
+
+        if not existing:
+            return _json({'ok': False, 'error': 'User not found'}, 404)
+
+        new_status = 0 if existing['is_admin'] else 1
+        conn.execute(
+            "UPDATE auth_users SET is_admin = ? WHERE auth_id = ?",
+            (new_status, user_id)
+        )
+        conn.commit()
+
+        return {
+            'ok': True,
+            'is_admin': bool(new_status),
+            'message': f"Admin status {'granted' if new_status else 'revoked'}"
+        }
+
+    except Exception as e:
+        log.error(f"[Admin/toggle-admin] Error: {e}")
+        return _json({'ok': False, 'error': str(e)}, 500)
+    finally:
+        if conn:
+            conn.close()
+
+@app.get('/api/admin/stats')
+async def api_admin_stats(request: Request):
+    """Get admin statistics."""
+    user = request.session.get('user')
+    if not user or not user.get('is_admin', False):
+        return _json({'ok': False, 'error': 'Admin access required'}, 403)
+
+    try:
+        conn = _db()
+        total_users = conn.execute("SELECT COUNT(*) FROM auth_users").fetchone()[0]
+        active_sessions = len(_session_log)
+
+        recent_activity = conn.execute(
+            "SELECT action, detail, ts FROM activity_log ORDER BY ts DESC LIMIT 20"
+        ).fetchall()
+
+        conn.close()
+
+        return {
+            'ok': True,
+            'stats': {
+                'total_users': total_users,
+                'active_sessions': active_sessions,
+                'total_requests': _global_req_count.get('n', 0),
+                'banned_ips': len([v for v in _ip_banned.values() if time.time() < v])
+            },
+            'recent_activity': [
+                {'action': r['action'], 'detail': r['detail'], 'ts': r['ts']}
+                for r in recent_activity
+            ]
+        }
+    except Exception as e:
+        return _json({'ok': False, 'error': str(e)}, 500)
+
+# ── Page Routes ──────────────────────────────────────────────────────────────
+@app.get('/')
+@app.get('/dashboard')
+async def index(request: Request):
     """Main dashboard page."""
     with _lock:
         data = cached_data.copy()
@@ -1180,50 +1227,50 @@ def index():
     ]
     guilds_list.sort(key=lambda g: (-g['member_count'], g['name']))
 
-    return render_template('dashboard.html',
-        num_players=len(players_list),
-        num_guilds=len(guilds_list),
-        players=players_list,
-        guilds=guilds_list,
-        invasion_active=world_state.get('invasion_active', False),
-        invasion_details=world_state.get('current_invasion', 'None'),
-        king=world_state.get('king', '—'),
-        season=world_state.get('season', 'Normal'),
-        weather=world_state.get('weather', 'Clear'),
-        active_events=world_state.get('active_events', []),
-        last_updated=updated.strftime('%Y-%m-%d %H:%M:%S') if updated else 'Never',
-    )
+    return templates.TemplateResponse(request, 'dashboard.html', {
+        'num_players': len(players_list),
+        'num_guilds': len(guilds_list),
+        'players': players_list,
+        'guilds': guilds_list,
+        'invasion_active': world_state.get('invasion_active', False),
+        'invasion_details': world_state.get('current_invasion', 'None'),
+        'king': world_state.get('king', '—'),
+        'season': world_state.get('season', 'Normal'),
+        'weather': world_state.get('weather', 'Clear'),
+        'active_events': world_state.get('active_events', []),
+        'last_updated': updated.strftime('%Y-%m-%d %H:%M:%S') if updated else 'Never',
+    })
 
-@app.route('/battle-log')
-def battle_log():
-    return render_template('battle-log.html')
+@app.get('/battle-log')
+async def battle_log(request: Request):
+    return templates.TemplateResponse(request, 'battle-log.html', {})
 
-@app.route('/inventory')
-def inventory():
-    return render_template('inventory.html')
+@app.get('/inventory')
+async def inventory(request: Request):
+    return templates.TemplateResponse(request, 'inventory.html', {})
 
-@app.route('/quest-board')
-def quest_board():
-    return render_template('quest-board.html')
+@app.get('/quest-board')
+async def quest_board(request: Request):
+    return templates.TemplateResponse(request, 'quest-board.html', {})
 
-@app.route('/guild-hall')
-def guild_hall():
-    return render_template('guild-hall.html')
+@app.get('/guild-hall')
+async def guild_hall(request: Request):
+    return templates.TemplateResponse(request, 'guild-hall.html', {})
 
-@app.route('/settings')
-def settings():
-    return render_template('settings.html')
+@app.get('/settings')
+async def settings(request: Request):
+    return templates.TemplateResponse(request, 'settings.html', {})
 
 # ── API Routes ──────────────────────────────────────────────────────────────
-@app.route('/api/stats')
-def api_stats():
+@app.get('/api/stats')
+async def api_stats():
     """Get server stats."""
     with _lock:
         data = cached_data.copy()
         updated = last_updated
 
     ws = data.get('world_state', {})
-    return jsonify({
+    return {
         'num_players': len(data.get('players', {})),
         'num_guilds': len(data.get('guilds', {})),
         'last_updated': updated.strftime('%Y-%m-%d %H:%M:%S') if updated else None,
@@ -1231,10 +1278,10 @@ def api_stats():
         'battles': ws.get('total_battles', 0),
         'uptime': ws.get('uptime', '—'),
         'cmd_count': ws.get('command_count', 0),
-    })
+    }
 
-@app.route('/api/leaderboard')
-def api_leaderboard():
+@app.get('/api/leaderboard')
+async def api_leaderboard():
     """Get full leaderboard."""
     with _lock:
         data = cached_data.copy()
@@ -1259,10 +1306,10 @@ def api_leaderboard():
         })
 
     pl.sort(key=lambda p: (-p['level'], -p['xp'], p['name']))
-    return jsonify({'leaderboard': pl[:50], 'total': len(pl)})
+    return {'leaderboard': pl[:50], 'total': len(pl)}
 
-@app.route('/api/activity/<user_id>')
-def api_activity(user_id):
+@app.get('/api/activity/{user_id}')
+async def api_activity(user_id: str):
     """Get user activity log."""
     try:
         conn = _db()
@@ -1272,24 +1319,24 @@ def api_activity(user_id):
             (str(user_id),),
         ).fetchall()
         conn.close()
-        return jsonify({
+        return {
             'items': [{'action': r['action'], 'detail': r['detail'], 'ts': r['ts']} for r in rows]
-        })
+        }
     except Exception as e:
         log.error(f"[api/activity] error: {e}")
-        return jsonify({'items': []}), 500
+        return _json({'items': []}, 500)
 
-@app.route('/api/inventory/<user_id>')
-def api_inventory(user_id):
+@app.get('/api/inventory/{user_id}')
+async def api_inventory(user_id: str):
     """Get a player's inventory items."""
     try:
         uid = int(user_id)
     except (ValueError, TypeError):
-        return jsonify({'items': []}), 400
+        return _json({'items': []}, 400)
 
     game = get_player_game_data(uid)
     if not game:
-        return jsonify({'items': []}), 404
+        return _json({'items': []}, 404)
 
     raw_inventory = game.get('inventory', {})
     items = []
@@ -1315,10 +1362,10 @@ def api_inventory(user_id):
             else:
                 items.append({'name': str(entry), 'quantity': 1, 'rarity': 'common'})
 
-    return jsonify({'items': items})
+    return {'items': items}
 
-@app.route('/api/auctions')
-def api_auctions():
+@app.get('/api/auctions')
+async def api_auctions():
     """Get active auctions."""
     try:
         conn = _db()
@@ -1347,17 +1394,17 @@ def api_auctions():
                 'top_bidder': str(r['highest_bidder']) if r['highest_bidder'] else None,
                 'bid_history': [],
             })
-        return jsonify({'auctions': auctions})
+        return {'auctions': auctions}
     except Exception as e:
         log.warning(f'[api/auctions] {e}')
-        return jsonify({'auctions': []}), 200
+        return _json({'auctions': []}, 200)
 
-@app.route('/api/profile')
-def api_profile():
+@app.get('/api/profile')
+async def api_profile(request: Request):
     """Get logged-in user's profile."""
-    user = session.get('user')
+    user = request.session.get('user')
     if not user:
-        return jsonify({'logged_in': False})
+        return {'logged_in': False}
 
     nickname = user.get('username')
     avatar = user.get('avatar')
@@ -1378,21 +1425,30 @@ def api_profile():
         except Exception as e:
             log.warning(f"[profile] lookup failed: {e}")
 
-    return jsonify({'logged_in': True, 'nickname': nickname, 'avatar': avatar, 'bio': bio})
+    return {'logged_in': True, 'nickname': nickname, 'avatar': avatar, 'bio': bio}
 
-# ── Main Entry Point ────────────────────────────────────────────────────────
 def run_dashboard():
     """Start the dashboard server."""
-    init_db()
-    ensure_admin_user()
-    load_game_data()
-    threading.Thread(target=_bg_updater, daemon=True).start()
-    app.run(
-        host="0.0.0.0",
-        port=25507,
-        debug=False,
-        use_reloader=False
-    )
+    host = "127.0.0.1"
+    port = 25507
+
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind((host, port))
+    except OSError:
+        # desired port is in use; pick an ephemeral free port
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind((host, 0))
+                free_port = s.getsockname()[1]
+            log.warning(f"[Dashboard] Port {port} in use; switching to {free_port}")
+            port = free_port
+        except Exception as e:
+            log.error(f"[Dashboard] Failed to find free port: {e}")
+            raise SystemExit(1)
+
+    uvicorn.run(app, host=host, port=port, log_level="info")
 
 if __name__ == '__main__':
     run_dashboard()
