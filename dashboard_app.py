@@ -69,7 +69,7 @@ DDOS_MAX_BODY_BYTES = 65536
 DDOS_BLOCKED_UA_FRAGS = [
     'sqlmap', 'nikto', 'nmap', 'masscan', 'zgrab',
     'python-requests/2.18', 'curl/7.29', 'dirbuster',
-    'libwww-perl',
+    'go-http-client/1', 'libwww-perl',
 ]
 DDOS_HONEYPOT_PATHS = [
     '/wp-admin', '/wp-login', '/.env', '/admin.php',
@@ -1193,6 +1193,7 @@ async def api_admin_stats(request: Request):
         return _json({'ok': False, 'error': str(e)}, 500)
 
 # ── Page Routes ──────────────────────────────────────────────────────────────
+@app.head('/')
 @app.get('/')
 @app.get('/dashboard')
 async def index(request: Request):
