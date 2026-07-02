@@ -1430,7 +1430,7 @@ async def api_profile(request: Request):
 def run_dashboard():
     """Start the dashboard server."""
     host = "0.0.0.0"
-    port = 8000
+    port = 25507
 
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
