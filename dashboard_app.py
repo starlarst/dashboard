@@ -69,7 +69,7 @@ DDOS_MAX_BODY_BYTES = 65536
 DDOS_BLOCKED_UA_FRAGS = [
     'sqlmap', 'nikto', 'nmap', 'masscan', 'zgrab',
     'python-requests/2.18', 'curl/7.29', 'dirbuster',
-    'go-http-client/1', 'libwww-perl',
+    'libwww-perl',
 ]
 DDOS_HONEYPOT_PATHS = [
     '/wp-admin', '/wp-login', '/.env', '/admin.php',
