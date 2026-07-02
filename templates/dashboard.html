@@ -16,7 +16,7 @@
     <script src="https://www.google.com/recaptcha/api.js?render=6LfdHyEtAAAAAJ34WMBrqoIc_Um2YqTE1jX-Lmkz">
     </script>
 
-    <link rel="stylesheet" href="{{ url_for('static', filename='dashboard.css') }}" />
+    <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}" />
 </head>
 <body>
 
@@ -438,6 +438,6 @@
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='dashboard.js') }}"></script>
+    <script src="{{ url_for('static', path='dashboard.js') }}"></script>
 </body>
 </html>
