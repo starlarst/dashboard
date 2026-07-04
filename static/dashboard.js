@@ -57,6 +57,34 @@ document.addEventListener('DOMContentLoaded', () => {
 // ════════════════════════════════════════════════════════════════════
 // AUTH CHECK
 // ════════════════════════════════════════════════════════════════════
+async function sendAnnouncement() {
+    const message = document.getElementById('announceMsg').value.trim();
+    if (!message) return showToast('Enter a message first');
+    try {
+        const res = await fetch('/api/admin/announce', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message })
+        });
+        const data = await res.json();
+        showToast(data.ok ? 'Announcement sent!' : (data.error || 'Failed'));
+    } catch (e) { showToast('Request failed'); }
+}
+
+async function giveGold() {
+    const user_id = document.getElementById('goldUserId').value.trim();
+    const amount = parseInt(document.getElementById('goldAmount').value, 10);
+    if (!user_id || !amount) return showToast('Enter user ID and amount');
+    try {
+        const res = await fetch('/api/admin/give-gold', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id, amount })
+        });
+        const data = await res.json();
+        showToast(data.ok ? `Gave ${amount} gold to ${user_id}` : (data.error || 'Failed'));
+    } catch (e) { showToast('Request failed'); }
+}
 async function checkAuth() {
     const params = new URLSearchParams(window.location.search);
     const authStatus = params.get('auth');
