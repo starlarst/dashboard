@@ -397,6 +397,29 @@
                             </table>
                         </div>
                     </div>
+                    <!-- Bot Control Panel -->
+<div style="margin-top: 1.5rem;">
+    <h3 style="font-family: 'Orbitron', sans-serif; font-size: 0.9rem; color: var(--bone-white);">
+        <i class="fa-solid fa-robot" style="color: var(--spectral-teal);"></i> Bot Control
+    </h3>
+
+    <!-- Announce -->
+    <div class="admin-panel-card" style="margin-top:0.8rem; padding:1rem;">
+        <label style="display:block; margin-bottom:0.5rem; font-size:0.8rem; color:#aaa;">Send Announcement</label>
+        <textarea id="announceMsg" placeholder="Message to broadcast..." style="width:100%; min-height:70px; margin-bottom:0.6rem;"></textarea>
+        <button onclick="sendAnnouncement()" class="admin-btn"><i class="fa-solid fa-bullhorn"></i> Send</button>
+    </div>
+
+    <!-- Give Gold -->
+    <div class="admin-panel-card" style="margin-top:0.8rem; padding:1rem;">
+        <label style="display:block; margin-bottom:0.5rem; font-size:0.8rem; color:#aaa;">Give Gold</label>
+        <div style="display:flex; gap:0.6rem; flex-wrap:wrap;">
+            <input type="text" id="goldUserId" placeholder="Discord User ID" style="flex:1;" />
+            <input type="number" id="goldAmount" placeholder="Amount" style="width:120px;" />
+            <button onclick="giveGold()" class="admin-btn"><i class="fa-solid fa-coins"></i> Give</button>
+        </div>
+    </div>
+</div>
                 </div>
             </div>
         </main>
