@@ -51,6 +51,18 @@ if not BOT_LINK_SECRET:
 DISCORD_BOT_TOKEN = os.getenv('DISCORD_BOT_TOKEN', '')
 DISCORD_GUILD_ID = '1466740140163731488'
 DISCORD_BID_CHANNEL = '1492784006658396301'
+BOT_API_URL = os.getenv('BOT_API_URL', 'http://bot.rpghost.qzz.io:25509')
+
+async def _call_bot(method: str, path: str, json_body: dict = None):
+    """Call the bot's own HTTP API directly (two-way comms)."""
+    import aiohttp
+    headers = {"Authorization": f"Bearer {BOT_LINK_SECRET}"}
+    async with aiohttp.ClientSession() as session:
+        async with session.request(
+            method, f"{BOT_API_URL}{path}", json=json_body, headers=headers,
+            timeout=aiohttp.ClientTimeout(total=10),
+        ) as res:
+            return res.status, await res.json()
 
 # ── In-memory storage ──────────────────────────────────────────────────
 _link_tokens = {}
@@ -66,6 +78,7 @@ DDOS_BURST_LIMIT = 40
 DDOS_GLOBAL_CAP = 500
 DDOS_BAN_DURATION = 3600
 DDOS_MAX_BODY_BYTES = 65536
+DDOS_SYNC_MAX_BODY_BYTES = 8 * 1024 * 1024  # 8MB — /api/sync carries the bot's full game-data dump
 DDOS_BLOCKED_UA_FRAGS = [
     'sqlmap', 'nikto', 'nmap', 'masscan', 'zgrab',
     'python-requests/2.18', 'curl/7.29', 'dirbuster',
@@ -489,8 +502,13 @@ async def ddos_guard(request: Request, call_next):
         )
 
     cl = request.headers.get('content-length')
-    if cl and int(cl) > DDOS_MAX_BODY_BYTES:
-        log.warning(f"[DDoS] Body too large from {ip}: {cl} bytes")
+    # /api/sync carries the bot's full players/guilds/world_state dump, which
+    # easily exceeds the normal per-request cap as the player count grows.
+    # It's already authenticated separately (BOT_LINK_SECRET) inside the route,
+    # so it gets a much higher ceiling instead of the generic DDoS limit.
+    body_limit = DDOS_SYNC_MAX_BODY_BYTES if request.url.path == '/api/sync' else DDOS_MAX_BODY_BYTES
+    if cl and int(cl) > body_limit:
+        log.warning(f"[DDoS] Body too large from {ip}: {cl} bytes (limit {body_limit})")
         # Roll back the connection count we already incremented above.
         _ip_connections[ip] = max(0, _ip_connections.get(ip, 1) - 1)
         return _add_security_headers(PlainTextResponse("Request Too Large", status_code=413))
@@ -562,6 +580,34 @@ async def api_sync(request: Request):
     load_game_data()  # refresh in-memory cache immediately instead of waiting for the 30s poll
     log.info(f"[SYNC] received push: {len(players)} players, {len(guilds)} guilds")
     return _json({'ok': True, 'received': {'players': len(players), 'guilds': len(guilds)}})
+
+@app.post('/api/admin/give-gold')
+async def api_give_gold(request: Request):
+    """Example two-way call: dashboard tells the bot to grant gold live."""
+    data = await _get_json(request)
+    try:
+        status, body = await _call_bot("POST", "/api/bot/give-gold", {
+            "user_id": data["user_id"],
+            "amount": data["amount"],
+        })
+    except Exception as e:
+        log.error(f"[BOT-CALL] give-gold failed: {e}")
+        return _json({'ok': False, 'error': 'could not reach bot'}, 502)
+    return _json(body, status)
+
+@app.post('/api/admin/announce')
+async def api_announce(request: Request):
+    """Example two-way call: dashboard tells the bot to post a Discord message."""
+    data = await _get_json(request)
+    try:
+        status, body = await _call_bot("POST", "/api/bot/announce", {
+            "message": data.get("message", ""),
+            "channel_id": data.get("channel_id"),
+        })
+    except Exception as e:
+        log.error(f"[BOT-CALL] announce failed: {e}")
+        return _json({'ok': False, 'error': 'could not reach bot'}, 502)
+    return _json(body, status)
 
 # ── Discord OAuth ─────────────────────────────────────────────────────────────
 @app.get('/login/discord')
