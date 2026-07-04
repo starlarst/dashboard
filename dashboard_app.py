@@ -677,6 +677,20 @@ async def discord_callback(request: Request):
 
     game_data = get_player_game_data(user_id)
 
+    # Look up admin flag for this Discord user from auth_users (keyed by discord_id
+    # stored as the auth_id for Discord-linked accounts, if such a row exists).
+    is_admin = False
+    try:
+        conn = _db()
+        row = conn.execute(
+            "SELECT is_admin FROM auth_users WHERE auth_id = ?", (user_id,)
+        ).fetchone()
+        conn.close()
+        if row:
+            is_admin = bool(row['is_admin'])
+    except Exception as e:
+        log.warning(f"[OAuth] is_admin lookup failed: {e}")
+
     request.session['user'] = {
         'discord_id': str(user_id),
         'username': discord_user.get('global_name') or discord_user.get('username', 'Player'),
@@ -692,7 +706,7 @@ async def discord_callback(request: Request):
         'login_at': datetime.now(UTC).isoformat(),
         'ip': ip,
         'auth_type': 'discord',
-        'is_admin': False
+        'is_admin': is_admin
     }
 
     sid = str(user_id)
@@ -932,6 +946,25 @@ async def api_me(request: Request):
     user = request.session.get('user')
     if not user:
         return {'logged_in': False}
+
+    # Re-check is_admin against the DB so promotions/demotions via the admin
+    # panel take effect immediately, without requiring the user to log out.
+    try:
+        conn = _db()
+        row = conn.execute(
+            "SELECT is_admin FROM auth_users WHERE auth_id = ?",
+            (int(user['discord_id']),)
+        ).fetchone()
+        conn.close()
+        if row is not None:
+            fresh_is_admin = bool(row['is_admin'])
+            if fresh_is_admin != user.get('is_admin', False):
+                user = dict(user)
+                user['is_admin'] = fresh_is_admin
+                request.session['user'] = user
+    except Exception as e:
+        log.warning(f"[api/me] is_admin refresh failed: {e}")
+
     return {'logged_in': True, **user}
 
 @app.get('/api/check-auth')
@@ -1573,6 +1606,7 @@ async def api_profile(request: Request):
             log.warning(f"[profile] lookup failed: {e}")
 
     return {'logged_in': True, 'nickname': nickname, 'avatar': avatar, 'bio': bio, 'is_admin': is_admin}
+
 def run_dashboard():
     """Start the dashboard server."""
     host = "0.0.0.0"
