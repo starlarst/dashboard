@@ -478,12 +478,18 @@ async def ddos_guard(request: Request, call_next):
         log.info(f"[DDoS] Blocked banned IP: {ip}")
         return _add_security_headers(PlainTextResponse("Forbidden", status_code=403))
 
+    # Render's own health checker (and most uptime monitors) sends HEAD requests
+    # with generic HTTP-library user-agents. Those would otherwise get caught by
+    # DDOS_BLOCKED_UA_FRAGS below and get Render's health check IP banned,
+    # which stops the app from ever passing Render's port/startup check.
+    is_health_check = request.method == 'HEAD'
+
     ua = (request.headers.get('user-agent', '') or '').lower()
-    if any(frag in ua for frag in DDOS_BLOCKED_UA_FRAGS):
+    if not is_health_check and any(frag in ua for frag in DDOS_BLOCKED_UA_FRAGS):
         _ban_ip(ip, f"bad UA: {ua[:60]}")
         return _add_security_headers(PlainTextResponse("Forbidden", status_code=403))
 
-    if any(request.url.path.startswith(p) for p in DDOS_HONEYPOT_PATHS):
+    if not is_health_check and any(request.url.path.startswith(p) for p in DDOS_HONEYPOT_PATHS):
         _ban_ip(ip, f"honeypot: {request.url.path}")
         return _add_security_headers(PlainTextResponse("Not Found", status_code=404))
 
@@ -1531,8 +1537,8 @@ async def api_profile(request: Request):
 
 def run_dashboard():
     """Start the dashboard server."""
-    host = "127.0.0.1"
-    port = 25507
+    host = "0.0.0.0"
+    port = int(os.environ.get("PORT", 25507))
 
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
