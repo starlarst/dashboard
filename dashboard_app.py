@@ -1224,6 +1224,43 @@ async def api_admin_delete_user(user_id: int, request: Request):
     finally:
         if conn:
             conn.close()
+@app.post('/api/admin/announce')
+async def api_admin_announce(request: Request):
+    """Admin-only: broadcast a message via the bot."""
+    user = request.session.get('user')
+    if not user or not user.get('is_admin'):
+        return JSONResponse({'ok': False, 'error': 'forbidden'}, status_code=403)
+
+    body = await request.json()
+    message = (body.get('message') or '').strip()
+    if not message:
+        return JSONResponse({'ok': False, 'error': 'message required'}, status_code=400)
+
+    status, resp = await _call_bot("POST", "/api/bot/announce", {
+        "channel_id": DISCORD_BID_CHANNEL,
+        "message": message,
+    })
+    return JSONResponse(resp, status_code=status)
+
+
+@app.post('/api/admin/give-gold')
+async def api_admin_give_gold(request: Request):
+    """Admin-only: grant gold to a user via the bot."""
+    user = request.session.get('user')
+    if not user or not user.get('is_admin'):
+        return JSONResponse({'ok': False, 'error': 'forbidden'}, status_code=403)
+
+    body = await request.json()
+    user_id = body.get('user_id')
+    amount = body.get('amount')
+    if not user_id or not isinstance(amount, (int, float)):
+        return JSONResponse({'ok': False, 'error': 'user_id and amount required'}, status_code=400)
+
+    status, resp = await _call_bot("POST", "/api/bot/give-gold", {
+        "user_id": user_id,
+        "amount": amount,
+    })
+    return JSONResponse(resp, status_code=status) 
 
 @app.post('/api/admin/users/{user_id}/toggle-admin')
 async def api_admin_toggle_admin(user_id: int, request: Request):
