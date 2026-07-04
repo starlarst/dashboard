@@ -659,6 +659,8 @@ body.sidebar-is-collapsed .main-content {
     align-items: center;
     margin-bottom: 2.5rem; flex-wrap: wrap; gap: 1.5rem;
     animation: fadeSlide 0.5s var(--ease) both;
+    position: relative;
+    z-index: 10;
 }
 
 .page-eyebrow {
@@ -1577,7 +1579,7 @@ body.sidebar-is-collapsed .main-content {
 
 @keyframes fadeSlide {
     from { opacity: 0; transform: translateY(20px); }
-    to   { opacity: 1; transform: translateY(0); }
+    to   { opacity: 1; }
 }
 
 @keyframes panelFade {
