@@ -508,6 +508,61 @@ async def ddos_guard(request: Request, call_next):
 
     return _add_security_headers(response, req_id=getattr(request.state, 'req_id', None))
 
+# ── Bot → Dashboard Sync ──────────────────────────────────────────────────────
+# The bot and dashboard now run on separate hosts (AxisNodes + Render) and no
+# longer share a filesystem, so the old approach of both processes reading the
+# same local veyra.db file no longer works. Instead, the bot pushes its
+# players/guilds/world_state data here over HTTPS, authenticated with the same
+# BOT_LINK_SECRET already used for account linking. This endpoint writes that
+# data into this dashboard's own local DB and refreshes the in-memory cache.
+@app.post('/api/sync')
+async def api_sync(request: Request):
+    """Receive a full game-data sync push from the bot."""
+    data = await _get_json(request)
+
+    if not hmac.compare_digest(str(data.get('bot_secret', '')), BOT_LINK_SECRET):
+        log.warning("[SYNC] rejected push with invalid bot_secret")
+        return _json({'ok': False, 'error': 'unauthorized'}, 401)
+
+    players = data.get('players', {})
+    guilds = data.get('guilds', {})
+    world_state = data.get('world_state', {})
+
+    if not isinstance(players, dict) or not isinstance(guilds, dict) or not isinstance(world_state, dict):
+        return _json({'ok': False, 'error': 'malformed payload'}, 400)
+
+    conn = None
+    try:
+        conn = _db()
+        for user_id, pdata in players.items():
+            conn.execute(
+                "INSERT INTO players (user_id, data, last_updated) VALUES (?, ?, CURRENT_TIMESTAMP) "
+                "ON CONFLICT(user_id) DO UPDATE SET data=excluded.data, last_updated=CURRENT_TIMESTAMP",
+                (int(user_id), json.dumps(pdata)),
+            )
+        for name, gdata in guilds.items():
+            conn.execute(
+                "INSERT INTO guilds (name, data, last_updated) VALUES (?, ?, CURRENT_TIMESTAMP) "
+                "ON CONFLICT(name) DO UPDATE SET data=excluded.data, last_updated=CURRENT_TIMESTAMP",
+                (name, json.dumps(gdata)),
+            )
+        conn.execute(
+            "INSERT INTO world_state (id, data, last_updated) VALUES (1, ?, CURRENT_TIMESTAMP) "
+            "ON CONFLICT(id) DO UPDATE SET data=excluded.data, last_updated=CURRENT_TIMESTAMP",
+            (json.dumps(world_state),),
+        )
+        conn.commit()
+    except Exception as e:
+        log.error(f"[SYNC] failed to write payload: {e}")
+        return _json({'ok': False, 'error': 'internal error'}, 500)
+    finally:
+        if conn:
+            conn.close()
+
+    load_game_data()  # refresh in-memory cache immediately instead of waiting for the 30s poll
+    log.info(f"[SYNC] received push: {len(players)} players, {len(guilds)} guilds")
+    return _json({'ok': True, 'received': {'players': len(players), 'guilds': len(guilds)}})
+
 # ── Discord OAuth ─────────────────────────────────────────────────────────────
 @app.get('/login/discord')
 async def discord_login():
@@ -1430,7 +1485,7 @@ async def api_profile(request: Request):
 
 def run_dashboard():
     """Start the dashboard server."""
-    host = "0.0.0.0"
+    host = "127.0.0.1"
     port = 25507
 
     try:
