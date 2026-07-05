@@ -50,7 +50,7 @@ if not BOT_LINK_SECRET:
 
 DISCORD_BOT_TOKEN = os.getenv('DISCORD_BOT_TOKEN', '')
 DISCORD_GUILD_ID = '1466740140163731488'
-DISCORD_BID_CHANNEL = 1466835513074778383
+DISCORD_BID_CHANNEL = 1413219269545693332
 BOT_API_URL = os.getenv('BOT_API_URL', 'http://bot.rpghost.qzz.io:25509')
 
 async def _call_bot(method: str, path: str, json_body: dict = None):
