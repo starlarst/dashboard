@@ -50,7 +50,7 @@ if not BOT_LINK_SECRET:
 
 DISCORD_BOT_TOKEN = os.getenv('DISCORD_BOT_TOKEN', '')
 DISCORD_GUILD_ID = '1466740140163731488'
-DISCORD_BID_CHANNEL = '1492784006658396301'
+DISCORD_BID_CHANNEL = 1466835513074778383
 BOT_API_URL = os.getenv('BOT_API_URL', 'http://bot.rpghost.qzz.io:25509')
 
 async def _call_bot(method: str, path: str, json_body: dict = None):
@@ -445,6 +445,10 @@ app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, max_age=SESSION_LIFETIME_SECONDS, same_site="lax")
 
+from routes_profile import register_profile_routes
+register_profile_routes(app)
+
+
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, 'templates'))
 
 STATIC_DIR = os.path.join(BASE_DIR, 'static')
@@ -677,20 +681,6 @@ async def discord_callback(request: Request):
 
     game_data = get_player_game_data(user_id)
 
-    # Look up admin flag for this Discord user from auth_users (keyed by discord_id
-    # stored as the auth_id for Discord-linked accounts, if such a row exists).
-    is_admin = False
-    try:
-        conn = _db()
-        row = conn.execute(
-            "SELECT is_admin FROM auth_users WHERE auth_id = ?", (user_id,)
-        ).fetchone()
-        conn.close()
-        if row:
-            is_admin = bool(row['is_admin'])
-    except Exception as e:
-        log.warning(f"[OAuth] is_admin lookup failed: {e}")
-
     request.session['user'] = {
         'discord_id': str(user_id),
         'username': discord_user.get('global_name') or discord_user.get('username', 'Player'),
@@ -706,7 +696,7 @@ async def discord_callback(request: Request):
         'login_at': datetime.now(UTC).isoformat(),
         'ip': ip,
         'auth_type': 'discord',
-        'is_admin': is_admin
+        'is_admin': False
     }
 
     sid = str(user_id)
@@ -947,25 +937,32 @@ async def api_me(request: Request):
     if not user:
         return {'logged_in': False}
 
-    # Re-check is_admin against the DB so promotions/demotions via the admin
-    # panel take effect immediately, without requiring the user to log out.
-    try:
-        conn = _db()
-        row = conn.execute(
-            "SELECT is_admin FROM auth_users WHERE auth_id = ?",
-            (int(user['discord_id']),)
-        ).fetchone()
-        conn.close()
-        if row is not None:
-            fresh_is_admin = bool(row['is_admin'])
-            if fresh_is_admin != user.get('is_admin', False):
-                user = dict(user)
-                user['is_admin'] = fresh_is_admin
-                request.session['user'] = user
-    except Exception as e:
-        log.warning(f"[api/me] is_admin refresh failed: {e}")
+    # The session's 'is_admin' flag is only set at login time, so an old
+    # session cookie (or one created via Discord OAuth, which always logs in
+    # as a non-admin) could report stale/incorrect admin status forever.
+    # Re-check the database here so admin access always reflects reality,
+    # the same way /api/profile already does.
+    is_admin = bool(user.get('is_admin', False))
+    if user.get('auth_type') == 'email':
+        try:
+            conn = _db()
+            row = conn.execute(
+                "SELECT is_admin FROM auth_users WHERE auth_id = ?",
+                (int(user['discord_id']),)
+            ).fetchone()
+            conn.close()
+            if row is not None:
+                is_admin = bool(row['is_admin'])
+        except Exception as e:
+            log.warning(f"[api/me] is_admin re-check failed: {e}")
 
-    return {'logged_in': True, **user}
+    if is_admin != user.get('is_admin', False):
+        # Keep the session in sync so subsequent requests see the same value.
+        session_user = dict(request.session['user'])
+        session_user['is_admin'] = is_admin
+        request.session['user'] = session_user
+
+    return {'logged_in': True, **user, 'is_admin': is_admin}
 
 @app.get('/api/check-auth')
 async def api_check_auth(request: Request):
@@ -1335,6 +1332,131 @@ async def api_admin_toggle_admin(user_id: int, request: Request):
         if conn:
             conn.close()
 
+@app.get('/api/admin/players')
+async def api_admin_players(request: Request):
+    """Get all game players (from the bot's synced data) for the admin panel."""
+    user = request.session.get('user')
+    if not user or not user.get('is_admin', False):
+        return _json({'ok': False, 'error': 'Admin access required'}, 403)
+
+    with _lock:
+        data = cached_data.copy()
+
+    q = (request.query_params.get('q') or '').strip().lower()
+
+    players = []
+    for pid, pd in data.get('players', {}).items():
+        if not isinstance(pd, dict):
+            continue
+        name = pd.get('name', 'Unknown')
+        if q and q not in name.lower() and q not in str(pid):
+            continue
+        players.append({
+            'id': pid,
+            'name': name,
+            'level': pd.get('level', 0),
+            'class': pd.get('char_class', '—'),
+            'gold': pd.get('gold', 0),
+            'gems': pd.get('gems', pd.get('Gems', 0)),
+            'special_coins': pd.get('special_coins', 0),
+            'xp': pd.get('xp', 0),
+            'guild': pd.get('guild', '—'),
+            'wins': pd.get('battles_won', 0),
+        })
+
+    players.sort(key=lambda p: (-p['level'], p['name']))
+    return {'ok': True, 'players': players, 'total': len(players)}
+
+@app.get('/api/admin/players/{user_id}')
+async def api_admin_player_detail(user_id: str, request: Request):
+    """Get a single player's full game-data blob (admin only), for editing."""
+    user = request.session.get('user')
+    if not user or not user.get('is_admin', False):
+        return _json({'ok': False, 'error': 'Admin access required'}, 403)
+
+    with _lock:
+        data = cached_data.copy()
+
+    pdata = data.get('players', {}).get(str(user_id))
+    if pdata is None:
+        return _json({'ok': False, 'error': 'Player not found'}, 404)
+
+    return {'ok': True, 'player': pdata}
+
+@app.post('/api/admin/players/{user_id}')
+async def api_admin_update_player(user_id: str, request: Request):
+    """Admin-only: update a player's stats/balance. Writes straight to this
+    dashboard's DB (so the change shows immediately here) and also pushes the
+    change live to the running bot, so the player's in-memory state updates
+    without waiting for the bot's next periodic /api/sync push."""
+    user = request.session.get('user')
+    if not user or not user.get('is_admin', False):
+        return _json({'ok': False, 'error': 'Admin access required'}, 403)
+
+    try:
+        uid = int(user_id)
+    except (ValueError, TypeError):
+        return _json({'ok': False, 'error': 'Invalid user id'}, 400)
+
+    body = await _get_json(request)
+    updates = body.get('updates')
+    if not isinstance(updates, dict) or not updates:
+        return _json({'ok': False, 'error': 'updates object required'}, 400)
+
+    with _lock:
+        current = cached_data.get('players', {}).get(str(uid))
+    if current is None:
+        current = get_player_game_data(uid)
+    if not isinstance(current, dict):
+        current = {}
+
+    merged = {**current, **updates}
+
+    conn = None
+    try:
+        conn = _db()
+        conn.execute(
+            "INSERT INTO players (user_id, data, last_updated) VALUES (?, ?, CURRENT_TIMESTAMP) "
+            "ON CONFLICT(user_id) DO UPDATE SET data=excluded.data, last_updated=CURRENT_TIMESTAMP",
+            (uid, json.dumps(merged)),
+        )
+        conn.commit()
+    except Exception as e:
+        log.error(f"[Admin/players] failed to save player {uid}: {e}")
+        return _json({'ok': False, 'error': 'Failed to save player data'}, 500)
+    finally:
+        if conn:
+            conn.close()
+
+    load_game_data()  # refresh in-memory cache so it shows immediately in the dashboard
+
+    # Push the change to the live bot process so it's reflected in-game right away.
+    # Requires the bot to expose a matching POST /api/bot/update-player route,
+    # the same way it already exposes /api/bot/give-gold and /api/bot/announce.
+    bot_synced = False
+    bot_error = None
+    try:
+        status, resp = await _call_bot("POST", "/api/bot/update-player", {
+            "user_id": uid,
+            "updates": updates,
+        })
+        bot_synced = status == 200 and (resp or {}).get('ok', False)
+        if not bot_synced:
+            bot_error = (resp or {}).get('error', f'bot returned status {status}')
+    except Exception as e:
+        bot_error = str(e)
+        log.warning(f"[Admin/players] could not push live update to bot for {uid}: {e}")
+
+    _log_activity(uid, "admin_edit_player", f"Admin updated fields: {', '.join(updates.keys())}")
+    log.info(f"[Admin] Player {uid} stats updated by admin (bot_synced={bot_synced})")
+
+    return {
+        'ok': True,
+        'player': merged,
+        'bot_synced': bot_synced,
+        'bot_error': None if bot_synced else bot_error,
+    }
+
 @app.get('/api/admin/stats')
 async def api_admin_stats(request: Request):
     """Get admin statistics."""
@@ -1422,6 +1544,18 @@ async def index(request: Request):
 @app.get('/battle-log')
 async def battle_log(request: Request):
     return templates.TemplateResponse(request, 'battle-log.html', {})
+
+@app.get('/profile')
+async def profile_page(request: Request):
+    return templates.TemplateResponse(request, 'profile.html', {})
+
+@app.get('/achievements')
+async def achievements_page(request: Request):
+    return templates.TemplateResponse(request, 'achievements.html', {})
+
+@app.get('/leaderboards')
+async def leaderboards_page(request: Request):
+    return templates.TemplateResponse(request, 'leaderboards.html', {})
 
 @app.get('/inventory')
 async def inventory(request: Request):
@@ -1606,10 +1740,9 @@ async def api_profile(request: Request):
             log.warning(f"[profile] lookup failed: {e}")
 
     return {'logged_in': True, 'nickname': nickname, 'avatar': avatar, 'bio': bio, 'is_admin': is_admin}
-
 def run_dashboard():
     """Start the dashboard server."""
-    host = "0.0.0.0"
+    host = "127.0.0.1"
     port = int(os.environ.get("PORT", 25507))
 
     try:
