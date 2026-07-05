@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RPG Ghost | Achievements</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;800;900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --void-black:    #0a0a0f;
+            --dash-bg:       #08090d;
+            --spectral-teal: #00f3ff;
+            --dash-teal:     #2dd9e8;
+            --dash-teal-dim: rgba(45,217,232,0.12);
+            --soul-purple:   #bc13fe;
+            --dash-purple:   #a855f7;
+            --dash-purple-dim:rgba(168,85,247,0.12);
+            --bone-white:    #eef0f5;
+            --dash-text-dim: #8a8d9c;
+            --dash-text-faint:#4d505e;
+            --glass-bg:      rgba(15,16,24,0.78);
+            --glass-border:  rgba(255,255,255,0.07);
+            --gold:          #fbbf24;
+            --emerald:       #34d399;
+            --red:           #f87171;
+            --rarity-common:  #9ca3af;
+            --rarity-rare:    #3b82f6;
+            --rarity-epic:    #a855f7;
+            --rarity-legendary:#f59e0b;
+            --sidebar-w:     248px;
+            --ease:          cubic-bezier(0.22,1,0.36,1);
+            --ease-snap:     cubic-bezier(0.4,0,0.2,1);
+            --radius-sm:     10px;
+            --radius-md:     14px;
+            --radius-lg:     18px;
+            --radius-xl:     24px;
+            --shadow-card:   0 4px 24px rgba(0,0,0,0.35);
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *,*::before,*::after { animation-duration:0.001ms!important; transition-duration:0.001ms!important; }
+        }
+
+        *{ margin:0; padding:0; box-sizing:border-box; }
+
+        body {
+            font-family:'Inter',sans-serif;
+            background:var(--void-black);
+            color:var(--bone-white);
+            min-height:100vh;
+            display:flex;
+            overflow-x:hidden;
+        }
+
+        body::before {
+            content:'';
+            position:fixed; inset:0;
+            background:
+                radial-gradient(ellipse at 15% 40%, rgba(0,243,255,0.04) 0%, transparent 55%),
+                radial-gradient(ellipse at 85% 60%, rgba(188,19,254,0.03) 0%, transparent 55%);
+            pointer-events:none; z-index:0;
+        }
+
+        /* ── SIDEBAR ── */
+        .sidebar {
+            width: var(--sidebar-w);
+            background: rgba(8,9,13,0.95);
+            backdrop-filter: blur(24px);
+            border-right: 1px solid var(--glass-border);
+            padding: 1.75rem 1.25rem;
+            position: fixed; height: 100vh;
+            z-index: 100;
+            display: flex; flex-direction: column;
+        }
+
+        .logo {
+            font-family:'Orbitron',sans-serif; font-size:1.35rem; font-weight:800;
+            color:var(--spectral-teal); margin-bottom:2.5rem;
+            display:flex; align-items:center; gap:10px;
+            letter-spacing:0.5px; text-shadow:0 0 20px rgba(0,243,255,0.4);
+        }
+
+        .logo-icon {
+            width:38px; height:38px;
+            background:rgba(0,243,255,0.08); border:1px solid rgba(0,243,255,0.2);
+            border-radius:10px; display:flex; align-items:center; justify-content:center;
+            font-size:1.1rem; animation:ghostFloat 3.5s ease-in-out infinite; flex-shrink:0;
+        }
+
+        @keyframes ghostFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-5px)} }
+
+        .nav-section-label {
+            font-size:0.68rem; font-weight:600; letter-spacing:1.5px; text-transform:uppercase;
+            color:var(--dash-text-faint); padding:0 12px; margin:1.25rem 0 0.5rem;
+        }
+
+        .nav-links { list-style:none; display:flex; flex-direction:column; gap:2px; }
+
+        .nav-links li a {
+            display:flex; align-items:center; gap:11px;
+            padding:10px 13px; color:var(--dash-text-dim); text-decoration:none;
+            border-radius:var(--radius-sm); transition:all 180ms var(--ease-snap);
+            font-size:0.88rem; font-weight:500; position:relative; overflow:hidden;
+        }
+
+        .nav-icon {
+            width:28px; height:28px; display:flex; align-items:center; justify-content:center;
+            border-radius:7px; background:transparent; transition:all 180ms var(--ease-snap);
+            font-size:0.9rem; flex-shrink:0;
+        }
+
+        .nav-links li a:hover { color:var(--bone-white); background:rgba(255,255,255,0.04); }
+        .nav-links li a:hover .nav-icon { background:rgba(45,217,232,0.1); color:var(--dash-teal); }
+
+        .nav-links li a.active { color:var(--dash-teal); background:var(--dash-teal-dim); }
+        .nav-links li a.active .nav-icon { background:rgba(45,217,232,0.15); color:var(--dash-teal); }
+        .nav-links li a.active::before {
+            content:''; position:absolute; left:0; top:50%; transform:translateY(-50%);
+            width:3px; height:60%; background:var(--dash-teal);
+            border-radius:0 2px 2px 0; box-shadow:0 0 8px rgba(45,217,232,0.5);
+        }
+
+        .sidebar-footer {
+            margin-top:auto; padding-top:1.25rem; border-top:1px solid var(--glass-border);
+        }
+
+        .sidebar-user {
+            display:flex; align-items:center; gap:10px; padding:10px 12px;
+            border-radius:var(--radius-sm); background:rgba(255,255,255,0.03);
+            cursor:pointer; transition:background 180ms;
+        }
+        .sidebar-user:hover { background:rgba(255,255,255,0.06); }
+
+        .sidebar-avatar {
+            width:32px; height:32px; border-radius:50%;
+            border:1px solid rgba(45,217,232,0.3); object-fit:cover; flex-shrink:0;
+        }
+
+        .sidebar-username {
+            font-size:0.82rem; font-weight:600; color:var(--bone-white);
+            white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+        }
+
+        /* ── MAIN ── */
+        .main-content {
+            flex:1; margin-left:var(--sidebar-w); padding:2rem 2.5rem 3rem;
+            position:relative; z-index:1; min-height:100vh;
+        }
+
+        .page-hero { margin-bottom:1.75rem; padding-bottom:1.75rem; border-bottom:1px solid var(--glass-border); }
+
+        .page-hero-eyebrow {
+            font-size:0.72rem; font-weight:700; letter-spacing:2px; text-transform:uppercase;
+            color:var(--dash-teal); margin-bottom:0.5rem;
+            display:flex; align-items:center; gap:8px;
+        }
+        .page-hero-eyebrow::before {
+            content:''; display:inline-block; width:20px; height:1px;
+            background:var(--dash-teal); opacity:0.6;
+        }
+
+        .page-hero h1 {
+            font-family:'Orbitron',sans-serif; font-size:2rem; font-weight:800; letter-spacing:-0.5px;
+            background:linear-gradient(135deg,#fff 0%,var(--dash-teal) 100%);
+            -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+        }
+
+        .page-hero-sub { font-size:0.9rem; color:var(--dash-text-dim); margin-top:0.4rem; }
+
+        /* ── ANIMATIONS ── */
+        .animate-rise { opacity:0; animation:panelRise 0.55s var(--ease) forwards; }
+        @keyframes panelRise { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }
+        .delay-1{animation-delay:0.05s} .delay-2{animation-delay:0.1s} .delay-3{animation-delay:0.15s}
+
+        .skeleton {
+            position:relative; overflow:hidden; background:rgba(255,255,255,0.04);
+            border-radius:var(--radius-md);
+        }
+        .skeleton::after {
+            content:''; position:absolute; inset:0; transform:translateX(-100%);
+            background:linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent);
+            animation:shimmer 1.6s infinite;
+        }
+        @keyframes shimmer { 100%{ transform:translateX(100%); } }
+
+        /* ── OVERALL COMPLETION PANEL ── */
+        .completion-panel {
+            background:var(--glass-bg); border:1px solid var(--glass-border);
+            border-radius:var(--radius-xl); padding:1.75rem 2rem; margin-bottom:1.5rem;
+            box-shadow:var(--shadow-card);
+            display:flex; align-items:center; gap:2rem; flex-wrap:wrap;
+        }
+        .completion-ring-wrap { position:relative; width:104px; height:104px; flex-shrink:0; }
+        .completion-ring-wrap svg { transform:rotate(-90deg); width:104px; height:104px; }
+        .completion-ring-bg { fill:none; stroke:rgba(255,255,255,0.06); stroke-width:8; }
+        .completion-ring-fill {
+            fill:none; stroke:url(#completionGradient); stroke-width:8; stroke-linecap:round;
+            stroke-dasharray:283; stroke-dashoffset:283; transition:stroke-dashoffset 1.2s var(--ease);
+        }
+        .completion-ring-label {
+            position:absolute; inset:0; display:flex; flex-direction:column;
+            align-items:center; justify-content:center;
+        }
+        .completion-ring-pct { font-family:'Orbitron',sans-serif; font-size:1.35rem; font-weight:800; }
+        .completion-ring-sub { font-size:0.6rem; color:var(--dash-text-faint); text-transform:uppercase; letter-spacing:0.5px; }
+
+        .completion-stats { display:flex; gap:2rem; flex-wrap:wrap; flex:1; }
+        .completion-stat-value { font-family:'Orbitron',sans-serif; font-size:1.5rem; font-weight:800; color:var(--bone-white); }
+        .completion-stat-label { font-size:0.75rem; color:var(--dash-text-dim); margin-top:0.25rem; }
+
+        /* ── CONTROLS ── */
+        .achv-controls {
+            display:flex; align-items:center; justify-content:space-between;
+            gap:1rem; margin-bottom:1.25rem; flex-wrap:wrap;
+        }
+        .achv-search-wrap { position:relative; flex:1; min-width:220px; max-width:340px; }
+        .achv-search-wrap i {
+            position:absolute; left:14px; top:50%; transform:translateY(-50%);
+            color:var(--dash-text-faint); font-size:0.85rem;
+        }
+        .achv-search {
+            width:100%; background:var(--glass-bg); border:1px solid var(--glass-border);
+            border-radius:20px; padding:9px 14px 9px 36px; color:var(--bone-white);
+            font-family:'Inter',sans-serif; font-size:0.85rem; outline:none;
+            transition:border-color 160ms;
+        }
+        .achv-search:focus { border-color:var(--dash-teal); }
+        .achv-search::placeholder { color:var(--dash-text-faint); }
+
+        .inv-select {
+            background:var(--glass-bg); border:1px solid var(--glass-border);
+            color:var(--dash-text-dim); font-size:0.78rem; font-weight:600;
+            padding:7px 12px; border-radius:var(--radius-sm);
+            font-family:'Inter',sans-serif; cursor:pointer; outline:none;
+            transition:border-color 160ms;
+        }
+        .inv-select:hover, .inv-select:focus { border-color:var(--dash-teal); color:var(--bone-white); }
+
+        .filter-pills { display:flex; gap:6px; flex-wrap:wrap; }
+        .filter-pill {
+            padding:6px 15px; border-radius:20px; font-size:0.72rem; font-weight:600;
+            letter-spacing:0.4px; cursor:pointer; border:1px solid var(--glass-border);
+            color:var(--dash-text-dim); background:transparent; transition:all 160ms; white-space:nowrap;
+        }
+        .filter-pill:hover,.filter-pill.active { background:var(--dash-teal-dim); border-color:rgba(45,217,232,0.3); color:var(--dash-teal); }
+
+        /* ── RECENTLY UNLOCKED STRIP ── */
+        .recent-strip {
+            display:flex; gap:0.85rem; overflow-x:auto; padding-bottom:0.5rem; margin-bottom:1.75rem;
+            scrollbar-width:thin;
+        }
+        .recent-strip::-webkit-scrollbar { height:6px; }
+        .recent-strip::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.1); border-radius:3px; }
+        .recent-card {
+            flex:0 0 220px; background:var(--glass-bg); border:1px solid var(--glass-border);
+            border-radius:var(--radius-md); padding:1rem; display:flex; gap:0.85rem; align-items:center;
+            position:relative; overflow:hidden;
+        }
+        .recent-card::before {
+            content:''; position:absolute; top:0; left:0; right:0; height:2px;
+            background:linear-gradient(90deg, var(--dash-teal), var(--soul-purple));
+        }
+        .recent-icon {
+            width:44px; height:44px; border-radius:12px; flex-shrink:0;
+            display:flex; align-items:center; justify-content:center; font-size:1.2rem;
+            background:rgba(245,158,11,0.12); color:var(--rarity-legendary);
+        }
+        .recent-name { font-size:0.82rem; font-weight:700; color:var(--bone-white); }
+        .recent-time { font-size:0.68rem; color:var(--dash-text-faint); margin-top:0.2rem; }
+
+        /* ── CATEGORY SECTIONS ── */
+        .achv-category { margin-bottom:2rem; }
+        .achv-category-head {
+            display:flex; align-items:center; justify-content:space-between;
+            margin-bottom:0.9rem; padding-bottom:0.6rem; border-bottom:1px solid var(--glass-border);
+        }
+        .achv-category-title {
+            font-family:'Orbitron',sans-serif; font-size:0.95rem; font-weight:700;
+            display:flex; align-items:center; gap:9px; color:var(--bone-white);
+        }
+        .achv-category-count { font-size:0.75rem; color:var(--dash-text-dim); font-weight:600; }
+
+        .achv-grid {
+            display:grid; grid-template-columns:repeat(auto-fill, minmax(300px,1fr)); gap:0.9rem;
+        }
+
+        .achv-card {
+            background:rgba(8,9,13,0.7); border:1px solid var(--glass-border);
+            border-radius:var(--radius-md); padding:1.1rem; display:flex; gap:1rem;
+            position:relative; transition:all 200ms var(--ease); cursor:pointer;
+        }
+        .achv-card:hover { transform:translateY(-3px); box-shadow:0 10px 26px rgba(0,0,0,0.35); }
+        .achv-card.unlocked.rarity-common    { border-color:rgba(156,163,175,0.3); }
+        .achv-card.unlocked.rarity-rare      { border-color:rgba(59,130,246,0.4); box-shadow:0 0 14px rgba(59,130,246,0.08); }
+        .achv-card.unlocked.rarity-epic      { border-color:rgba(168,85,247,0.5); box-shadow:0 0 16px rgba(168,85,247,0.12); }
+        .achv-card.unlocked.rarity-legendary { border-color:rgba(245,158,11,0.55); box-shadow:0 0 20px rgba(245,158,11,0.15); }
+        .achv-card.locked { opacity:0.55; filter:grayscale(0.4); }
+        .achv-card.locked:hover { opacity:0.75; }
+        .achv-card.hidden-locked .achv-card-name,
+        .achv-card.hidden-locked .achv-card-desc { filter:blur(4px); user-select:none; }
+
+        .achv-card.pinned::after {
+            content:'\\f08d'; font-family:'Font Awesome 6 Free'; font-weight:900;
+            position:absolute; top:10px; right:10px; color:var(--gold); font-size:0.75rem;
+        }
+
+        .achv-card-icon {
+            width:52px; height:52px; border-radius:12px; flex-shrink:0;
+            display:flex; align-items:center; justify-content:center; font-size:1.4rem;
+            background:rgba(156,163,175,0.1); color:var(--rarity-common);
+        }
+        .achv-card.rarity-rare .achv-card-icon      { background:rgba(59,130,246,0.12); color:var(--rarity-rare); }
+        .achv-card.rarity-epic .achv-card-icon      { background:rgba(168,85,247,0.12); color:var(--rarity-epic); }
+        .achv-card.rarity-legendary .achv-card-icon { background:rgba(245,158,11,0.12); color:var(--rarity-legendary); }
+
+        .achv-card-body { flex:1; min-width:0; }
+        .achv-card-name { font-size:0.9rem; font-weight:700; color:var(--bone-white); margin-bottom:0.2rem; }
+        .achv-card-desc { font-size:0.76rem; color:var(--dash-text-dim); line-height:1.4; margin-bottom:0.6rem; }
+
+        .achv-progress-track {
+            height:6px; border-radius:4px; background:rgba(255,255,255,0.06); overflow:hidden; margin-bottom:0.5rem;
+        }
+        .achv-progress-fill {
+            height:100%; border-radius:4px; background:linear-gradient(90deg, var(--soul-purple), var(--dash-teal));
+            transition:width 1s var(--ease);
+        }
+        .achv-card-footer { display:flex; align-items:center; justify-content:space-between; font-size:0.68rem; }
+        .achv-progress-text { color:var(--dash-text-faint); font-weight:600; }
+        .achv-reward-text { color:var(--gold); font-weight:700; display:flex; align-items:center; gap:4px; }
+        .achv-xp-text { color:var(--dash-teal); font-weight:700; }
+
+        .achv-card-actions { display:flex; align-items:center; }
+        .pin-btn {
+            width:28px; height:28px; border-radius:8px; border:1px solid var(--glass-border);
+            background:transparent; color:var(--dash-text-faint); cursor:pointer;
+            display:flex; align-items:center; justify-content:center; font-size:0.75rem;
+            transition:all 160ms; flex-shrink:0; align-self:flex-start;
+        }
+        .pin-btn:hover { border-color:var(--gold); color:var(--gold); }
+        .pin-btn.active { background:rgba(251,191,36,0.15); border-color:var(--gold); color:var(--gold); }
+
+        /* unlock pop animation, triggered via class toggle on demand */
+        @keyframes unlockPop {
+            0% { transform:scale(1); }
+            30% { transform:scale(1.04); box-shadow:0 0 0 6px rgba(45,217,232,0.15); }
+            100% { transform:scale(1); }
+        }
+        .achv-card.just-unlocked { animation:unlockPop 0.6s var(--ease); }
+
+        /* ── EMPTY STATE ── */
+        .empty-state {
+            display:flex; flex-direction:column; align-items:center; justify-content:center;
+            padding:3.5rem 1.5rem; text-align:center; gap:0.9rem; grid-column:1/-1;
+        }
+        .empty-icon {
+            width:60px; height:60px; border-radius:16px;
+            background:rgba(45,217,232,0.06); border:1px solid rgba(45,217,232,0.12);
+            display:flex; align-items:center; justify-content:center;
+            font-size:1.5rem; color:var(--dash-text-faint);
+        }
+        .empty-title { font-family:'Orbitron',sans-serif; font-size:0.88rem; font-weight:700; color:var(--dash-text-dim); }
+        .empty-sub { font-size:0.78rem; color:var(--dash-text-faint); max-width:280px; line-height:1.6; }
+
+        /* ── TOAST ── */
+        .toast {
+            position:fixed; bottom:24px; right:24px; z-index:1000;
+            background:rgba(8,9,13,0.95); border:1px solid var(--glass-border);
+            border-radius:var(--radius-md); padding:14px 20px;
+            display:flex; align-items:center; gap:10px;
+            box-shadow:0 16px 48px rgba(0,0,0,0.6);
+            transform:translateY(120%); opacity:0;
+            transition:all 320ms var(--ease-snap); font-size:0.85rem; font-weight:600;
+        }
+        .toast.visible { transform:translateY(0); opacity:1; }
+
+        /* ── RESPONSIVE ── */
+        .topbar{
+            position:fixed; top:0; left:0; right:0; height:60px; z-index:200;
+            background:rgba(8,9,13,0.96); backdrop-filter:blur(20px);
+            border-bottom:1px solid var(--glass-border);
+            display:none; align-items:center; padding:0 1.5rem; gap:14px;
+        }
+        .menu-toggle{
+            width:38px; height:38px; background:rgba(255,255,255,0.04);
+            border:1px solid var(--glass-border); border-radius:10px;
+            color:var(--dash-text-dim); font-size:1rem; cursor:pointer;
+            display:flex; align-items:center; justify-content:center;
+            transition:all 160ms var(--ease-snap);
+        }
+        .menu-toggle:hover{ border-color:var(--dash-teal); color:var(--dash-teal); }
+        .topbar-logo{
+            font-family:'Orbitron',sans-serif; font-size:1rem; font-weight:800;
+            color:var(--spectral-teal); letter-spacing:0.5px;
+            text-shadow:0 0 16px rgba(0,243,255,0.35);
+        }
+        .nav-backdrop{
+            display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6);
+            z-index:199; backdrop-filter:blur(2px);
+        }
+        .nav-backdrop.is-open{ display:block; }
+
+        @media(max-width:900px){
+            .sidebar{transform:translateX(-100%); transition:transform 250ms var(--ease); z-index:200;}
+            .sidebar.open{transform:translateX(0);}
+            .main-content{margin-left:0; padding:calc(60px + 1.25rem) 1.25rem 2rem;}
+            .topbar{display:flex;}
+        }
+        @media(max-width:560px){
+            .achv-grid { grid-template-columns:1fr; }
+            .completion-panel { flex-direction:column; align-items:flex-start; }
+        }
+    </style>
+</head>
+<body>
+    <div class="topbar" id="dashTopbar">
+        <button class="menu-toggle" id="navToggle" aria-label="Toggle navigation">
+            <i class="fa-solid fa-bars"></i>
+        </button>
+        <span class="topbar-logo">RPG GHOST</span>
+    </div>
+    <div class="nav-backdrop" id="navBackdrop"></div>
+
+    <aside class="sidebar" id="sidebar">
+        <div class="logo">
+            <div class="logo-icon"><i class="fa-solid fa-ghost"></i></div>
+            <span>RPG Ghost</span>
+        </div>
+
+        <div class="nav-section-label">Navigation</div>
+        <ul class="nav-links">
+            <li><a href="/dashboard"><div class="nav-icon"><i class="fa-solid fa-chart-pie"></i></div>Overview</a></li>
+            <li><a href="/profile"><div class="nav-icon"><i class="fa-solid fa-id-badge"></i></div>Profile</a></li>
+            <li><a href="/achievements" class="active"><div class="nav-icon"><i class="fa-solid fa-trophy"></i></div>Achievements</a></li>
+            <li><a href="/leaderboards"><div class="nav-icon"><i class="fa-solid fa-ranking-star"></i></div>Leaderboards</a></li>
+            <li><a href="/battle-log"><div class="nav-icon"><i class="fa-solid fa-khanda"></i></div>Battle Log</a></li>
+            <li><a href="/inventory"><div class="nav-icon"><i class="fa-solid fa-sack-dollar"></i></div>Inventory</a></li>
+            <li><a href="/quest-board"><div class="nav-icon"><i class="fa-solid fa-scroll"></i></div>Quest Board</a></li>
+            <li><a href="/guild-hall"><div class="nav-icon"><i class="fa-solid fa-users"></i></div>Guild Hall</a></li>
+        </ul>
+
+        <div class="nav-section-label">Account</div>
+        <ul class="nav-links">
+            <li><a href="/settings"><div class="nav-icon"><i class="fa-solid fa-gear"></i></div>Settings</a></li>
+        </ul>
+
+        <div class="sidebar-footer">
+            <div class="sidebar-user" onclick="window.location='/profile'">
+                <img class="sidebar-avatar" id="sidebar-avatar" src="https://api.dicebear.com/7.x/adventurer/svg?seed=ghost" alt="avatar">
+                <div>
+                    <div class="sidebar-username" id="sidebar-username">Adventurer</div>
+                    <div style="font-size:0.7rem;color:var(--dash-text-faint)">View Profile</div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <div class="page-hero animate-rise">
+            <div class="page-hero-eyebrow"><i class="fa-solid fa-trophy"></i> Hall of Legends</div>
+            <h1>Achievements</h1>
+            <p class="page-hero-sub">Track your accomplishments across combat, exploration, and beyond.</p>
+        </div>
+
+        <!-- ===== COMPLETION PANEL ===== -->
+        <div class="completion-panel animate-rise delay-1" id="completionPanel">
+            <div class="completion-ring-wrap">
+                <svg viewBox="0 0 104 104">
+                    <defs>
+                        <linearGradient id="completionGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" stop-color="#bc13fe"/>
+                            <stop offset="100%" stop-color="#2dd9e8"/>
+                        </linearGradient>
+                    </defs>
+                    <circle class="completion-ring-bg" cx="52" cy="52" r="45"></circle>
+                    <circle class="completion-ring-fill" id="completionRingFill" cx="52" cy="52" r="45"></circle>
+                </svg>
+                <div class="completion-ring-label">
+                    <span class="completion-ring-pct" id="completionPct">0%</span>
+                    <span class="completion-ring-sub">Done</span>
+                </div>
+            </div>
+            <div class="completion-stats">
+                <div>
+                    <div class="completion-stat-value" id="completionUnlocked">—</div>
+                    <div class="completion-stat-label">Unlocked</div>
+                </div>
+                <div>
+                    <div class="completion-stat-value" id="completionTotal">—</div>
+                    <div class="completion-stat-label">Total Achievements</div>
+                </div>
+                <div>
+                    <div class="completion-stat-value" id="completionXp">—</div>
+                    <div class="completion-stat-label">XP Earned</div>
+                </div>
+                <div>
+                    <div class="completion-stat-value" id="completionPinned">—</div>
+                    <div class="completion-stat-label">Pinned</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== RECENTLY UNLOCKED ===== -->
+        <div class="section-head animate-rise delay-1" style="margin-bottom:0.75rem;">
+            <div class="achv-category-title"><i class="fa-solid fa-bolt" style="color:var(--gold)"></i> Recently Unlocked</div>
+        </div>
+        <div class="recent-strip animate-rise delay-1" id="recentStrip">
+            <div class="recent-card skeleton" style="height:68px;"></div>
+            <div class="recent-card skeleton" style="height:68px;"></div>
+            <div class="recent-card skeleton" style="height:68px;"></div>
+        </div>
+
+        <!-- ===== CONTROLS ===== -->
+        <div class="achv-controls animate-rise delay-2">
+            <div class="achv-search-wrap">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input type="text" class="achv-search" id="achvSearch" placeholder="Search achievements..." oninput="applySearch(this.value)">
+            </div>
+            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <select class="inv-select" id="statusSelect" onchange="applyStatusFilter(this.value)">
+                    <option value="all">All Achievements</option>
+                    <option value="unlocked">Unlocked</option>
+                    <option value="locked">Locked</option>
+                    <option value="pinned">Pinned</option>
+                </select>
+                <select class="inv-select" id="sortSelect" onchange="applySort(this.value)">
+                    <option value="default">Sort: Default</option>
+                    <option value="rarity">Sort: Rarity</option>
+                    <option value="progress">Sort: Progress</option>
+                    <option value="name">Sort: Name (A–Z)</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="filter-pills animate-rise delay-2" id="categoryPills" style="margin-bottom:1.75rem;">
+            <button class="filter-pill active" onclick="filterCategory('all',this)">All Categories</button>
+            <button class="filter-pill" onclick="filterCategory('Combat',this)">Combat</button>
+            <button class="filter-pill" onclick="filterCategory('Exploration',this)">Exploration</button>
+            <button class="filter-pill" onclick="filterCategory('Guild',this)">Guild</button>
+            <button class="filter-pill" onclick="filterCategory('Economy',this)">Economy</button>
+            <button class="filter-pill" onclick="filterCategory('Collection',this)">Collection</button>
+            <button class="filter-pill" onclick="filterCategory('Bosses',this)">Bosses</button>
+            <button class="filter-pill" onclick="filterCategory('Seasonal',this)">Seasonal</button>
+            <button class="filter-pill" onclick="filterCategory('Hidden',this)">Hidden</button>
+        </div>
+
+        <!-- ===== ACHIEVEMENT CATEGORIES (populated by JS) ===== -->
+        <div id="achvContainer" class="animate-rise delay-3">
+            <div class="achv-grid">
+                <div class="achv-card skeleton" style="height:110px;"></div>
+                <div class="achv-card skeleton" style="height:110px;"></div>
+                <div class="achv-card skeleton" style="height:110px;"></div>
+                <div class="achv-card skeleton" style="height:110px;"></div>
+            </div>
+        </div>
+    </main>
+
+    <div class="toast" id="toast">
+        <i class="fa-solid fa-circle-check" style="color:var(--dash-teal);font-size:1.1rem;"></i>
+        <span id="toast-message">Action successful!</span>
+    </div>
+
+    <script>
+        const CATEGORY_ORDER = ['Combat','Exploration','Guild','Economy','Collection','Bosses','Seasonal','Hidden'];
+        const CATEGORY_ICONS = {
+            Combat: 'fa-khanda', Exploration: 'fa-compass', Guild: 'fa-users',
+            Economy: 'fa-coins', Collection: 'fa-boxes-stacked', Bosses: 'fa-dragon',
+            Seasonal: 'fa-snowflake', Hidden: 'fa-eye-slash'
+        };
+        const RARITY_ORDER = { legendary: 0, epic: 1, rare: 2, common: 3 };
+
+        let allAchievements = [];
+        let currentCategory = 'all';
+        let currentStatus = 'all';
+        let currentSort = 'default';
+        let currentSearch = '';
+        let myDiscordId = null;
+
+        function setupMobileNav() {
+            const sidebar  = document.getElementById('sidebar');
+            const backdrop = document.getElementById('navBackdrop');
+            const toggle   = document.getElementById('navToggle');
+            if (toggle && backdrop && sidebar) {
+                toggle.addEventListener('click', () => {
+                    sidebar.classList.toggle('open');
+                    backdrop.classList.toggle('is-open');
+                });
+                backdrop.addEventListener('click', () => {
+                    sidebar.classList.remove('open');
+                    backdrop.classList.remove('is-open');
+                });
+            }
+            document.querySelectorAll('.nav-links a').forEach(link => {
+                link.addEventListener('click', () => {
+                    sidebar?.classList.remove('open');
+                    backdrop?.classList.remove('is-open');
+                });
+            });
+        }
+
+        function escapeHTML(str) {
+            if (str === null || str === undefined) return '';
+            return String(str).replace(/[&<>"']/g, ch => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[ch]));
+        }
+
+        function showToast(msg, isError) {
+            const toast = document.getElementById('toast');
+            const icon  = toast.querySelector('i');
+            const text  = document.getElementById('toast-message');
+            text.textContent = msg;
+            icon.style.color = isError ? 'var(--red)' : 'var(--dash-teal)';
+            icon.className = isError ? 'fa-solid fa-circle-exclamation' : 'fa-solid fa-circle-check';
+            toast.classList.add('visible');
+            clearTimeout(window._toastTimer);
+            window._toastTimer = setTimeout(() => toast.classList.remove('visible'), 3200);
+        }
+
+        function timeAgo(dateStr) {
+            const secs = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+            if (isNaN(secs)) return '';
+            if (secs < 60) return 'Just now';
+            if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
+            if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
+            return `${Math.floor(secs / 86400)}d ago`;
+        }
+
+        function updateCompletionPanel() {
+            const total = allAchievements.length;
+            const unlocked = allAchievements.filter(a => a.unlocked).length;
+            const pinned = allAchievements.filter(a => a.pinned).length;
+            const xpEarned = allAchievements.filter(a => a.unlocked).reduce((sum, a) => sum + (a.xp || 0), 0);
+            const pct = total > 0 ? Math.round((unlocked / total) * 100) : 0;
+
+            document.getElementById('completionUnlocked').textContent = unlocked;
+            document.getElementById('completionTotal').textContent = total;
+            document.getElementById('completionXp').textContent = xpEarned.toLocaleString();
+            document.getElementById('completionPinned').textContent = pinned;
+            document.getElementById('completionPct').textContent = pct + '%';
+
+            const circumference = 283;
+            const offset = circumference - (circumference * pct / 100);
+            requestAnimationFrame(() => {
+                document.getElementById('completionRingFill').style.strokeDashoffset = offset;
+            });
+        }
+
+        function renderRecentStrip() {
+            const strip = document.getElementById('recentStrip');
+            const recent = allAchievements
+                .filter(a => a.unlocked && a.unlocked_at)
+                .sort((a, b) => new Date(b.unlocked_at) - new Date(a.unlocked_at))
+                .slice(0, 8);
+
+            if (recent.length === 0) {
+                strip.innerHTML = `
+                    <div class="empty-state" style="flex:1;padding:1.5rem;">
+                        <div class="empty-icon"><i class="fa-solid fa-bolt"></i></div>
+                        <div class="empty-title">No Recent Unlocks</div>
+                        <div class="empty-sub">Complete achievements to see them appear here.</div>
+                    </div>`;
+                return;
+            }
+            strip.innerHTML = recent.map(a => `
+                <div class="recent-card">
+                    <div class="recent-icon"><i class="fa-solid ${a.icon || 'fa-medal'}"></i></div>
+                    <div>
+                        <div class="recent-name">${escapeHTML(a.name)}</div>
+                        <div class="recent-time">${timeAgo(a.unlocked_at)}</div>
+                    </div>
+                </div>`).join('');
+        }
+
+        function getFilteredAchievements() {
+            let list = [...allAchievements];
+
+            if (currentCategory !== 'all') {
+                list = list.filter(a => a.category === currentCategory);
+            }
+            if (currentStatus === 'unlocked') list = list.filter(a => a.unlocked);
+            else if (currentStatus === 'locked') list = list.filter(a => !a.unlocked);
+            else if (currentStatus === 'pinned') list = list.filter(a => a.pinned);
+
+            if (currentSearch.trim()) {
+                const q = currentSearch.trim().toLowerCase();
+                list = list.filter(a => (a.name || '').toLowerCase().includes(q) || (a.description || '').toLowerCase().includes(q));
+            }
+
+            if (currentSort === 'rarity') {
+                list.sort((a, b) => (RARITY_ORDER[a.rarity] ?? 3) - (RARITY_ORDER[b.rarity] ?? 3));
+            } else if (currentSort === 'progress') {
+                list.sort((a, b) => (b.progress_pct || 0) - (a.progress_pct || 0));
+            } else if (currentSort === 'name') {
+                list.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            }
+
+            return list;
+        }
+
+        function renderAchievementCard(a) {
+            const rarity = (a.rarity || 'common').toLowerCase();
+            const isHidden = a.hidden && !a.unlocked;
+            const progressPct = Math.min(100, a.progress_pct || 0);
+            const name = isHidden ? '???' : escapeHTML(a.name);
+            const desc = isHidden ? 'Keep exploring to reveal this achievement.' : escapeHTML(a.description || '');
+
+            return `
+                <div class="achv-card ${a.unlocked ? 'unlocked' : 'locked'} rarity-${rarity} ${a.pinned ? 'pinned' : ''} ${isHidden ? 'hidden-locked' : ''}">
+                    <div class="achv-card-icon"><i class="fa-solid ${isHidden ? 'fa-question' : (a.icon || 'fa-medal')}"></i></div>
+                    <div class="achv-card-body">
+                        <div class="achv-card-name">${name}</div>
+                        <div class="achv-card-desc">${desc}</div>
+                        <div class="achv-progress-track"><div class="achv-progress-fill" style="width:${progressPct}%"></div></div>
+                        <div class="achv-card-footer">
+                            <span class="achv-progress-text">${a.progress_current ?? 0} / ${a.progress_target ?? 1}</span>
+                            <span class="achv-xp-text">+${(a.xp || 0).toLocaleString()} XP</span>
+                            <span class="achv-reward-text">${a.reward ? '<i class="fa-solid fa-gift"></i> ' + escapeHTML(a.reward) : ''}</span>
+                        </div>
+                    </div>
+                    ${a.unlocked ? `<button class="pin-btn ${a.pinned ? 'active' : ''}" onclick="togglePin(event, '${a.id}')" title="Pin to profile"><i class="fa-solid fa-thumbtack"></i></button>` : ''}
+                </div>`;
+        }
+
+        function renderAchievements() {
+            const container = document.getElementById('achvContainer');
+            const filtered = getFilteredAchievements();
+
+            if (allAchievements.length === 0) {
+                container.innerHTML = `
+                    <div class="achv-grid">
+                        <div class="empty-state">
+                            <div class="empty-icon"><i class="fa-solid fa-trophy"></i></div>
+                            <div class="empty-title">Achievements Unavailable</div>
+                            <div class="empty-sub">Could not load achievement data. Try again later.</div>
+                        </div>
+                    </div>`;
+                return;
+            }
+
+            if (filtered.length === 0) {
+                container.innerHTML = `
+                    <div class="achv-grid">
+                        <div class="empty-state">
+                            <div class="empty-icon"><i class="fa-solid fa-magnifying-glass"></i></div>
+                            <div class="empty-title">No Matches Found</div>
+                            <div class="empty-sub">Try a different search term or filter.</div>
+                        </div>
+                    </div>`;
+                return;
+            }
+
+            // Group by category, preserving CATEGORY_ORDER, unless a specific category is selected
+            if (currentCategory !== 'all') {
+                container.innerHTML = `<div class="achv-grid">${filtered.map(renderAchievementCard).join('')}</div>`;
+                return;
+            }
+
+            const grouped = {};
+            filtered.forEach(a => {
+                const cat = a.category || 'Combat';
+                if (!grouped[cat]) grouped[cat] = [];
+                grouped[cat].push(a);
+            });
+
+            container.innerHTML = CATEGORY_ORDER
+                .filter(cat => grouped[cat] && grouped[cat].length > 0)
+                .map(cat => {
+                    const items = grouped[cat];
+                    const unlockedCount = items.filter(a => a.unlocked).length;
+                    return `
+                        <div class="achv-category">
+                            <div class="achv-category-head">
+                                <div class="achv-category-title"><i class="fa-solid ${CATEGORY_ICONS[cat] || 'fa-medal'}"></i> ${cat}</div>
+                                <div class="achv-category-count">${unlockedCount} / ${items.length}</div>
+                            </div>
+                            <div class="achv-grid">${items.map(renderAchievementCard).join('')}</div>
+                        </div>`;
+                }).join('');
+        }
+
+        function filterCategory(cat, btn) {
+            document.querySelectorAll('#categoryPills .filter-pill').forEach(p => p.classList.remove('active'));
+            btn.classList.add('active');
+            currentCategory = cat;
+            renderAchievements();
+        }
+
+        function applyStatusFilter(status) {
+            currentStatus = status;
+            renderAchievements();
+        }
+
+        function applySort(sort) {
+            currentSort = sort;
+            renderAchievements();
+        }
+
+        function applySearch(value) {
+            currentSearch = value;
+            renderAchievements();
+        }
+
+        async function togglePin(event, achievementId) {
+            event.stopPropagation();
+            const achievement = allAchievements.find(a => a.id === achievementId);
+            if (!achievement) return;
+
+            const wasPinned = achievement.pinned;
+            achievement.pinned = !wasPinned;
+            renderAchievements();
+            updateCompletionPanel();
+
+            try {
+                const res = await fetch(`/api/achievements/${myDiscordId}/pin`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ achievement_id: achievementId, pinned: achievement.pinned })
+                });
+                if (!res.ok) throw new Error('pin request failed');
+                showToast(achievement.pinned ? 'Achievement pinned to profile' : 'Achievement unpinned');
+            } catch (e) {
+                console.error(e);
+                achievement.pinned = wasPinned;
+                renderAchievements();
+                updateCompletionPanel();
+                showToast('Could not update pin status', true);
+            }
+        }
+
+        async function loadAchievements() {
+            let me;
+            try {
+                const meRes = await fetch('/api/me');
+                me = await meRes.json();
+                if (!me.logged_in) { window.location.href = '/'; return; }
+            } catch (e) {
+                console.error(e);
+                showToast('Could not verify session', true);
+                return;
+            }
+
+            myDiscordId = me.discord_id;
+            document.getElementById('sidebar-username').textContent = me.username || 'Adventurer';
+            if (me.avatar) document.getElementById('sidebar-avatar').src = me.avatar;
+
+            try {
+                const res = await fetch(`/api/achievements/${myDiscordId}`);
+                if (!res.ok) throw new Error('achievements not available');
+                const data = await res.json();
+                allAchievements = data.achievements || [];
+            } catch (e) {
+                console.error('Achievements load error:', e);
+                allAchievements = [];
+            }
+
+            updateCompletionPanel();
+            renderRecentStrip();
+            renderAchievements();
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            setupMobileNav();
+            loadAchievements();
+        });
+    </script>
+</body>
+</html>

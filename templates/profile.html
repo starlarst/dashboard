@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RPG Ghost | Player Profile</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;800;900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --void-black:    #0a0a0f;
+            --dash-bg:       #08090d;
+            --spectral-teal: #00f3ff;
+            --dash-teal:     #2dd9e8;
+            --dash-teal-dim: rgba(45,217,232,0.12);
+            --soul-purple:   #bc13fe;
+            --dash-purple:   #a855f7;
+            --dash-purple-dim:rgba(168,85,247,0.12);
+            --bone-white:    #eef0f5;
+            --dash-text-dim: #8a8d9c;
+            --dash-text-faint:#4d505e;
+            --glass-bg:      rgba(15,16,24,0.78);
+            --glass-border:  rgba(255,255,255,0.07);
+            --gold:          #fbbf24;
+            --emerald:       #34d399;
+            --red:           #f87171;
+            --rarity-common:  #9ca3af;
+            --rarity-rare:    #3b82f6;
+            --rarity-epic:    #a855f7;
+            --rarity-legendary:#f59e0b;
+            --sidebar-w:     248px;
+            --ease:          cubic-bezier(0.22,1,0.36,1);
+            --ease-snap:     cubic-bezier(0.4,0,0.2,1);
+            --radius-sm:     10px;
+            --radius-md:     14px;
+            --radius-lg:     18px;
+            --radius-xl:     24px;
+            --shadow-card:   0 4px 24px rgba(0,0,0,0.35);
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            *,*::before,*::after { animation-duration:0.001ms!important; transition-duration:0.001ms!important; }
+        }
+
+        *{ margin:0; padding:0; box-sizing:border-box; }
+
+        body {
+            font-family:'Inter',sans-serif;
+            background:var(--void-black);
+            color:var(--bone-white);
+            min-height:100vh;
+            display:flex;
+            overflow-x:hidden;
+        }
+
+        body::before {
+            content:'';
+            position:fixed; inset:0;
+            background:
+                radial-gradient(ellipse at 15% 40%, rgba(0,243,255,0.04) 0%, transparent 55%),
+                radial-gradient(ellipse at 85% 60%, rgba(188,19,254,0.03) 0%, transparent 55%);
+            pointer-events:none; z-index:0;
+        }
+
+        /* ── SIDEBAR ── */
+        .sidebar {
+            width: var(--sidebar-w);
+            background: rgba(8,9,13,0.95);
+            backdrop-filter: blur(24px);
+            border-right: 1px solid var(--glass-border);
+            padding: 1.75rem 1.25rem;
+            position: fixed; height: 100vh;
+            z-index: 100;
+            display: flex; flex-direction: column;
+        }
+
+        .logo {
+            font-family:'Orbitron',sans-serif; font-size:1.35rem; font-weight:800;
+            color:var(--spectral-teal); margin-bottom:2.5rem;
+            display:flex; align-items:center; gap:10px;
+            letter-spacing:0.5px; text-shadow:0 0 20px rgba(0,243,255,0.4);
+        }
+
+        .logo-icon {
+            width:38px; height:38px;
+            background:rgba(0,243,255,0.08); border:1px solid rgba(0,243,255,0.2);
+            border-radius:10px; display:flex; align-items:center; justify-content:center;
+            font-size:1.1rem; animation:ghostFloat 3.5s ease-in-out infinite; flex-shrink:0;
+        }
+
+        @keyframes ghostFloat { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-5px)} }
+
+        .nav-section-label {
+            font-size:0.68rem; font-weight:600; letter-spacing:1.5px; text-transform:uppercase;
+            color:var(--dash-text-faint); padding:0 12px; margin:1.25rem 0 0.5rem;
+        }
+
+        .nav-links { list-style:none; display:flex; flex-direction:column; gap:2px; }
+
+        .nav-links li a {
+            display:flex; align-items:center; gap:11px;
+            padding:10px 13px; color:var(--dash-text-dim); text-decoration:none;
+            border-radius:var(--radius-sm); transition:all 180ms var(--ease-snap);
+            font-size:0.88rem; font-weight:500; position:relative; overflow:hidden;
+        }
+
+        .nav-icon {
+            width:28px; height:28px; display:flex; align-items:center; justify-content:center;
+            border-radius:7px; background:transparent; transition:all 180ms var(--ease-snap);
+            font-size:0.9rem; flex-shrink:0;
+        }
+
+        .nav-links li a:hover { color:var(--bone-white); background:rgba(255,255,255,0.04); }
+        .nav-links li a:hover .nav-icon { background:rgba(45,217,232,0.1); color:var(--dash-teal); }
+
+        .nav-links li a.active { color:var(--dash-teal); background:var(--dash-teal-dim); }
+        .nav-links li a.active .nav-icon { background:rgba(45,217,232,0.15); color:var(--dash-teal); }
+        .nav-links li a.active::before {
+            content:''; position:absolute; left:0; top:50%; transform:translateY(-50%);
+            width:3px; height:60%; background:var(--dash-teal);
+            border-radius:0 2px 2px 0; box-shadow:0 0 8px rgba(45,217,232,0.5);
+        }
+
+        .sidebar-footer {
+            margin-top:auto; padding-top:1.25rem; border-top:1px solid var(--glass-border);
+        }
+
+        .sidebar-user {
+            display:flex; align-items:center; gap:10px; padding:10px 12px;
+            border-radius:var(--radius-sm); background:rgba(255,255,255,0.03);
+            cursor:pointer; transition:background 180ms;
+        }
+        .sidebar-user:hover { background:rgba(255,255,255,0.06); }
+
+        .sidebar-avatar {
+            width:32px; height:32px; border-radius:50%;
+            border:1px solid rgba(45,217,232,0.3); object-fit:cover; flex-shrink:0;
+        }
+
+        .sidebar-username {
+            font-size:0.82rem; font-weight:600; color:var(--bone-white);
+            white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+        }
+
+        /* ── MAIN ── */
+        .main-content {
+            flex:1; margin-left:var(--sidebar-w); padding:2rem 2.5rem 3rem;
+            position:relative; z-index:1; min-height:100vh;
+        }
+
+        .page-hero { margin-bottom:2rem; padding-bottom:1.75rem; border-bottom:1px solid var(--glass-border); display:flex; align-items:flex-end; justify-content:space-between; gap:1.5rem; flex-wrap:wrap; }
+
+        .page-hero-eyebrow {
+            font-size:0.72rem; font-weight:700; letter-spacing:2px; text-transform:uppercase;
+            color:var(--dash-teal); margin-bottom:0.5rem;
+            display:flex; align-items:center; gap:8px;
+        }
+        .page-hero-eyebrow::before {
+            content:''; display:inline-block; width:20px; height:1px;
+            background:var(--dash-teal); opacity:0.6;
+        }
+
+        .page-hero h1 {
+            font-family:'Orbitron',sans-serif; font-size:2rem; font-weight:800; letter-spacing:-0.5px;
+            background:linear-gradient(135deg,#fff 0%,var(--dash-teal) 100%);
+            -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+        }
+
+        .page-hero-sub { font-size:0.9rem; color:var(--dash-text-dim); margin-top:0.4rem; }
+
+        .share-btn {
+            display:inline-flex; align-items:center; gap:8px;
+            padding:10px 20px; border-radius:var(--radius-sm);
+            background:var(--dash-teal-dim); border:1px solid rgba(45,217,232,0.3);
+            color:var(--dash-teal); font-weight:700; font-size:0.8rem; letter-spacing:0.3px;
+            cursor:pointer; transition:all 180ms var(--ease-snap); white-space:nowrap;
+        }
+        .share-btn:hover { background:rgba(45,217,232,0.2); transform:translateY(-2px); box-shadow:0 8px 20px rgba(45,217,232,0.15); }
+        .share-btn:active { transform:translateY(0); }
+        .share-btn.copied { background:rgba(52,211,153,0.15); border-color:rgba(52,211,153,0.4); color:var(--emerald); }
+
+        /* ── ANIMATIONS ── */
+        .animate-rise { opacity:0; animation:panelRise 0.55s var(--ease) forwards; }
+        @keyframes panelRise { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }
+        .delay-1{animation-delay:0.05s} .delay-2{animation-delay:0.1s} .delay-3{animation-delay:0.15s} .delay-4{animation-delay:0.2s} .delay-5{animation-delay:0.25s}
+
+        /* ── SKELETON LOADERS ── */
+        .skeleton {
+            position:relative; overflow:hidden; background:rgba(255,255,255,0.04);
+            border-radius:var(--radius-md);
+        }
+        .skeleton::after {
+            content:''; position:absolute; inset:0; transform:translateX(-100%);
+            background:linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent);
+            animation:shimmer 1.6s infinite;
+        }
+        @keyframes shimmer { 100%{ transform:translateX(100%); } }
+
+        /* ── BANNER ── */
+        .profile-banner {
+            position:relative; border-radius:var(--radius-xl); overflow:hidden;
+            border:1px solid var(--glass-border); margin-bottom:1.5rem;
+            box-shadow:var(--shadow-card);
+        }
+        .profile-banner-bg {
+            height:220px; position:relative;
+            background:
+                radial-gradient(ellipse at 20% 20%, rgba(188,19,254,0.35) 0%, transparent 55%),
+                radial-gradient(ellipse at 80% 0%, rgba(0,243,255,0.3) 0%, transparent 50%),
+                linear-gradient(160deg, #150a26 0%, #0a0a12 70%);
+            overflow:hidden;
+        }
+        .profile-banner-bg::before {
+            content:''; position:absolute; inset:0;
+            background-image:
+                linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+            background-size:36px 36px;
+            mask-image:linear-gradient(180deg, rgba(0,0,0,0.9), transparent);
+            animation: gridDrift 18s linear infinite;
+        }
+        @keyframes gridDrift { from{ background-position:0 0; } to{ background-position:72px 72px; } }
+        .banner-particle {
+            position:absolute; border-radius:50%; pointer-events:none;
+            background:radial-gradient(circle, rgba(45,217,232,0.9) 0%, transparent 70%);
+            animation:floatUp linear infinite;
+        }
+        @keyframes floatUp {
+            from { transform:translateY(0) translateX(0); opacity:0; }
+            10%  { opacity:0.7; }
+            90%  { opacity:0.3; }
+            to   { transform:translateY(-240px) translateX(20px); opacity:0; }
+        }
+
+        .profile-banner-content {
+            position:relative; padding:0 2.25rem 1.75rem; margin-top:-64px;
+            display:flex; align-items:flex-end; gap:1.5rem; flex-wrap:wrap;
+        }
+
+        .profile-avatar-wrap { position:relative; flex-shrink:0; }
+        .profile-avatar {
+            width:128px; height:128px; border-radius:24px; object-fit:cover;
+            border:3px solid var(--dash-bg);
+            box-shadow:0 0 0 2px rgba(45,217,232,0.4), 0 12px 32px rgba(0,0,0,0.5);
+            background:var(--dash-bg);
+        }
+        .profile-level-badge {
+            position:absolute; bottom:-10px; right:-10px;
+            width:44px; height:44px; border-radius:50%;
+            background:linear-gradient(135deg, var(--dash-teal), var(--soul-purple));
+            border:3px solid var(--dash-bg);
+            display:flex; align-items:center; justify-content:center;
+            font-family:'Orbitron',sans-serif; font-weight:800; font-size:0.9rem;
+            box-shadow:0 4px 16px rgba(45,217,232,0.4);
+        }
+
+        .profile-identity { flex:1; min-width:220px; padding-bottom:0.25rem; }
+        .profile-name-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:0.35rem; }
+        .profile-name {
+            font-family:'Orbitron',sans-serif; font-size:1.7rem; font-weight:800;
+            color:var(--bone-white); text-shadow:0 2px 12px rgba(0,0,0,0.6);
+        }
+        .profile-badge-chip {
+            display:inline-flex; align-items:center; gap:5px;
+            padding:3px 11px; border-radius:20px; font-size:0.68rem; font-weight:700;
+            letter-spacing:0.5px; text-transform:uppercase;
+        }
+        .profile-badge-chip.prestige { background:rgba(245,158,11,0.15); color:var(--rarity-legendary); border:1px solid rgba(245,158,11,0.3); }
+        .profile-badge-chip.title    { background:rgba(168,85,247,0.15); color:var(--dash-purple); border:1px solid rgba(168,85,247,0.3); }
+
+        .profile-meta-row { display:flex; align-items:center; gap:1.1rem; flex-wrap:wrap; font-size:0.82rem; color:var(--dash-text-dim); }
+        .profile-meta-row span { display:flex; align-items:center; gap:6px; }
+        .profile-meta-row i { color:var(--dash-text-faint); }
+        .profile-meta-row a.guild-link { color:var(--dash-teal); text-decoration:none; font-weight:600; }
+        .profile-meta-row a.guild-link:hover { text-decoration:underline; }
+
+        .profile-currency-strip { display:flex; gap:0.6rem; flex-shrink:0; padding-bottom:0.25rem; }
+        .currency-pill {
+            background:rgba(8,9,13,0.75); border:1px solid var(--glass-border);
+            padding:8px 15px; border-radius:20px;
+            display:inline-flex; align-items:center; gap:7px;
+            font-weight:700; font-size:0.92rem;
+            backdrop-filter:blur(8px);
+        }
+        .currency-pill.gold { color:var(--gold); }
+        .currency-pill.gems { color:var(--dash-teal); }
+
+        /* ── XP BAR ── */
+        .xp-section { padding:0 2.25rem 1.5rem; }
+        .xp-bar-row { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:0.5rem; }
+        .xp-bar-label { font-size:0.75rem; font-weight:700; letter-spacing:0.5px; color:var(--dash-text-dim); text-transform:uppercase; }
+        .xp-bar-value { font-size:0.8rem; font-weight:600; color:var(--dash-text-dim); }
+        .xp-bar-value strong { color:var(--dash-teal); }
+        .xp-bar-track {
+            height:12px; border-radius:8px; background:rgba(255,255,255,0.05);
+            overflow:hidden; position:relative; border:1px solid var(--glass-border);
+        }
+        .xp-bar-fill {
+            height:100%; border-radius:8px; width:0%;
+            background:linear-gradient(90deg, var(--soul-purple), var(--dash-teal));
+            box-shadow:0 0 16px rgba(45,217,232,0.5);
+            transition:width 1.2s var(--ease);
+            position:relative; overflow:hidden;
+        }
+        .xp-bar-fill::after {
+            content:''; position:absolute; inset:0;
+            background:linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent);
+            width:40%; animation:xpShine 2.4s ease-in-out infinite;
+        }
+        @keyframes xpShine { 0%{transform:translateX(-120%)} 100%{transform:translateX(320%)} }
+
+        /* ── STAT GRID ── */
+        .section-title {
+            font-family:'Orbitron',sans-serif; font-size:1rem; font-weight:700;
+            letter-spacing:0.3px; margin-bottom:1rem; display:flex; align-items:center; gap:9px;
+            color:var(--bone-white);
+        }
+
+        .stat-grid {
+            display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr));
+            gap:0.85rem; margin-bottom:2rem;
+        }
+        .stat-card {
+            background:var(--glass-bg); border:1px solid var(--glass-border);
+            border-radius:var(--radius-md); padding:1.1rem 1.2rem;
+            transition:all 200ms var(--ease); position:relative; overflow:hidden;
+        }
+        .stat-card:hover { transform:translateY(-3px); border-color:rgba(45,217,232,0.25); box-shadow:0 12px 28px rgba(0,0,0,0.35); }
+        .stat-card-icon {
+            width:34px; height:34px; border-radius:9px; display:flex; align-items:center; justify-content:center;
+            font-size:0.95rem; margin-bottom:0.7rem;
+        }
+        .stat-card-value { font-family:'Orbitron',sans-serif; font-size:1.4rem; font-weight:800; color:var(--bone-white); line-height:1; }
+        .stat-card-label { font-size:0.72rem; color:var(--dash-text-dim); margin-top:0.4rem; font-weight:500; }
+
+        .icon-teal    { background:rgba(45,217,232,0.12); color:var(--dash-teal); }
+        .icon-purple  { background:rgba(168,85,247,0.12); color:var(--dash-purple); }
+        .icon-gold    { background:rgba(251,191,36,0.12); color:var(--gold); }
+        .icon-emerald { background:rgba(52,211,153,0.12); color:var(--emerald); }
+        .icon-red     { background:rgba(248,113,113,0.12); color:var(--red); }
+
+        /* ── TWO COLUMN LAYOUT ── */
+        .profile-columns { display:grid; grid-template-columns:1.3fr 1fr; gap:1.5rem; align-items:start; }
+
+        .panel-card {
+            background:var(--glass-bg); border:1px solid var(--glass-border);
+            border-radius:var(--radius-lg); padding:1.5rem; margin-bottom:1.5rem;
+            box-shadow:var(--shadow-card);
+        }
+
+        /* ── SHOWCASE ── */
+        .showcase-grid { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
+        .showcase-item {
+            background:rgba(8,9,13,0.6); border:1px solid var(--glass-border);
+            border-radius:var(--radius-md); padding:1.1rem;
+            display:flex; align-items:center; gap:0.9rem;
+            transition:all 200ms var(--ease);
+        }
+        .showcase-item:hover { border-color:rgba(168,85,247,0.3); transform:translateY(-2px); }
+        .showcase-icon {
+            width:52px; height:52px; border-radius:12px; flex-shrink:0;
+            display:flex; align-items:center; justify-content:center; font-size:1.4rem;
+            background:linear-gradient(145deg, rgba(245,158,11,0.15), rgba(245,158,11,0.03));
+            border:1px solid rgba(245,158,11,0.3); color:var(--rarity-legendary);
+        }
+        .showcase-icon.pet { background:linear-gradient(145deg, rgba(52,211,153,0.15), rgba(52,211,153,0.03)); border-color:rgba(52,211,153,0.3); color:var(--emerald); }
+        .showcase-label { font-size:0.66rem; text-transform:uppercase; letter-spacing:0.6px; color:var(--dash-text-faint); font-weight:700; margin-bottom:0.2rem; }
+        .showcase-name { font-size:0.9rem; font-weight:700; color:var(--bone-white); }
+        .showcase-sub { font-size:0.72rem; color:var(--dash-text-dim); margin-top:0.15rem; }
+
+        /* ── ACHIEVEMENT SHOWCASE ── */
+        .achv-showcase-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(74px,1fr)); gap:0.7rem; }
+        .achv-badge {
+            aspect-ratio:1; border-radius:var(--radius-md); display:flex; flex-direction:column;
+            align-items:center; justify-content:center; gap:4px; position:relative; cursor:pointer;
+            border:1px solid var(--glass-border); background:rgba(8,9,13,0.6); transition:all 200ms var(--ease);
+        }
+        .achv-badge:hover { transform:translateY(-3px) scale(1.05); }
+        .achv-badge.legendary { border-color:rgba(245,158,11,0.5); box-shadow:0 0 16px rgba(245,158,11,0.15); }
+        .achv-badge.epic { border-color:rgba(168,85,247,0.45); }
+        .achv-badge.rare { border-color:rgba(59,130,246,0.35); }
+        .achv-badge i { font-size:1.3rem; }
+        .achv-badge.legendary i { color:var(--rarity-legendary); }
+        .achv-badge.epic i { color:var(--rarity-epic); }
+        .achv-badge.rare i { color:var(--rarity-rare); }
+        .achv-badge.common i { color:var(--rarity-common); }
+
+        /* ── TIMELINE ── */
+        .timeline { position:relative; padding-left:1.6rem; }
+        .timeline::before {
+            content:''; position:absolute; left:6px; top:6px; bottom:6px; width:2px;
+            background:linear-gradient(180deg, var(--dash-teal), transparent);
+        }
+        .timeline-item { position:relative; padding-bottom:1.3rem; }
+        .timeline-item:last-child { padding-bottom:0; }
+        .timeline-dot {
+            position:absolute; left:-1.6rem; top:2px; width:14px; height:14px; border-radius:50%;
+            background:var(--dash-bg); border:2px solid var(--dash-teal);
+            box-shadow:0 0 8px rgba(45,217,232,0.5);
+        }
+        .timeline-title { font-size:0.85rem; font-weight:600; color:var(--bone-white); }
+        .timeline-desc { font-size:0.78rem; color:var(--dash-text-dim); margin-top:0.15rem; }
+        .timeline-time { font-size:0.68rem; color:var(--dash-text-faint); margin-top:0.3rem; }
+
+        /* ── RECENT REWARDS ── */
+        .reward-row {
+            display:flex; align-items:center; gap:0.85rem; padding:0.7rem 0;
+            border-bottom:1px solid var(--glass-border);
+        }
+        .reward-row:last-child { border-bottom:none; }
+        .reward-icon {
+            width:38px; height:38px; border-radius:10px; flex-shrink:0;
+            display:flex; align-items:center; justify-content:center; font-size:1rem;
+            background:rgba(251,191,36,0.1); color:var(--gold);
+        }
+        .reward-name { font-size:0.85rem; font-weight:600; color:var(--bone-white); }
+        .reward-time { font-size:0.7rem; color:var(--dash-text-faint); margin-top:0.1rem; }
+        .reward-amount { margin-left:auto; font-weight:700; font-size:0.85rem; color:var(--gold); }
+
+        /* ── EMPTY / ERROR STATES ── */
+        .empty-state {
+            display:flex; flex-direction:column; align-items:center; justify-content:center;
+            padding:3rem 1.5rem; text-align:center; gap:0.85rem;
+        }
+        .empty-icon {
+            width:56px; height:56px; border-radius:16px;
+            background:rgba(45,217,232,0.06); border:1px solid rgba(45,217,232,0.12);
+            display:flex; align-items:center; justify-content:center;
+            font-size:1.4rem; color:var(--dash-text-faint);
+        }
+        .empty-title { font-family:'Orbitron',sans-serif; font-size:0.85rem; font-weight:700; color:var(--dash-text-dim); }
+        .empty-sub { font-size:0.78rem; color:var(--dash-text-faint); max-width:260px; line-height:1.6; }
+
+        /* ── TOAST ── */
+        .toast {
+            position:fixed; bottom:24px; right:24px; z-index:1000;
+            background:rgba(8,9,13,0.95); border:1px solid var(--glass-border);
+            border-radius:var(--radius-md); padding:14px 20px;
+            display:flex; align-items:center; gap:10px;
+            box-shadow:0 16px 48px rgba(0,0,0,0.6);
+            transform:translateY(120%); opacity:0;
+            transition:all 320ms var(--ease-snap); font-size:0.85rem; font-weight:600;
+        }
+        .toast.visible { transform:translateY(0); opacity:1; }
+
+        /* ── RESPONSIVE ── */
+        .topbar{
+            position:fixed; top:0; left:0; right:0; height:60px; z-index:200;
+            background:rgba(8,9,13,0.96); backdrop-filter:blur(20px);
+            border-bottom:1px solid var(--glass-border);
+            display:none; align-items:center; padding:0 1.5rem; gap:14px;
+        }
+        .menu-toggle{
+            width:38px; height:38px; background:rgba(255,255,255,0.04);
+            border:1px solid var(--glass-border); border-radius:10px;
+            color:var(--dash-text-dim); font-size:1rem; cursor:pointer;
+            display:flex; align-items:center; justify-content:center;
+            transition:all 160ms var(--ease-snap);
+        }
+        .menu-toggle:hover{ border-color:var(--dash-teal); color:var(--dash-teal); }
+        .topbar-logo{
+            font-family:'Orbitron',sans-serif; font-size:1rem; font-weight:800;
+            color:var(--spectral-teal); letter-spacing:0.5px;
+            text-shadow:0 0 16px rgba(0,243,255,0.35);
+        }
+        .nav-backdrop{
+            display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6);
+            z-index:199; backdrop-filter:blur(2px);
+        }
+        .nav-backdrop.is-open{ display:block; }
+
+        @media(max-width:1000px){
+            .profile-columns { grid-template-columns:1fr; }
+        }
+        @media(max-width:900px){
+            .sidebar{transform:translateX(-100%); transition:transform 250ms var(--ease); z-index:200;}
+            .sidebar.open{transform:translateX(0);}
+            .main-content{margin-left:0; padding:calc(60px + 1.25rem) 1.25rem 2rem;}
+            .topbar{display:flex;}
+            .showcase-grid { grid-template-columns:1fr; }
+        }
+        @media(max-width:560px){
+            .profile-banner-content { margin-top:-40px; padding:0 1.25rem 1.25rem; }
+            .profile-avatar { width:92px; height:92px; }
+            .xp-section { padding:0 1.25rem 1.25rem; }
+            .page-hero { flex-direction:column; align-items:flex-start; }
+        }
+    </style>
+</head>
+<body>
+    <div class="topbar" id="dashTopbar">
+        <button class="menu-toggle" id="navToggle" aria-label="Toggle navigation">
+            <i class="fa-solid fa-bars"></i>
+        </button>
+        <span class="topbar-logo">RPG GHOST</span>
+    </div>
+    <div class="nav-backdrop" id="navBackdrop"></div>
+
+    <aside class="sidebar" id="sidebar">
+        <div class="logo">
+            <div class="logo-icon"><i class="fa-solid fa-ghost"></i></div>
+            <span>RPG Ghost</span>
+        </div>
+
+        <div class="nav-section-label">Navigation</div>
+        <ul class="nav-links">
+            <li><a href="/dashboard"><div class="nav-icon"><i class="fa-solid fa-chart-pie"></i></div>Overview</a></li>
+            <li><a href="/profile" class="active"><div class="nav-icon"><i class="fa-solid fa-id-badge"></i></div>Profile</a></li>
+            <li><a href="/achievements"><div class="nav-icon"><i class="fa-solid fa-trophy"></i></div>Achievements</a></li>
+            <li><a href="/leaderboards"><div class="nav-icon"><i class="fa-solid fa-ranking-star"></i></div>Leaderboards</a></li>
+            <li><a href="/battle-log"><div class="nav-icon"><i class="fa-solid fa-khanda"></i></div>Battle Log</a></li>
+            <li><a href="/inventory"><div class="nav-icon"><i class="fa-solid fa-sack-dollar"></i></div>Inventory</a></li>
+            <li><a href="/quest-board"><div class="nav-icon"><i class="fa-solid fa-scroll"></i></div>Quest Board</a></li>
+            <li><a href="/guild-hall"><div class="nav-icon"><i class="fa-solid fa-users"></i></div>Guild Hall</a></li>
+        </ul>
+
+        <div class="nav-section-label">Account</div>
+        <ul class="nav-links">
+            <li><a href="/settings"><div class="nav-icon"><i class="fa-solid fa-gear"></i></div>Settings</a></li>
+        </ul>
+
+        <div class="sidebar-footer">
+            <div class="sidebar-user" onclick="window.location='/profile'">
+                <img class="sidebar-avatar" id="sidebar-avatar" src="https://api.dicebear.com/7.x/adventurer/svg?seed=ghost" alt="avatar">
+                <div>
+                    <div class="sidebar-username" id="sidebar-username">Adventurer</div>
+                    <div style="font-size:0.7rem;color:var(--dash-text-faint)">View Profile</div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <div class="page-hero animate-rise">
+            <div>
+                <div class="page-hero-eyebrow"><i class="fa-solid fa-id-badge"></i> Player Identity</div>
+                <h1>Player Profile</h1>
+                <p class="page-hero-sub">Your legend, stats, and accomplishments across the realm.</p>
+            </div>
+            <button class="share-btn" id="shareBtn"><i class="fa-solid fa-share-nodes"></i> Share Profile</button>
+        </div>
+
+        <!-- ===== BANNER ===== -->
+        <div class="profile-banner animate-rise delay-1" id="profileBanner">
+            <div class="profile-banner-bg" id="bannerParticleField"></div>
+            <div class="profile-banner-content">
+                <div class="profile-avatar-wrap">
+                    <img class="profile-avatar" id="profile-avatar" src="https://api.dicebear.com/7.x/adventurer/svg?seed=ghost" alt="Avatar">
+                    <div class="profile-level-badge" id="profile-level-badge">1</div>
+                </div>
+                <div class="profile-identity">
+                    <div class="profile-name-row">
+                        <span class="profile-name" id="profile-name">Adventurer</span>
+                        <span class="profile-badge-chip prestige" id="profile-prestige-chip" style="display:none;"><i class="fa-solid fa-star"></i> <span id="profile-prestige-val">0</span></span>
+                        <span class="profile-badge-chip title" id="profile-title-chip" style="display:none;"><i class="fa-solid fa-crown"></i> <span id="profile-title-val"></span></span>
+                    </div>
+                    <div class="profile-meta-row">
+                        <span><i class="fa-solid fa-shield-halved"></i> <span id="profile-class">Adventurer</span></span>
+                        <span><i class="fa-solid fa-users"></i> <a class="guild-link" id="profile-guild-link" href="/guild-hall">No Guild</a></span>
+                        <span><i class="fa-solid fa-ranking-star"></i> Rank <span id="profile-rank">—</span></span>
+                        <span><i class="fa-solid fa-calendar"></i> Joined <span id="profile-joined">—</span></span>
+                    </div>
+                </div>
+                <div class="profile-currency-strip">
+                    <div class="currency-pill gold"><i class="fa-solid fa-coins"></i> <span id="profile-gold">0</span></div>
+                    <div class="currency-pill gems"><i class="fa-solid fa-gem"></i> <span id="profile-gems">0</span></div>
+                </div>
+            </div>
+            <div class="xp-section">
+                <div class="xp-bar-row">
+                    <span class="xp-bar-label">Experience</span>
+                    <span class="xp-bar-value"><strong id="profile-xp-current">0</strong> / <span id="profile-xp-needed">100</span> XP</span>
+                </div>
+                <div class="xp-bar-track">
+                    <div class="xp-bar-fill" id="profile-xp-fill" style="width:0%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== STAT GRID ===== -->
+        <div class="section-title animate-rise delay-2"><i class="fa-solid fa-chart-simple" style="color:var(--dash-teal)"></i> Statistics</div>
+        <div class="stat-grid animate-rise delay-2" id="statGrid">
+            <!-- populated by JS; skeletons shown while loading -->
+        </div>
+
+        <!-- ===== TWO COLUMN ===== -->
+        <div class="profile-columns">
+            <div>
+                <div class="panel-card animate-rise delay-3">
+                    <div class="section-title"><i class="fa-solid fa-star" style="color:var(--rarity-legendary)"></i> Showcase</div>
+                    <div class="showcase-grid" id="showcaseGrid">
+                        <div class="showcase-item skeleton" style="height:80px;"></div>
+                        <div class="showcase-item skeleton" style="height:80px;"></div>
+                    </div>
+                </div>
+
+                <div class="panel-card animate-rise delay-4">
+                    <div class="section-title"><i class="fa-solid fa-trophy" style="color:var(--gold)"></i> Achievement Showcase</div>
+                    <div class="achv-showcase-grid" id="achvShowcaseGrid">
+                        <div class="achv-badge skeleton"></div>
+                        <div class="achv-badge skeleton"></div>
+                        <div class="achv-badge skeleton"></div>
+                        <div class="achv-badge skeleton"></div>
+                        <div class="achv-badge skeleton"></div>
+                        <div class="achv-badge skeleton"></div>
+                    </div>
+                </div>
+
+                <div class="panel-card animate-rise delay-5">
+                    <div class="section-title"><i class="fa-solid fa-gift" style="color:var(--gold)"></i> Recent Rewards</div>
+                    <div id="rewardsList">
+                        <div class="skeleton" style="height:52px;border-radius:10px;margin-bottom:10px;"></div>
+                        <div class="skeleton" style="height:52px;border-radius:10px;margin-bottom:10px;"></div>
+                        <div class="skeleton" style="height:52px;border-radius:10px;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <div class="panel-card animate-rise delay-3">
+                    <div class="section-title"><i class="fa-solid fa-timeline" style="color:var(--dash-purple)"></i> Activity Timeline</div>
+                    <div class="timeline" id="activityTimeline">
+                        <div class="skeleton" style="height:60px;border-radius:10px;margin-bottom:14px;"></div>
+                        <div class="skeleton" style="height:60px;border-radius:10px;margin-bottom:14px;"></div>
+                        <div class="skeleton" style="height:60px;border-radius:10px;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <div class="toast" id="toast">
+        <i class="fa-solid fa-circle-check" style="color:var(--dash-teal);font-size:1.1rem;"></i>
+        <span id="toast-message">Action successful!</span>
+    </div>
+
+    <script>
+        function setupMobileNav() {
+            const sidebar  = document.getElementById('sidebar');
+            const backdrop = document.getElementById('navBackdrop');
+            const toggle   = document.getElementById('navToggle');
+            if (toggle && backdrop && sidebar) {
+                toggle.addEventListener('click', () => {
+                    sidebar.classList.toggle('open');
+                    backdrop.classList.toggle('is-open');
+                });
+                backdrop.addEventListener('click', () => {
+                    sidebar.classList.remove('open');
+                    backdrop.classList.remove('is-open');
+                });
+            }
+            document.querySelectorAll('.nav-links a').forEach(link => {
+                link.addEventListener('click', () => {
+                    sidebar?.classList.remove('open');
+                    backdrop?.classList.remove('is-open');
+                });
+            });
+        }
+
+        function escapeHTML(str) {
+            if (str === null || str === undefined) return '';
+            return String(str).replace(/[&<>"']/g, ch => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[ch]));
+        }
+
+        function showToast(msg, isError) {
+            const toast = document.getElementById('toast');
+            const icon  = toast.querySelector('i');
+            const text  = document.getElementById('toast-message');
+            text.textContent = msg;
+            icon.style.color = isError ? 'var(--red)' : 'var(--dash-teal)';
+            icon.className = isError ? 'fa-solid fa-circle-exclamation' : 'fa-solid fa-circle-check';
+            toast.classList.add('visible');
+            clearTimeout(window._toastTimer);
+            window._toastTimer = setTimeout(() => toast.classList.remove('visible'), 3200);
+        }
+
+        function timeAgo(dateStr) {
+            const secs = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+            if (isNaN(secs)) return '';
+            if (secs < 60) return 'Just now';
+            if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
+            if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
+            return `${Math.floor(secs / 86400)}d ago`;
+        }
+
+        function spawnBannerParticles() {
+            const field = document.getElementById('bannerParticleField');
+            if (!field) return;
+            for (let i = 0; i < 18; i++) {
+                const p = document.createElement('div');
+                p.className = 'banner-particle';
+                const size = 2 + Math.random() * 3;
+                p.style.width = size + 'px';
+                p.style.height = size + 'px';
+                p.style.left = Math.random() * 100 + '%';
+                p.style.bottom = (Math.random() * 40) + 'px';
+                p.style.animationDuration = (6 + Math.random() * 6) + 's';
+                p.style.animationDelay = (Math.random() * 8) + 's';
+                field.appendChild(p);
+            }
+        }
+
+        function countUpTo(el, target, duration = 900) {
+            if (!el) return;
+            const start = 0;
+            const startTime = performance.now();
+            function tick(now) {
+                const progress = Math.min(1, (now - startTime) / duration);
+                const eased = 1 - Math.pow(1 - progress, 3);
+                el.textContent = Math.floor(start + (target - start) * eased).toLocaleString();
+                if (progress < 1) requestAnimationFrame(tick);
+                else el.textContent = target.toLocaleString();
+            }
+            requestAnimationFrame(tick);
+        }
+
+        const STAT_DEFS = [
+            { key: 'play_time_hours',   label: 'Play Time',        icon: 'fa-clock',          cls: 'icon-teal',    fmt: v => `${v}h` },
+            { key: 'commands_used',     label: 'Commands Used',    icon: 'fa-terminal',       cls: 'icon-purple',  fmt: v => v.toLocaleString() },
+            { key: 'win_rate',          label: 'Win Rate',         icon: 'fa-percent',        cls: 'icon-emerald', fmt: v => `${v}%` },
+            { key: 'damage_dealt',      label: 'Damage Dealt',     icon: 'fa-khanda',         cls: 'icon-red',     fmt: v => v.toLocaleString() },
+            { key: 'healing_done',      label: 'Healing Done',     icon: 'fa-heart-pulse',    cls: 'icon-emerald', fmt: v => v.toLocaleString() },
+            { key: 'boss_kills',        label: 'Boss Kills',       icon: 'fa-dragon',         cls: 'icon-gold',    fmt: v => v.toLocaleString() },
+            { key: 'dungeons_completed',label: 'Dungeons Cleared', icon: 'fa-dungeon',        cls: 'icon-purple',  fmt: v => v.toLocaleString() },
+            { key: 'battles_won',       label: 'Battles Won',      icon: 'fa-trophy',         cls: 'icon-gold',    fmt: v => v.toLocaleString() },
+        ];
+
+        function renderStatGrid(stats) {
+            const grid = document.getElementById('statGrid');
+            if (!stats) {
+                grid.innerHTML = `
+                    <div class="empty-state" style="grid-column:1/-1;">
+                        <div class="empty-icon"><i class="fa-solid fa-chart-simple"></i></div>
+                        <div class="empty-title">Stats Unavailable</div>
+                        <div class="empty-sub">Detailed statistics haven't been recorded yet.</div>
+                    </div>`;
+                return;
+            }
+            grid.innerHTML = STAT_DEFS.map(def => {
+                const raw = stats[def.key];
+                const value = (raw === undefined || raw === null) ? null : raw;
+                return `
+                    <div class="stat-card">
+                        <div class="stat-card-icon ${def.cls}"><i class="fa-solid ${def.icon}"></i></div>
+                        <div class="stat-card-value">${value === null ? '—' : def.fmt(value)}</div>
+                        <div class="stat-card-label">${def.label}</div>
+                    </div>`;
+            }).join('');
+        }
+
+        function renderShowcase(showcase) {
+            const grid = document.getElementById('showcaseGrid');
+            const weapon = showcase?.favorite_weapon;
+            const pet = showcase?.favorite_pet;
+            if (!weapon && !pet) {
+                grid.innerHTML = `
+                    <div class="empty-state" style="grid-column:1/-1;">
+                        <div class="empty-icon"><i class="fa-solid fa-star"></i></div>
+                        <div class="empty-title">Nothing Showcased Yet</div>
+                        <div class="empty-sub">Equip a favorite weapon or pet to feature it here.</div>
+                    </div>`;
+                return;
+            }
+            let html = '';
+            if (weapon) {
+                html += `
+                    <div class="showcase-item">
+                        <div class="showcase-icon"><i class="fa-solid fa-khanda"></i></div>
+                        <div>
+                            <div class="showcase-label">Favorite Weapon</div>
+                            <div class="showcase-name">${escapeHTML(weapon.name)}</div>
+                            <div class="showcase-sub">${escapeHTML(weapon.rarity || 'Common')}</div>
+                        </div>
+                    </div>`;
+            }
+            if (pet) {
+                html += `
+                    <div class="showcase-item">
+                        <div class="showcase-icon pet"><i class="fa-solid fa-paw"></i></div>
+                        <div>
+                            <div class="showcase-label">Favorite Pet</div>
+                            <div class="showcase-name">${escapeHTML(pet.name)}</div>
+                            <div class="showcase-sub">Level ${pet.level || 1}</div>
+                        </div>
+                    </div>`;
+            }
+            grid.innerHTML = html;
+        }
+
+        function renderAchvShowcase(achievements) {
+            const grid = document.getElementById('achvShowcaseGrid');
+            if (!achievements || achievements.length === 0) {
+                grid.innerHTML = `
+                    <div class="empty-state" style="grid-column:1/-1;">
+                        <div class="empty-icon"><i class="fa-solid fa-trophy"></i></div>
+                        <div class="empty-title">No Achievements Pinned</div>
+                        <div class="empty-sub">Unlock and pin achievements to display them here.</div>
+                    </div>`;
+                return;
+            }
+            grid.innerHTML = achievements.slice(0, 12).map(a => `
+                <div class="achv-badge ${a.rarity || 'common'}" title="${escapeHTML(a.name)}">
+                    <i class="fa-solid ${a.icon || 'fa-medal'}"></i>
+                </div>`).join('');
+        }
+
+        function renderTimeline(events) {
+            const el = document.getElementById('activityTimeline');
+            if (!events || events.length === 0) {
+                el.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon"><i class="fa-solid fa-timeline"></i></div>
+                        <div class="empty-title">No Recent Activity</div>
+                        <div class="empty-sub">Your adventures will appear here as you play.</div>
+                    </div>`;
+                return;
+            }
+            el.innerHTML = events.slice(0, 8).map(e => `
+                <div class="timeline-item">
+                    <div class="timeline-dot"></div>
+                    <div class="timeline-title">${escapeHTML(e.title)}</div>
+                    <div class="timeline-desc">${escapeHTML(e.description || '')}</div>
+                    <div class="timeline-time">${timeAgo(e.timestamp)}</div>
+                </div>`).join('');
+        }
+
+        function renderRewards(rewards) {
+            const el = document.getElementById('rewardsList');
+            if (!rewards || rewards.length === 0) {
+                el.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon"><i class="fa-solid fa-gift"></i></div>
+                        <div class="empty-title">No Rewards Yet</div>
+                        <div class="empty-sub">Complete quests and daily logins to earn rewards.</div>
+                    </div>`;
+                return;
+            }
+            el.innerHTML = rewards.slice(0, 6).map(r => `
+                <div class="reward-row">
+                    <div class="reward-icon"><i class="fa-solid ${r.icon || 'fa-gift'}"></i></div>
+                    <div>
+                        <div class="reward-name">${escapeHTML(r.name)}</div>
+                        <div class="reward-time">${timeAgo(r.timestamp)}</div>
+                    </div>
+                    <div class="reward-amount">${r.amount ? '+' + r.amount.toLocaleString() : ''}</div>
+                </div>`).join('');
+        }
+
+        async function loadProfile() {
+            spawnBannerParticles();
+
+            let me;
+            try {
+                const meRes = await fetch('/api/me');
+                me = await meRes.json();
+                if (!me.logged_in) { window.location.href = '/'; return; }
+            } catch (e) {
+                console.error(e);
+                showToast('Could not verify session', true);
+                return;
+            }
+
+            const name = me.username || 'Adventurer';
+            document.getElementById('sidebar-username').textContent = name;
+            document.getElementById('profile-name').textContent = name;
+            document.getElementById('profile-class').textContent = me.char_class || 'Adventurer';
+            document.getElementById('profile-level-badge').textContent = me.level || 1;
+            if (me.avatar) {
+                document.getElementById('sidebar-avatar').src = me.avatar;
+                document.getElementById('profile-avatar').src = me.avatar;
+            }
+            countUpTo(document.getElementById('profile-gold'), me.gold || 0);
+            countUpTo(document.getElementById('profile-gems'), me.gems || 0);
+            document.getElementById('profile-xp-current').textContent = (me.xp || 0).toLocaleString();
+            document.getElementById('profile-xp-needed').textContent = (me.xp_needed || 100).toLocaleString();
+            requestAnimationFrame(() => {
+                document.getElementById('profile-xp-fill').style.width = (me.xp_pct || 0) + '%';
+            });
+
+            // Extended profile data — requires GET /api/profile/{discord_id}/extended (see backend stub).
+            try {
+                const res = await fetch(`/api/profile/${me.discord_id}/extended`);
+                if (!res.ok) throw new Error('extended profile not available');
+                const data = await res.json();
+
+                if (data.prestige) {
+                    document.getElementById('profile-prestige-chip').style.display = 'inline-flex';
+                    document.getElementById('profile-prestige-val').textContent = `Prestige ${data.prestige}`;
+                }
+                if (data.equipped_title) {
+                    document.getElementById('profile-title-chip').style.display = 'inline-flex';
+                    document.getElementById('profile-title-val').textContent = data.equipped_title;
+                }
+                const guildLink = document.getElementById('profile-guild-link');
+                if (data.guild) {
+                    guildLink.textContent = data.guild.name;
+                } else {
+                    guildLink.textContent = 'No Guild';
+                }
+                document.getElementById('profile-rank').textContent = data.global_rank ? `#${data.global_rank}` : '—';
+                document.getElementById('profile-joined').textContent = data.joined_at
+                    ? new Date(data.joined_at).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
+                    : '—';
+
+                renderStatGrid(data.stats || null);
+                renderShowcase(data.showcase || null);
+                renderAchvShowcase(data.pinned_achievements || []);
+                renderTimeline(data.activity_timeline || []);
+                renderRewards(data.recent_rewards || []);
+            } catch (e) {
+                console.error('Extended profile error:', e);
+                document.getElementById('profile-rank').textContent = '—';
+                document.getElementById('profile-joined').textContent = '—';
+                renderStatGrid(null);
+                renderShowcase(null);
+                renderAchvShowcase([]);
+                renderTimeline([]);
+                renderRewards([]);
+            }
+        }
+
+        document.getElementById('shareBtn').addEventListener('click', async () => {
+            const url = window.location.origin + '/profile';
+            try {
+                await navigator.clipboard.writeText(url);
+                const btn = document.getElementById('shareBtn');
+                btn.classList.add('copied');
+                btn.innerHTML = '<i class="fa-solid fa-check"></i> Link Copied';
+                setTimeout(() => {
+                    btn.classList.remove('copied');
+                    btn.innerHTML = '<i class="fa-solid fa-share-nodes"></i> Share Profile';
+                }, 2000);
+                showToast('Profile link copied to clipboard');
+            } catch (e) {
+                showToast('Could not copy link', true);
+            }
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            setupMobileNav();
+            loadProfile();
+        });
+    </script>
+</body>
+</html>
