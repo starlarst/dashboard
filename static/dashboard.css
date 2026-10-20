@@ -1978,3 +1978,76 @@ body.sidebar-is-collapsed .main-content {
     .equip-slot-mini { width: 26px; height: 26px; font-size: 0.55rem; }
     .quick-actions { grid-template-columns: repeat(3, 1fr); }
 }
+/* ══════════════════════════════════════════════════════════════════
+   AUTH SCREEN FIXES
+   Styles for classes the HTML uses that had no rules, plus layout fixes
+══════════════════════════════════════════════════════════════════ */
+
+/* Scroll on short screens instead of clipping the sign-up form */
+.auth-screen { overflow-y: auto; }
+.auth-container { margin: auto; position: relative; z-index: 1; }
+
+/* Background glow */
+.auth-bg-effects { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
+.auth-particle { position: absolute; border-radius: 50%; filter: blur(90px); opacity: 0.22; }
+.auth-particle-1 { width: 380px; height: 380px; background: var(--spectral-teal); top: -140px; left: -120px; }
+.auth-particle-2 { width: 320px; height: 320px; background: var(--soul-purple); bottom: -130px; right: -100px; }
+.auth-particle-3 { width: 220px; height: 220px; background: var(--spectral-teal); bottom: 15%; left: 62%; opacity: 0.12; }
+
+/* Brand header */
+.auth-brand { text-align: center; margin-bottom: 1.8rem; }
+.auth-brand .auth-logo { font-size: 2.2rem; margin-bottom: 0.9rem; }
+.auth-title {
+    font-family: 'Sora', sans-serif; font-size: 1.6rem; font-weight: 800;
+    color: var(--bone-white); letter-spacing: 0.5px; line-height: 1.2;
+}
+.auth-subtitle {
+    margin-top: 0.4rem; font-size: 0.7rem; font-weight: 600;
+    color: var(--dash-text-faint); letter-spacing: 3px; text-transform: uppercase;
+}
+
+/* Remember me + forgot password row */
+.form-options {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 1rem; margin: -0.2rem 0 1.4rem; font-size: 0.8rem;
+}
+.checkbox-label {
+    position: relative; display: inline-flex; align-items: center; gap: 8px;
+    color: #888; cursor: pointer; user-select: none;
+}
+.checkbox-label input[type="checkbox"] {
+    position: absolute; opacity: 0; width: 0; height: 0; margin: 0;
+}
+.checkbox-custom {
+    width: 18px; height: 18px; flex-shrink: 0;
+    border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(0, 0, 0, 0.4);
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: all 0.2s ease;
+}
+.checkbox-label input[type="checkbox"]:checked + .checkbox-custom {
+    background: var(--spectral-teal); border-color: var(--spectral-teal);
+    box-shadow: 0 0 12px rgba(45, 217, 232, 0.35);
+}
+.checkbox-label input[type="checkbox"]:checked + .checkbox-custom::after {
+    content: ''; width: 5px; height: 9px;
+    border: solid var(--void-black); border-width: 0 2px 2px 0;
+    transform: rotate(45deg) translate(-1px, -1px);
+}
+.checkbox-label input[type="checkbox"]:focus-visible + .checkbox-custom {
+    outline: 2px solid var(--spectral-teal); outline-offset: 2px;
+}
+.form-link {
+    color: var(--spectral-teal); text-decoration: none; font-weight: 600;
+    cursor: pointer; transition: opacity 0.2s;
+}
+.form-link:hover { text-decoration: underline; }
+.form-link i { margin-right: 4px; font-size: 0.75rem; }
+.auth-switch { text-align: center; margin-top: 1.4rem; font-size: 0.85rem; color: #555; }
+
+/* Eye icon button */
+.password-toggle { padding: 4px; line-height: 1; }
+
+/* Password strength meter stays hidden until the user types (JS shows it) */
+.pw-strength-wrap { display: none; }
+.dashboard-app.hidden { display: none; }
