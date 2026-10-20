@@ -41,6 +41,7 @@ document.addEventListener('DOMContentLoaded', () => {
     checkAuth();
     setupSidebar();
     setupOTPInputs();
+    setupAuthControls();
     setupDiscordButtons();
     setupNotifications();
     setupListItemModal();
@@ -548,11 +549,14 @@ async function handleLogin(event) {
 
 async function handleRegister(event) {
     event.preventDefault();
+    const username    = document.getElementById('reg-username').value.trim();
     const email       = document.getElementById('reg-email').value.trim();
     const pass        = document.getElementById('reg-pass').value;
     const confirmPass = document.getElementById('reg-confirm-pass').value;
     const btn         = document.getElementById('register-btn');
 
+    if (!username) { showToast('Please choose a username.', true); return; }
+    if (pass.length < 8) { showToast('Password must be at least 8 characters.', true); return; }
     if (pass !== confirmPass) { showToast('Passwords do not match!', true); return; }
     if (getPasswordStrength(pass).score < 2) { showToast('Please choose a stronger password.', true); return; }
 
@@ -563,7 +567,7 @@ async function handleRegister(event) {
             const res  = await fetch(`${API_BASE}/api/signup`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password: pass, recaptcha_token: token })
+                body: JSON.stringify({ username, email, password: pass, recaptcha_token: token })
             });
             const data = await res.json();
             if (data.ok && data.logged_in) {
@@ -654,7 +658,7 @@ async function handleOTPSubmit(event) {
     const btn         = document.getElementById('otp-btn');
 
     if (otp.length !== 6)        { showToast('Please enter the complete 6-digit code.', true); return; }
-    if (!newPassword || newPassword.length < 6) { showToast('Password must be at least 6 characters.', true); return; }
+    if (!newPassword || newPassword.length < 8) { showToast('Password must be at least 8 characters.', true); return; }
 
     btn.disabled = true; btn.textContent = 'VERIFYING...';
 
@@ -684,7 +688,8 @@ async function handleOTPSubmit(event) {
 function resendOTP() {
     if (!resetEmail) return;
     showToast('Requesting new code...');
-    document.getElementById('forgot-form').dispatchEvent(new Event('submit'));
+    document.getElementById('forgot-email').value = resetEmail;
+    handleForgotPassword({ preventDefault() {} });
 }
 
 function setupOTPInputs() {
@@ -698,6 +703,38 @@ function setupOTPInputs() {
             if (e.key === 'Backspace' && !e.target.value && idx > 0) inputs[idx - 1].focus();
             if (e.key === 'Enter') document.getElementById('otp-btn')?.click();
         });
+    });
+}
+
+function setupAuthControls() {
+    // Sign In / Create Account tabs
+    document.querySelectorAll('.auth-tab').forEach(tab => {
+        tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+    });
+
+    // Eye icon: show/hide password
+    document.querySelectorAll('.password-toggle').forEach(btn => {
+        btn.addEventListener('click', () => togglePassword(btn.dataset.target));
+    });
+
+    // "Forgot Password?" link
+    document.getElementById('show-forgot')?.addEventListener('click', e => {
+        e.preventDefault();
+        showForgotPasswordForm();
+    });
+
+    // "Back to Sign In" links
+    ['show-login-from-forgot', 'show-login-from-otp'].forEach(id => {
+        document.getElementById(id)?.addEventListener('click', e => {
+            e.preventDefault();
+            switchTab('login');
+        });
+    });
+
+    // "Resend" link on the code screen
+    document.getElementById('resend-otp')?.addEventListener('click', e => {
+        e.preventDefault();
+        resendOTP();
     });
 }
 
@@ -1455,8 +1492,4 @@ function setEl(id, value) {
     const el = document.getElementById(id);
     if (el) el.textContent = value;
 }
-
-// ════════════════════════════════════════════════════════════════════
-// LOGOUT BUTTON
-// ════════════════════════════════════════════════════════════════════
 document.getElementById('logoutBtn')?.addEventListener('click', logout);
