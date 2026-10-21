@@ -50,7 +50,7 @@ if not BOT_LINK_SECRET:
 
 DISCORD_BOT_TOKEN = os.getenv('DISCORD_BOT_TOKEN', '')
 DISCORD_GUILD_ID = '1466740140163731488'
-DISCORD_BID_CHANNEL = 1413219269545693332
+DISCORD_BID_CHANNEL = 1466835513074778383
 BOT_API_URL = os.getenv('BOT_API_URL', 'http://bot.rpghost.qzz.io:25509')
 
 async def _call_bot(method: str, path: str, json_body: dict = None):
@@ -607,16 +607,25 @@ async def api_give_gold(request: Request):
 
 @app.post('/api/admin/announce')
 async def api_announce(request: Request):
-    """Example two-way call: dashboard tells the bot to post a Discord message."""
     data = await _get_json(request)
+
+    channel_id = data.get("channel_id")
+    if channel_id is None:
+        channel_id = DISCORD_BID_CHANNEL
+
     try:
-        status, body = await _call_bot("POST", "/api/bot/announce", {
-            "message": data.get("message", ""),
-            "channel_id": data.get("channel_id"),
-        })
+        status, body = await _call_bot(
+            "POST",
+            "/api/bot/announce",
+            {
+                "message": data.get("message", ""),
+                "channel_id": channel_id,
+            },
+        )
     except Exception as e:
         log.error(f"[BOT-CALL] announce failed: {e}")
-        return _json({'ok': False, 'error': 'could not reach bot'}, 502)
+        return _json({"ok": False, "error": "could not reach bot"}, 502)
+
     return _json(body, status)
 
 # ── Discord OAuth ─────────────────────────────────────────────────────────────
@@ -1553,9 +1562,9 @@ async def profile_page(request: Request):
 async def achievements_page(request: Request):
     return templates.TemplateResponse(request, 'achievements.html', {})
 
-@app.get('/leaderboards')
+@app.get('/leaderboard')
 async def leaderboards_page(request: Request):
-    return templates.TemplateResponse(request, 'leaderboards.html', {})
+    return templates.TemplateResponse(request, 'leaderboard.html', {})
 
 @app.get('/inventory')
 async def inventory(request: Request):
@@ -1742,7 +1751,7 @@ async def api_profile(request: Request):
     return {'logged_in': True, 'nickname': nickname, 'avatar': avatar, 'bio': bio, 'is_admin': is_admin}
 def run_dashboard():
     """Start the dashboard server."""
-    host = "0.0.0.0"
+    host = "127.0.0.1"
     port = int(os.environ.get("PORT", 25507))
 
     try:
