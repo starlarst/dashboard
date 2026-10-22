@@ -1,1801 +1,1708 @@
-from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, RedirectResponse, PlainTextResponse
-from fastapi.templating import Jinja2Templates
-from fastapi.staticfiles import StaticFiles
-from starlette.middleware.sessions import SessionMiddleware
-from dotenv import load_dotenv
-import json, os, threading, time, secrets, hashlib, hmac
-from urllib.parse import urlencode
-from datetime import datetime, timedelta, timezone,UTC
-from collections import defaultdict
-import sqlite3
-import requests as http_requests
-import logging
-import socket
-import uvicorn
+const RECAPTCHA_SITE_KEY = "6LdvvT8tAAAAAKDmzCl0RaBvPr8ndJbdmFNQaqk7";
+const API_BASE = window.location.origin;
 
-load_dotenv()
+// ── STATE ────────────────────────────────────────────────────────────
+let currentUser           = null;
+let isDashboardInitialized = false;
+let isShowingDashboard    = false;
+let resetEmail            = "";
+let notifications         = [];
+let cachedInventoryItems  = [];
 
-# Setup logging
-log = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(name)s — %(message)s")
+// ── SECURITY HELPERS ────────────────────────────────────────────────
+function escapeHTML(str) {
+    if (str === null || str === undefined) return '';
+    return String(str).replace(/[&<>"']/g, ch => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
+}
 
-# ── Load Configuration from .env ──────────────────────────────────────────────
-DISCORD_CLIENT_ID = os.getenv('DISCORD_CLIENT_ID')
-if not DISCORD_CLIENT_ID:
-    raise ValueError("DISCORD_CLIENT_ID not found in .env file!")
-
-DISCORD_CLIENT_SECRET = os.getenv('DISCORD_CLIENT_SECRET')
-if not DISCORD_CLIENT_SECRET:
-    raise ValueError("DISCORD_CLIENT_SECRET not found in .env file!")
-
-DISCORD_REDIRECT_URI = os.getenv('DISCORD_REDIRECT_URI')
-if not DISCORD_REDIRECT_URI:
-    raise ValueError("DISCORD_REDIRECT_URI not found in .env file!")
-DISCORD_REDIRECT_URI = DISCORD_REDIRECT_URI.strip()
-
-DISCORD_API = 'https://discord.com/api'
-RECAPTCHA_SECRET = os.getenv('RECAPTCHA_SECRET', '')
-RECAPTCHA_VERIFY_URL = 'https://www.google.com/recaptcha/api/siteverify'
-if not RECAPTCHA_SECRET:
-    log.warning("[reCAPTCHA] RECAPTCHA_SECRET not set — reCAPTCHA verification is disabled.")
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, 'veyra.db')
-
-BOT_LINK_SECRET = os.getenv('BOT_LINK_SECRET')
-if not BOT_LINK_SECRET:
-    raise ValueError("BOT_LINK_SECRET not found in .env file!")
-
-DISCORD_BOT_TOKEN = os.getenv('DISCORD_BOT_TOKEN', '')
-DISCORD_GUILD_ID = '1466740140163731488'
-DISCORD_BID_CHANNEL = 1466835513074778383
-BOT_API_URL = os.getenv('BOT_API_URL', 'http://bot.rpghost.qzz.io:25509')
-
-async def _call_bot(method: str, path: str, json_body: dict = None):
-    """Call the bot's own HTTP API directly (two-way comms)."""
-    import aiohttp
-    headers = {"Authorization": f"Bearer {BOT_LINK_SECRET}"}
-    async with aiohttp.ClientSession() as session:
-        async with session.request(
-            method, f"{BOT_API_URL}{path}", json=json_body, headers=headers,
-            timeout=aiohttp.ClientTimeout(total=10),
-        ) as res:
-            return res.status, await res.json()
-
-# ── In-memory storage ──────────────────────────────────────────────────
-_link_tokens = {}
-_rate_limits = {}
-_session_log = {}
-_ip_connections = defaultdict(int)
-_ip_banned = {}
-_global_req_count = {'n': 0}
-_req_id_counter = 0
-
-# ── DDoS Protection Settings ──────────────────────────────────────────────────
-DDOS_BURST_LIMIT = 40
-DDOS_GLOBAL_CAP = 500
-DDOS_BAN_DURATION = 3600
-DDOS_MAX_BODY_BYTES = 65536
-DDOS_SYNC_MAX_BODY_BYTES = 8 * 1024 * 1024  # 8MB — /api/sync carries the bot's full game-data dump
-DDOS_BLOCKED_UA_FRAGS = [
-    'sqlmap', 'nikto', 'nmap', 'masscan', 'zgrab',
-    'python-requests/2.18', 'curl/7.29', 'dirbuster',
-    'go-http-client/1', 'libwww-perl',
-]
-DDOS_HONEYPOT_PATHS = [
-    '/wp-admin', '/wp-login', '/.env', '/admin.php',
-    '/phpinfo', '/config.php', '/xmlrpc', '/shell',
-    '/.git', '/etc/passwd', '/proc/self',
-]
-
-# ── Database Initialization ──────────────────────────────────────────────────
-def init_db():
-    """Create all necessary tables if they don't exist."""
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    conn.execute("PRAGMA journal_mode=WAL;")
-    conn.execute("PRAGMA synchronous=NORMAL;")
-    conn.execute("PRAGMA foreign_keys=ON;")
-
-    cur = conn.cursor()
-
-    # User game data
-    cur.execute("""CREATE TABLE IF NOT EXISTS users (
-        user_id INTEGER PRIMARY KEY,
-        gold INTEGER DEFAULT 0,
-        gems INTEGER DEFAULT 0,
-        special_coins INTEGER DEFAULT 0,
-        xp INTEGER DEFAULT 0,
-        level INTEGER DEFAULT 1,
-        last_daily TIMESTAMP,
-        last_weekly TIMESTAMP,
-        pity_counter INTEGER DEFAULT 0,
-        total_pulls INTEGER DEFAULT 0,
-        unlocked_characters TEXT DEFAULT '[]',
-        unlocked_weapons TEXT DEFAULT '[]'
-    )""")
-
-    # Player data (JSON blob)
-    cur.execute("""CREATE TABLE IF NOT EXISTS players (
-        user_id INTEGER PRIMARY KEY,
-        data TEXT,
-        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )""")
-
-    # Guild data
-    cur.execute("""CREATE TABLE IF NOT EXISTS guilds (
-        name TEXT PRIMARY KEY,
-        data TEXT,
-        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )""")
-
-    # World state
-    cur.execute("""CREATE TABLE IF NOT EXISTS world_state (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
-        data TEXT,
-        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )""")
-
-    # Account links
-    cur.execute("""CREATE TABLE IF NOT EXISTS account_links (
-        discord_id TEXT PRIMARY KEY,
-        linked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        last_login TIMESTAMP
-    )""")
-
-    # Activity log
-    cur.execute("""CREATE TABLE IF NOT EXISTS activity_log (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id TEXT,
-        action TEXT,
-        detail TEXT,
-        ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )""")
-
-    # Email/password authentication with admin column
-    cur.execute("""CREATE TABLE IF NOT EXISTS auth_users (
-        auth_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        email TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        nickname TEXT,
-        avatar TEXT,
-        bio TEXT,
-        is_admin INTEGER DEFAULT 0,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        last_login TIMESTAMP
-    )""")
-
-    # Migrate older auth_users tables that predate newer columns.
-    # CREATE TABLE IF NOT EXISTS does not alter an existing table, so if this
-    # table was created before a column existed, it has to be added here.
-    existing_cols = {row[1] for row in cur.execute("PRAGMA table_info(auth_users)").fetchall()}
-    required_cols = {
-        'nickname': "TEXT",
-        'avatar': "TEXT",
-        'bio': "TEXT",
-        'is_admin': "INTEGER DEFAULT 0",
-        'created_at': "TIMESTAMP",
-        'last_login': "TIMESTAMP",
+const pageConfig = {
+    'overview': {
+        panels: ['character-card', 'inventory-grid', 'stats-row', 'leaderboard-panel', 'auction-panel'],
+        titles: {
+            'inventory-grid':  '<i class="fa-solid fa-backpack" style="color:var(--soul-purple)"></i> Inventory',
+            'leaderboard-panel':'<i class="fa-solid fa-trophy" style="color:var(--gold)"></i> Leaderboard',
+            'auction-panel':   '<i class="fa-solid fa-gavel" style="color:var(--gold)"></i> Auction House'
+        }
     }
-    for col_name, col_type in required_cols.items():
-        if col_name not in existing_cols:
-            cur.execute(f"ALTER TABLE auth_users ADD COLUMN {col_name} {col_type}")
-            log.info(f"[DB Migration] Added missing column '{col_name}' to auth_users")
-
-    # Auctions
-    cur.execute("""CREATE TABLE IF NOT EXISTS auctions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        item_name TEXT NOT NULL,
-        seller_id INTEGER NOT NULL,
-        current_bid INTEGER NOT NULL DEFAULT 0,
-        highest_bidder INTEGER,
-        status TEXT NOT NULL DEFAULT 'active',
-        end_time TIMESTAMP NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )""")
-
-    conn.commit()
-    conn.close()
-
-# ── Secret Key ─────────────────────────────────────────────────────────────
-def _get_or_create_secret_key():
-    """Use FLASK_SECRET if set, otherwise persist a generated key to disk."""
-    env_secret = os.environ.get('FLASK_SECRET')
-    if env_secret:
-        return env_secret
-
-    secret_file = os.path.join(BASE_DIR, '.flask_secret_key')
-    try:
-        if os.path.exists(secret_file):
-            with open(secret_file, 'r') as f:
-                existing = f.read().strip()
-                if existing:
-                    return existing
-    except Exception as e:
-        log.warning(f"[secret_key] could not read {secret_file}: {e}")
-
-    new_secret = secrets.token_hex(32)
-    try:
-        with open(secret_file, 'w') as f:
-            f.write(new_secret)
-    except Exception as e:
-        log.warning(f"[secret_key] could not persist {secret_file}: {e}")
-    return new_secret
-
-SECRET_KEY = _get_or_create_secret_key()
-SESSION_LIFETIME_SECONDS = int(timedelta(days=30).total_seconds())
-
-UPDATE_INTERVAL = 30
-cached_data = {}
-last_updated = None
-_lock = threading.Lock()
-
-# ── Password Helpers ──────────────────────────────────────────────────────────
-def _hash_password(password, salt=None):
-    """PBKDF2-HMAC-SHA256 password hashing."""
-    if salt is None:
-        salt = secrets.token_hex(16)
-    iterations = 260_000
-    derived = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), iterations)
-    return f"pbkdf2${iterations}${salt}${derived.hex()}"
-
-def _verify_password(password, stored):
-    """Verify a password against a stored hash."""
-    try:
-        if stored.startswith('pbkdf2$'):
-            _, iterations, salt, hex_digest = stored.split('$', 3)
-            iterations = int(iterations)
-            derived = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), iterations)
-            return hmac.compare_digest(derived.hex(), hex_digest)
-        if ':' in stored:
-            salt, hash_value = stored.split(':', 1)
-            computed = hashlib.sha256((salt + password).encode()).hexdigest()
-            return hmac.compare_digest(computed, hash_value)
-        return hmac.compare_digest(hashlib.sha256(password.encode()).hexdigest(), stored)
-    except Exception as e:
-        log.warning(f"[auth] password verify error: {e}")
-        return False
-
-def _db():
-    """Get a database connection."""
-    c = sqlite3.connect(DB_PATH, check_same_thread=False)
-    c.execute("PRAGMA journal_mode=WAL;")
-    c.row_factory = sqlite3.Row
-    return c
-
-def _log_activity(user_id, action, detail=""):
-    """Log user activity."""
-    try:
-        conn = _db()
-        conn.execute(
-            "INSERT INTO activity_log (user_id, action, detail) VALUES (?,?,?)",
-            (str(user_id), action, detail),
-        )
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        log.warning(f"[activity_log] write failed: {e}")
-
-def _get_real_ip(request: Request):
-    """Get the real client IP.
-
-    SECURITY: X-Forwarded-For is attacker-controlled input — a direct client
-    can set it to anything. Behind a single trusted reverse proxy (Render),
-    the proxy appends the actual client IP as the *last* hop, so we read the
-    last entry (what our proxy observed) rather than the first (whatever the
-    client claimed), which a client cannot forge away. If the header is
-    missing entirely we fall back to the raw socket peer address.
-    """
-    xff = request.headers.get('X-Forwarded-For', '')
-    if xff:
-        parts = [p.strip() for p in xff.split(',') if p.strip()]
-        if parts:
-            return parts[-1]
-    return request.client.host if request.client else '0.0.0.0'
-
-def _is_banned(ip):
-    """Check if an IP is currently banned."""
-    expires = _ip_banned.get(ip)
-    if expires is None:
-        return False
-    if time.time() > expires:
-        del _ip_banned[ip]
-        return False
-    return True
-
-def _ban_ip(ip, reason='', duration=DDOS_BAN_DURATION):
-    """Ban an IP address."""
-    _ip_banned[ip] = time.time() + duration
-    log.warning(f"[DDoS] BANNED {ip} for {duration}s — {reason}")
-
-def _strict_rate_limit(ip, max_calls=3, window=60):
-    """Strict rate limiter for sensitive endpoints."""
-    now = time.time()
-    key = f'strict:{ip}'
-    hits = [t for t in _rate_limits.get(key, []) if now - t < window]
-    _rate_limits[key] = hits
-    if len(hits) >= max_calls:
-        if len(hits) >= max_calls * 3:
-            _ban_ip(ip, f"rate abuse on sensitive endpoint ({len(hits)} hits)")
-        return True
-    _rate_limits[key].append(now)
-    return False
-
-def _json(content: dict, status_code: int = 200):
-    """Helper mirroring Flask's `jsonify(...), status_code` pattern."""
-    return JSONResponse(content=content, status_code=status_code)
-
-async def _get_json(request: Request) -> dict:
-    """Helper mirroring Flask's `request.get_json(silent=True) or {}`."""
-    try:
-        return await request.json()
-    except Exception:
-        return {}
-
-# ── Admin Configuration ──────────────────────────────────────────────────────
-# SECURITY: no hardcoded admin email/password in source. Both must be supplied
-# via the environment; if ADMIN_PASSWORD is missing, a strong random password
-# is generated at startup and logged once so an operator can capture it and
-# then change it — never a fixed secret baked into the codebase/repo.
-ADMIN_EMAIL = os.getenv('ADMIN_EMAIL')
-_ADMIN_PASSWORD_ENV = os.getenv('ADMIN_PASSWORD')
-_ADMIN_PASSWORD_GENERATED = False
-if not _ADMIN_PASSWORD_ENV:
-    _ADMIN_PASSWORD_ENV = secrets.token_urlsafe(18)
-    _ADMIN_PASSWORD_GENERATED = True
-ADMIN_PASSWORD = _ADMIN_PASSWORD_ENV
-ADMIN_PASSWORD_HASH = _hash_password(ADMIN_PASSWORD) if ADMIN_EMAIL else None
-
-def ensure_admin_user():
-    """Create the admin user if it doesn't exist yet. No-op if ADMIN_EMAIL
-    is not configured, since there is no hardcoded fallback account anymore."""
-    if not ADMIN_EMAIL:
-        log.warning("[Admin] ADMIN_EMAIL not set — skipping admin account bootstrap.")
-        return
-
-    conn = None
-    try:
-        conn = _db()
-        existing = conn.execute(
-            "SELECT auth_id FROM auth_users WHERE email = ?", (ADMIN_EMAIL,)
-        ).fetchone()
-
-        if not existing:
-            conn.execute(
-                """INSERT INTO auth_users (email, password_hash, nickname, avatar, bio, is_admin, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (ADMIN_EMAIL, ADMIN_PASSWORD_HASH, "Admin",
-                 "https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=bc13fe",
-                 "System Administrator", 1, datetime.now(timezone.utc).isoformat())
-            )
-            conn.commit()
-            log.info(f"[Admin] Admin account created with email: {ADMIN_EMAIL}")
-            if _ADMIN_PASSWORD_GENERATED:
-                log.warning(
-                    "[Admin] ADMIN_PASSWORD was not set — generated a random one-time "
-                    f"password for {ADMIN_EMAIL}: {ADMIN_PASSWORD}  "
-                    "Log in now and change it, then set ADMIN_PASSWORD/remove this from logs."
-                )
-    except Exception as e:
-        log.error(f"[Admin] Failed to create admin account: {e}")
-    finally:
-        if conn:
-            conn.close()
-
-# ── Game Data Helpers ────────────────────────────────────────────────────────
-def get_player_game_data(user_id):
-    """Get player game data from database."""
-    conn = None
-    try:
-        conn = _db()
-        row = conn.execute("SELECT data FROM players WHERE user_id=?", (user_id,)).fetchone()
-        if row:
-            return json.loads(row['data'])
-
-        row = conn.execute(
-            "SELECT gold, gems, special_coins, xp, level FROM users WHERE user_id=?", (user_id,)
-        ).fetchone()
-        if row:
-            return {k: row[k] for k in row.keys()}
-    except Exception as e:
-        log.error(f'[DB] get_player_game_data({user_id}) error: {e}')
-    finally:
-        if conn:
-            conn.close()
-    return {}
-
-def load_game_data():
-    """Load game data from database into cache."""
-    global cached_data, last_updated
-    try:
-        init_db()
-        conn = _db()
-
-        players = {}
-        for row in conn.execute("SELECT user_id, data FROM players").fetchall():
-            try:
-                players[str(row['user_id'])] = json.loads(row['data'])
-            except Exception:
-                pass
-
-        guilds = {}
-        for row in conn.execute("SELECT name, data FROM guilds").fetchall():
-            try:
-                guilds[row['name']] = json.loads(row['data'])
-            except Exception:
-                pass
-
-        world_state = {}
-        row = conn.execute("SELECT data FROM world_state WHERE id=1").fetchone()
-        if row:
-            try:
-                world_state = json.loads(row['data'])
-            except Exception:
-                pass
-
-        conn.close()
-
-        with _lock:
-            cached_data = {'players': players, 'guilds': guilds, 'world_state': world_state}
-            last_updated = datetime.now(timezone.utc)
-
-        log.info(f"[Dashboard] Refreshed — {len(players)} players, {len(guilds)} guilds")
-    except Exception as e:
-        log.error(f"[Dashboard] load_game_data error: {e}")
-
-def _bg_updater():
-    """Background thread to refresh game data."""
-    while True:
-        load_game_data()
-        time.sleep(UPDATE_INTERVAL)
-
-# ── Password Reset (in-memory) ────────────────────────────────────────────
-_reset_tokens = {}
-
-def _purge_reset_tokens():
-    """Remove expired password-reset tokens."""
-    now = datetime.now(timezone.utc)
-    expired = [k for k, v in _reset_tokens.items() if now > v['expires_at']]
-    for k in expired:
-        del _reset_tokens[k]
-
-# ── FastAPI App Setup ─────────────────────────────────────────────────────────
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Startup/shutdown lifecycle, replacing Flask's imperative run_dashboard() setup."""
-    init_db()
-    ensure_admin_user()
-    load_game_data()
-    threading.Thread(target=_bg_updater, daemon=True).start()
-    yield
-    # (no shutdown cleanup needed)
-
-app = FastAPI(lifespan=lifespan)
-
-# SECURITY: default to HTTPS-only session cookies so the signed session (which
-# carries login state) can't be sniffed over plain HTTP. Opt out explicitly via
-# SESSION_HTTPS_ONLY=false only for local non-TLS development.
-SESSION_HTTPS_ONLY = os.getenv('SESSION_HTTPS_ONLY', 'true').strip().lower() not in ('false', '0', 'no')
-app.add_middleware(
-    SessionMiddleware,
-    secret_key=SECRET_KEY,
-    max_age=SESSION_LIFETIME_SECONDS,
-    same_site="lax",
-    https_only=SESSION_HTTPS_ONLY,
-)
-
-from routes_profile import register_profile_routes
-register_profile_routes(app)
-
-
-templates = Jinja2Templates(directory=os.path.join(BASE_DIR, 'templates'))
-
-STATIC_DIR = os.path.join(BASE_DIR, 'static')
-if not os.path.isdir(STATIC_DIR):
-    try:
-        os.makedirs(STATIC_DIR, exist_ok=True)
-        log.info(f"[static] Created missing static directory at {STATIC_DIR}")
-    except Exception as e:
-        log.warning(f"[static] Could not create static dir {STATIC_DIR}: {e}")
-app.mount('/static', StaticFiles(directory=STATIC_DIR), name='static')
-
-# ── DDoS Protection Middleware ──────────────────────────────────────────────
-def _add_security_headers(response, req_id=None):
-    """Shared header injection, applied on every exit path (mirrors Flask's
-    after_request, which runs even when before_request short-circuits)."""
-    if req_id:
-        response.headers['X-Request-ID'] = req_id
-    response.headers['X-Content-Type-Options'] = 'nosniff'
-    response.headers['X-Frame-Options'] = 'DENY'
-    response.headers['X-XSS-Protection'] = '1; mode=block'
-    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-    return response
-
-@app.middleware("http")
-async def ddos_guard(request: Request, call_next):
-    """Protect the app from DDoS and abuse (replaces before_request/after_request)."""
-    global _req_id_counter
-    ip = _get_real_ip(request)
-
-    if _is_banned(ip):
-        log.info(f"[DDoS] Blocked banned IP: {ip}")
-        return _add_security_headers(PlainTextResponse("Forbidden", status_code=403))
-
-    # Render's own health checker (and most uptime monitors) sends HEAD requests
-    # with generic HTTP-library user-agents. Those would otherwise get caught by
-    # DDOS_BLOCKED_UA_FRAGS below and get Render's health check IP banned,
-    # which stops the app from ever passing Render's port/startup check.
-    is_health_check = request.method == 'HEAD'
-
-    ua = (request.headers.get('user-agent', '') or '').lower()
-    if not is_health_check and any(frag in ua for frag in DDOS_BLOCKED_UA_FRAGS):
-        _ban_ip(ip, f"bad UA: {ua[:60]}")
-        return _add_security_headers(PlainTextResponse("Forbidden", status_code=403))
-
-    if not is_health_check and any(request.url.path.startswith(p) for p in DDOS_HONEYPOT_PATHS):
-        _ban_ip(ip, f"honeypot: {request.url.path}")
-        return _add_security_headers(PlainTextResponse("Not Found", status_code=404))
-
-    if _global_req_count['n'] >= DDOS_GLOBAL_CAP:
-        log.warning(f"[DDoS] Global cap hit ({_global_req_count['n']} reqs)")
-        return _add_security_headers(
-            PlainTextResponse("Service Unavailable", status_code=503, headers={'Retry-After': '5'})
-        )
-
-    _ip_connections[ip] += 1
-    if _ip_connections[ip] > DDOS_BURST_LIMIT:
-        _ban_ip(ip, f"burst: {_ip_connections[ip]} concurrent")
-        _ip_connections[ip] = 0
-        return _add_security_headers(
-            PlainTextResponse("Too Many Requests", status_code=429, headers={'Retry-After': '60'})
-        )
-
-    cl = request.headers.get('content-length')
-    # /api/sync carries the bot's full players/guilds/world_state dump, which
-    # easily exceeds the normal per-request cap as the player count grows.
-    # It's already authenticated separately (BOT_LINK_SECRET) inside the route,
-    # so it gets a much higher ceiling instead of the generic DDoS limit.
-    body_limit = DDOS_SYNC_MAX_BODY_BYTES if request.url.path == '/api/sync' else DDOS_MAX_BODY_BYTES
-    if cl and int(cl) > body_limit:
-        log.warning(f"[DDoS] Body too large from {ip}: {cl} bytes (limit {body_limit})")
-        # Roll back the connection count we already incremented above.
-        _ip_connections[ip] = max(0, _ip_connections.get(ip, 1) - 1)
-        return _add_security_headers(PlainTextResponse("Request Too Large", status_code=413))
-
-    _global_req_count['n'] += 1
-    _req_id_counter += 1
-    request.state.req_id = f"{_req_id_counter:08x}"
-    request.state.req_ip = ip
-    request.state.req_start = time.monotonic()
-
-    response = await call_next(request)
-
-    _ip_connections[ip] = max(0, _ip_connections.get(ip, 1) - 1)
-    _global_req_count['n'] = max(0, _global_req_count['n'] - 1)
-
-    return _add_security_headers(response, req_id=getattr(request.state, 'req_id', None))
-
-# ── Bot → Dashboard Sync ──────────────────────────────────────────────────────
-# The bot and dashboard now run on separate hosts (AxisNodes + Render) and no
-# longer share a filesystem, so the old approach of both processes reading the
-# same local veyra.db file no longer works. Instead, the bot pushes its
-# players/guilds/world_state data here over HTTPS, authenticated with the same
-# BOT_LINK_SECRET already used for account linking. This endpoint writes that
-# data into this dashboard's own local DB and refreshes the in-memory cache.
-@app.post('/api/sync')
-async def api_sync(request: Request):
-    """Receive a full game-data sync push from the bot."""
-    data = await _get_json(request)
-
-    if not hmac.compare_digest(str(data.get('bot_secret', '')), BOT_LINK_SECRET):
-        log.warning("[SYNC] rejected push with invalid bot_secret")
-        return _json({'ok': False, 'error': 'unauthorized'}, 401)
-
-    players = data.get('players', {})
-    guilds = data.get('guilds', {})
-    world_state = data.get('world_state', {})
-
-    if not isinstance(players, dict) or not isinstance(guilds, dict) or not isinstance(world_state, dict):
-        return _json({'ok': False, 'error': 'malformed payload'}, 400)
-
-    conn = None
-    try:
-        conn = _db()
-        for user_id, pdata in players.items():
-            conn.execute(
-                "INSERT INTO players (user_id, data, last_updated) VALUES (?, ?, CURRENT_TIMESTAMP) "
-                "ON CONFLICT(user_id) DO UPDATE SET data=excluded.data, last_updated=CURRENT_TIMESTAMP",
-                (int(user_id), json.dumps(pdata)),
-            )
-        for name, gdata in guilds.items():
-            conn.execute(
-                "INSERT INTO guilds (name, data, last_updated) VALUES (?, ?, CURRENT_TIMESTAMP) "
-                "ON CONFLICT(name) DO UPDATE SET data=excluded.data, last_updated=CURRENT_TIMESTAMP",
-                (name, json.dumps(gdata)),
-            )
-        conn.execute(
-            "INSERT INTO world_state (id, data, last_updated) VALUES (1, ?, CURRENT_TIMESTAMP) "
-            "ON CONFLICT(id) DO UPDATE SET data=excluded.data, last_updated=CURRENT_TIMESTAMP",
-            (json.dumps(world_state),),
-        )
-        conn.commit()
-    except Exception as e:
-        log.error(f"[SYNC] failed to write payload: {e}")
-        return _json({'ok': False, 'error': 'internal error'}, 500)
-    finally:
-        if conn:
-            conn.close()
-
-    load_game_data()  # refresh in-memory cache immediately instead of waiting for the 30s poll
-    log.info(f"[SYNC] received push: {len(players)} players, {len(guilds)} guilds")
-    return _json({'ok': True, 'received': {'players': len(players), 'guilds': len(guilds)}})
-
-# NOTE: unauthenticated /api/admin/give-gold and /api/admin/announce handlers
-# used to live here. They had no session/is_admin check and, because Starlette
-# matches routes in registration order, they silently shadowed the properly
-# admin-protected handlers of the same name defined later in this file —
-# giving *any* anonymous caller the ability to grant gold or broadcast bot
-# announcements. They have been removed; see api_admin_give_gold and
-# api_admin_announce below for the real, auth-checked implementations.
-
-# ── Discord OAuth ─────────────────────────────────────────────────────────────
-@app.get('/login/discord')
-async def discord_login(request: Request):
-    """Redirect user to Discord for OAuth."""
-    state = secrets.token_urlsafe(32)
-    request.session['oauth_state'] = state
-    params = {
-        'client_id': DISCORD_CLIENT_ID,
-        'redirect_uri': DISCORD_REDIRECT_URI,
-        'response_type': 'code',
-        'scope': 'identify email',
-        'state': state,
-    }
-    oauth_url = f"{DISCORD_API}/oauth2/authorize?{urlencode(params)}"
-    return RedirectResponse(oauth_url)
-
-@app.get('/callback')
-async def discord_callback(request: Request):
-    """Handle Discord OAuth callback."""
-    ip = _get_real_ip(request)
-    code = request.query_params.get('code')
-    error = request.query_params.get('error')
-    state = request.query_params.get('state', '')
-
-    expected_state = request.session.pop('oauth_state', None)
-    if not expected_state or not hmac.compare_digest(state, expected_state):
-        log.warning(f"[OAuth] state mismatch/missing from {ip} — possible CSRF, rejecting callback")
-        return RedirectResponse('/?auth=failed')
-
-    if error or not code:
-        log.warning(f"[OAuth] callback error param={error} code_present={bool(code)}")
-        return RedirectResponse('/?auth=failed')
-
-    token_res = http_requests.post(
-        f'{DISCORD_API}/oauth2/token',
-        data={
-            'client_id': DISCORD_CLIENT_ID,
-            'client_secret': DISCORD_CLIENT_SECRET,
-            'grant_type': 'authorization_code',
-            'code': code,
-            'redirect_uri': DISCORD_REDIRECT_URI,
-        },
-        headers={'Content-Type': 'application/x-www-form-urlencoded'},
-    )
-
-    if token_res.status_code != 200:
-        log.warning(f'[OAuth] Token exchange failed ({token_res.status_code}): {token_res.text}')
-        return RedirectResponse('/?auth=failed')
-
-    access_token = token_res.json().get('access_token')
-
-    user_res = http_requests.get(
-        f'{DISCORD_API}/users/@me',
-        headers={'Authorization': f'Bearer {access_token}'},
-    )
-
-    if user_res.status_code != 200:
-        log.warning(f'[OAuth] /users/@me failed ({user_res.status_code}): {user_res.text}')
-        return RedirectResponse('/?auth=failed')
-
-    discord_user = user_res.json()
-    user_id = int(discord_user['id'])
-    avatar_hash = discord_user.get('avatar')
-    avatar_url = (
-        f"https://cdn.discordapp.com/avatars/{user_id}/{avatar_hash}.png"
-        if avatar_hash
-        else f"https://cdn.discordapp.com/embed/avatars/{user_id % 5}.png"
-    )
-
-    game_data = get_player_game_data(user_id)
-
-    request.session['user'] = {
-        'discord_id': str(user_id),
-        'username': discord_user.get('global_name') or discord_user.get('username', 'Player'),
-        'email': discord_user.get('email', ''),
-        'avatar': avatar_url,
-        'level': game_data.get('level', 1),
-        'gold': game_data.get('gold', 0),
-        'gems': game_data.get('gems', 0),
-        'special_coins': game_data.get('special_coins', 0),
-        'char_class': game_data.get('char_class', '—'),
-        'xp': game_data.get('xp', 0),
-        'xp_needed': game_data.get('xp_needed', 100),
-        'login_at': datetime.now(UTC).isoformat(),
-        'ip': ip,
-        'auth_type': 'discord',
-        'is_admin': False
+};
+
+// ════════════════════════════════════════════════════════════════════
+// DOMContentLoaded
+// ════════════════════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+    checkAuth();
+    setupSidebar();
+    setupOTPInputs();
+    setupDiscordButtons();
+    setupNotifications();
+    setupListItemModal();
+    setupEditPlayerModal();
+    setupMusicToggle();
+    setupSpiritGame();
+
+    // Admin tab switching
+    document.getElementById('adminTabUsers')?.addEventListener('click', () => switchAdminTab('users'));
+    document.getElementById('adminTabPlayers')?.addEventListener('click', () => switchAdminTab('players'));
+    document.getElementById('adminTabActions')?.addEventListener('click', () => switchAdminTab('actions'));
+});
+
+// ════════════════════════════════════════════════════════════════════
+// AUTH CHECK
+// ════════════════════════════════════════════════════════════════════
+async function sendAnnouncement() {
+    const message = document.getElementById('announceMsg').value.trim();
+    if (!message) return showToast('Enter a message first');
+    try {
+        const res = await fetch('/api/admin/announce', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message })
+        });
+        const data = await res.json();
+        showToast(data.ok ? 'Announcement sent!' : (data.error || 'Failed'));
+    } catch (e) { showToast('Request failed'); }
+}
+
+async function giveGold() {
+    const user_id = document.getElementById('goldUserId').value.trim();
+    const amount = parseInt(document.getElementById('goldAmount').value, 10);
+    if (!user_id || !amount) return showToast('Enter user ID and amount');
+    try {
+        const res = await fetch('/api/admin/give-gold', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id, amount })
+        });
+        const data = await res.json();
+        showToast(data.ok ? `Gave ${amount} gold to ${user_id}` : (data.error || 'Failed'));
+    } catch (e) { showToast('Request failed'); }
+}
+
+async function checkAuth() {
+    const params = new URLSearchParams(window.location.search);
+    const authStatus = params.get('auth');
+
+    if (authStatus === 'success') {
+        window.history.replaceState({}, document.title, window.location.pathname);
+        showToast('Successfully logged in with Discord!');
+    } else if (authStatus === 'failed') {
+        window.history.replaceState({}, document.title, window.location.pathname);
+        showToast('Discord login failed. Please try again.', true);
+        return;
     }
 
-    sid = str(user_id)
-    _session_log.setdefault(sid, []).append({
-        'ip': ip,
-        'ua': request.headers.get('user-agent', '')[:120],
-        'at': datetime.now(UTC).isoformat(),
-    })
-    _session_log[sid] = _session_log[sid][-10:]
+    try {
+        const res  = await fetch(`${API_BASE}/api/me`);
+        const data = await res.json();
+        if (data.logged_in) showDashboard(data);
+    } catch (err) {
+        console.error('Auth check error:', err);
+    }
+}
 
-    try:
-        conn = _db()
-        conn.execute(
-            "INSERT INTO account_links (discord_id, last_login) VALUES (?,?) "
-            "ON CONFLICT(discord_id) DO UPDATE SET last_login=excluded.last_login",
-            (sid, datetime.now(UTC).isoformat()),
-        )
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        log.warning(f"[login] account_links update failed: {e}")
+// ════════════════════════════════════════════════════════════════════
+// SIDEBAR & NAVIGATION
+// ════════════════════════════════════════════════════════════════════
+function setupSidebar() {
+    const sidebar     = document.getElementById('sidebar');
+    const backdrop    = document.getElementById('navBackdrop');
+    const toggle      = document.getElementById('navToggle');
+    const collapseBtn = document.getElementById('sidebarCollapseBtn');
+    const container   = document.getElementById('dashboard');
 
-    _log_activity(user_id, "login", f"from {ip}")
-    log.info(f"[OAuth] Logged in: {request.session['user']['username']} (ID: {user_id})")
+    if (toggle && backdrop && sidebar) {
+        toggle.addEventListener('click', () => {
+            sidebar.classList.toggle('is-open');
+            backdrop.classList.toggle('is-open');
+        });
+        backdrop.addEventListener('click', () => {
+            sidebar.classList.remove('is-open');
+            backdrop.classList.remove('is-open');
+        });
+    }
 
-    return RedirectResponse('/?auth=success')
+    if (collapseBtn && sidebar) {
+        collapseBtn.addEventListener('click', () => {
+            sidebar.classList.toggle('is-collapsed');
+            container?.classList.toggle('is-collapsed');
+            document.body.classList.toggle('sidebar-is-collapsed');
+            positionNavPill();
+        });
+    }
 
-# ── Auth Routes ──────────────────────────────────────────────────────────────
-@app.post('/api/signup')
-async def api_signup(request: Request):
-    """Register a new email/password account."""
-    ip = _get_real_ip(request)
+    // Pages that live inside this dashboard as panels (no separate template/route).
+    // Everything else (inventory, profile, settings) has its own template and should
+    // navigate normally via the link's href.
+    const inPagePanels = ['overview', 'admin'];
 
-    if _strict_rate_limit(ip, max_calls=8, window=600):
-        return _json({
-            'ok': False,
-            'error': 'Too many signup attempts. Please wait a few minutes.'
-        }, 429)
+    document.querySelectorAll('.nav-links a').forEach(link => {
+        link.addEventListener('click', (e) => {
+            const page = link.dataset.page || 'overview';
 
-    data = await _get_json(request)
-    email = str(data.get('email', '')).strip().lower()
-    password = str(data.get('password', '')).strip()
-    nickname = str(data.get('nickname', '')).strip() or email.split('@')[0]
-    recaptcha_token = data.get('recaptcha_token')
+            if (inPagePanels.includes(page)) {
+                e.preventDefault();
+                navigateTo(page);
+            }
 
-    if not email or '@' not in email:
-        return _json({'ok': False, 'error': 'Please enter a valid email address.'}, 400)
+            sidebar?.classList.remove('is-open');
+            backdrop?.classList.remove('is-open');
+        });
+    });
+}
 
-    if not password or len(password) < 6:
-        return _json({'ok': False, 'error': 'Password must be at least 6 characters.'}, 400)
+function positionNavPill() {
+    const pill       = document.getElementById('navActivePill');
+    const activeLink = document.querySelector('.nav-links a.active');
+    const list       = document.getElementById('navLinksList');
+    if (!pill || !activeLink || !list) return;
 
-    if len(password) > 128:
-        return _json({'ok': False, 'error': 'Password is too long.'}, 400)
+    const listRect = list.getBoundingClientRect();
+    const linkRect = activeLink.getBoundingClientRect();
+    pill.style.height = linkRect.height + 'px';
+    pill.style.top    = (linkRect.top - listRect.top) + 'px';
+    pill.classList.add('is-active');
+}
 
-    common_passwords = ['password', 'password1', '12345678', '123456789', 'qwerty123',
-                        'letmein', 'iloveyou', 'admin123', 'welcome1', 'monkey123']
-    if password.lower() in common_passwords:
-        return _json({'ok': False, 'error': 'That password is too common.'}, 400)
+window.addEventListener('resize', positionNavPill);
 
-    conn = None
-    try:
-        conn = _db()
-        existing = conn.execute(
-            "SELECT auth_id FROM auth_users WHERE email = ?", (email,)
-        ).fetchone()
+function navigateTo(page) {
+    const config = pageConfig[page] || pageConfig['overview'];
 
-        if existing:
-            return _json({
-                'ok': False,
-                'error': 'This email is already registered.'
-            }, 400)
+    document.querySelectorAll('.panel').forEach(p => p.classList.add('hidden'));
 
-        password_hash = _hash_password(password)
-        avatar_url = f"https://ui-avatars.com/api/?name={nickname}&background=5865F2&color=fff&size=64"
+    config.panels.forEach(cls => {
+        const el = document.querySelector(`.${cls}`);
+        if (el) el.classList.remove('hidden');
+    });
 
-        cursor = conn.execute(
-            """INSERT INTO auth_users (email, password_hash, nickname, avatar, created_at)
-               VALUES (?, ?, ?, ?, ?)""",
-            (email, password_hash, nickname, avatar_url, datetime.now(UTC).isoformat())
-        )
-        auth_id = cursor.lastrowid
-        conn.commit()
+    Object.keys(config.titles).forEach(cls => {
+        const panel = document.querySelector(`.${cls}`);
+        if (!panel) return;
+        const span = panel.querySelector('.panel-header span');
+        if (span) span.innerHTML = config.titles[cls];
+    });
 
-        _log_activity(auth_id, 'signup', f'email={email}')
-        log.info(f"[Signup] New account created: {email} (ID: {auth_id})")
+    const adminPanel = document.getElementById('adminPanel');
+    if (adminPanel) {
+        if (currentUser?.is_admin) {
+            adminPanel.classList.add('visible');
+            adminPanel.classList.remove('hidden');
+        } else {
+            adminPanel.classList.remove('visible');
+        }
+    }
 
-        request.session['user'] = {
-            'discord_id': str(auth_id),
-            'username': nickname,
-            'email': email,
-            'avatar': avatar_url,
-            'level': 1,
-            'gold': 100,
-            'gems': 10,
-            'special_coins': 0,
-            'char_class': 'Adventurer',
-            'xp': 0,
-            'xp_needed': 100,
-            'login_at': datetime.now(UTC).isoformat(),
-            'ip': ip,
-            'auth_type': 'email',
-            'is_admin': False
+    document.querySelectorAll('.nav-links a').forEach(a => {
+        a.classList.toggle('active', a.dataset.page === page);
+    });
+    positionNavPill();
+}
+
+// ════════════════════════════════════════════════════════════════════
+// ADMIN TAB SWITCHING
+// ════════════════════════════════════════════════════════════════════
+function switchAdminTab(tab) {
+    document.querySelectorAll('.admin-btn').forEach(b => b.classList.remove('active-tab'));
+
+    document.getElementById('adminUsersPanel').style.display = 'none';
+    document.getElementById('adminPlayersPanel').style.display = 'none';
+    document.getElementById('adminActionsPanel').style.display = 'none';
+
+    if (tab === 'users') {
+        document.getElementById('adminTabUsers').classList.add('active-tab');
+        document.getElementById('adminUsersPanel').style.display = 'block';
+        refreshAdminPanel();
+    } else if (tab === 'players') {
+        document.getElementById('adminTabPlayers').classList.add('active-tab');
+        document.getElementById('adminPlayersPanel').style.display = 'block';
+        refreshAdminPlayers();
+    } else if (tab === 'actions') {
+        document.getElementById('adminTabActions').classList.add('active-tab');
+        document.getElementById('adminActionsPanel').style.display = 'block';
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// NOTIFICATIONS
+// ════════════════════════════════════════════════════════════════════
+function setupNotifications() {
+    const bell = document.getElementById('notifBell');
+    if (!bell) return;
+
+    bell.addEventListener('click', (e) => {
+        e.stopPropagation();
+        document.getElementById('notifPanel')?.classList.toggle('is-open');
+        markAllNotificationsRead();
+    });
+    document.addEventListener('click', () => {
+        document.getElementById('notifPanel')?.classList.remove('is-open');
+    });
+    document.getElementById('notifPanel')?.addEventListener('click', e => e.stopPropagation());
+    document.getElementById('notifClearBtn')?.addEventListener('click', () => {
+        notifications = [];
+        renderNotifications();
+    });
+
+    addNotification('gift', 'Daily reward available', 'Claim your daily login bonus.');
+}
+
+function addNotification(type, title, desc) {
+    notifications.unshift({
+        id: Date.now() + Math.random(),
+        type, title, desc,
+        time: new Date(),
+        read: false
+    });
+    notifications = notifications.slice(0, 30);
+    renderNotifications();
+}
+
+function markAllNotificationsRead() {
+    notifications.forEach(n => n.read = true);
+    renderNotifications();
+}
+
+function renderNotifications() {
+    const bell = document.getElementById('notifBell');
+    const list = document.getElementById('notifList');
+    if (!bell || !list) return;
+
+    const hasUnread = notifications.some(n => !n.read);
+    bell.classList.toggle('has-unread', hasUnread);
+
+    if (notifications.length === 0) {
+        list.innerHTML = '<div class="notif-empty">You\'re all caught up.</div>';
+        return;
+    }
+
+    const icons = {
+        gift: 'fa-gift', level: 'fa-star', quest: 'fa-scroll',
+        auction: 'fa-gavel', guild: 'fa-users', battle: 'fa-khanda'
+    };
+    const colors = {
+        gift: 'var(--gold)', level: 'var(--dash-teal)', quest: 'var(--dash-purple)',
+        auction: 'var(--gold)', guild: 'var(--dash-emerald)', battle: 'var(--dash-red)'
+    };
+
+    list.innerHTML = notifications.map(n => `
+        <div class="notif-item ${n.read ? '' : 'unread'}">
+            <i class="fa-solid ${icons[n.type] || 'fa-bell'}" style="color:${colors[n.type] || 'var(--dash-teal)'}"></i>
+            <div>
+                <div class="notif-item-title">${escapeHTML(n.title)}</div>
+                <div class="notif-item-desc">${escapeHTML(n.desc)}</div>
+                <div class="notif-item-time">${timeAgo(n.time)}</div>
+            </div>
+        </div>`).join('');
+}
+
+function timeAgo(date) {
+    const secs = Math.floor((Date.now() - new Date(date).getTime()) / 1000);
+    if (secs < 60) return 'Just now';
+    if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
+    if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
+    return `${Math.floor(secs / 86400)}d ago`;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// SHOW DASHBOARD
+// ════════════════════════════════════════════════════════════════════
+function showDashboard(user) {
+    if (isShowingDashboard) return;
+    isShowingDashboard = true;
+
+    try {
+        if (!user) { isShowingDashboard = false; return; }
+        currentUser = user;
+
+        document.getElementById('auth-screen').style.display   = 'none';
+        document.getElementById('dashboard-app').style.display = 'block';
+
+        const name = user.username || 'Adventurer';
+        setEl('user-name-display', name);
+        setEl('dash-name', name);
+        setEl('dash-level', user.level || 1);
+        setEl('dash-class-display', user.char_class || 'Explorer');
+        setEl('dash-class', `Level ${user.level || 1} · ${user.char_class || 'Explorer'}`);
+        const chip = document.getElementById('dash-level-chip');
+        if (chip) chip.textContent = user.level || 1;
+
+        // Character details
+        setEl('char-guild', user.guild || 'Unguilded');
+        setEl('char-reputation', user.reputation || 'Neutral');
+        setEl('char-location', user.location || 'Eldoria');
+        setEl('char-power', (user.combat_power || 0).toLocaleString());
+
+        // Stats
+        setEl('char-atk', user.attack || 0);
+        setEl('char-def', user.defense || 0);
+        setEl('char-mag', user.magic || 0);
+        setEl('char-spd', user.speed || 0);
+        setEl('char-lck', user.luck || 0);
+        setEl('char-crit', (user.critical_chance || 0) + '%');
+
+        initSim(user);
+        countUpTo('gold-display', simState.gold);
+        countUpTo('gems-display', simState.gems);
+
+        // Stats widgets
+        setEl('stat-gold', (user.gold || 0).toLocaleString());
+        setEl('stat-gems', (user.gems || 0).toLocaleString());
+        setEl('stat-rank', '#' + (user.rank || 0));
+        setEl('stat-wins', user.battles_won || 0);
+        setEl('stat-losses', user.battles_lost || 0);
+        setEl('stat-playtime', user.playtime || '0h');
+
+        const balance = document.getElementById('auction-balance');
+        if (balance) balance.innerHTML = (user.gold || 0).toLocaleString() + ' <span style="font-size:0.7rem;color:#333;">Gold</span>';
+
+        const xpPct = user.xp_pct || 0;
+        const xpBar = document.getElementById('xp-bar');
+        if (xpBar) { xpBar.style.width = xpPct + '%'; }
+        setEl('xp-text', `${user.xp || 0} / ${user.xp_needed || 100}`);
+
+        if (user.avatar) {
+            const av = document.getElementById('user-avatar');
+            if (av) av.src = user.avatar;
+            const sidebarAv = document.getElementById('sidebar-avatar');
+            if (sidebarAv) sidebarAv.src = user.avatar;
+        }
+        setEl('sidebar-username', name);
+        setEl('sidebar-userrole', `Level ${user.level || 1}`);
+
+        // HP / MP bars (were hardcoded in the HTML)
+        const hp = Number(user.hp), maxHp = Number(user.max_hp);
+        if (Number.isFinite(hp) && maxHp > 0) {
+            const hpBar = document.getElementById('hp-bar');
+            if (hpBar) hpBar.style.width = Math.min(100, (hp / maxHp) * 100) + '%';
+            setEl('hp-text', `${hp} / ${maxHp}`);
+        }
+        const mp = Number(user.mp), maxMp = Number(user.max_mp);
+        if (Number.isFinite(mp) && maxMp > 0) {
+            const mpBar = document.getElementById('mp-bar');
+            if (mpBar) mpBar.style.width = Math.min(100, (mp / maxMp) * 100) + '%';
+            setEl('mp-text', `${mp} / ${maxMp}`);
         }
 
-        sid = str(auth_id)
-        _session_log.setdefault(sid, []).append({
-            'ip': ip,
-            'ua': request.headers.get('user-agent', '')[:120],
-            'at': datetime.now(UTC).isoformat(),
-        })
-        _session_log[sid] = _session_log[sid][-10:]
-
-        return _json({
-            'ok': True,
-            'logged_in': True,
-            'message': 'Welcome to RPG Ghost! 🎮',
-            'user': request.session['user'],
-            'is_admin': False
-        }, 201)
-
-    except Exception as e:
-        log.error(f"[Signup] Database error: {e}")
-        return _json({
-            'ok': False,
-            'error': 'Something went wrong. Please try again.'
-        }, 500)
-    finally:
-        if conn:
-            conn.close()
-
-@app.post('/api/login')
-async def api_login(request: Request):
-    """Log in with email and password."""
-    ip = _get_real_ip(request)
-
-    if _strict_rate_limit(ip, max_calls=10, window=300):
-        return _json({
-            'ok': False,
-            'error': 'Too many login attempts. Please wait a moment.'
-        }, 429)
-
-    data = await _get_json(request)
-    email = str(data.get('email', '')).strip()
-    password = str(data.get('password', '')).strip()
-    keep_signed_in = bool(data.get('keep_signed_in', False))  # noqa: F841 (see session note above)
-
-    if not email or not password:
-        return _json({'ok': False, 'error': 'Please fill in all fields.'}, 400)
-
-    conn = None
-    try:
-        conn = _db()
-        user = conn.execute(
-            "SELECT auth_id, email, password_hash, nickname, avatar, bio, is_admin, created_at, last_login "
-            "FROM auth_users WHERE email = ?",
-            (email,)
-        ).fetchone()
-
-        if not user:
-            return _json({
-                'ok': False,
-                'error': 'Invalid email or password.'
-            }, 401)
-
-        if not _verify_password(password, user['password_hash']):
-            return _json({
-                'ok': False,
-                'error': 'Invalid email or password.'
-            }, 401)
-
-        # Update last login
-        conn.execute(
-            "UPDATE auth_users SET last_login = ? WHERE auth_id = ?",
-            (datetime.now(UTC).isoformat(), user['auth_id'])
-        )
-        conn.commit()
-
-        nickname = user['nickname'] or email.split('@')[0]
-        avatar_url = user['avatar'] or f"https://ui-avatars.com/api/?name={nickname}&background=5865F2&color=fff&size=64"
-
-        request.session['user'] = {
-            'discord_id': str(user['auth_id']),
-            'username': nickname,
-            'email': user['email'],
-            'avatar': avatar_url,
-            'bio': user['bio'] or '',
-            'level': 1,
-            'gold': 100,
-            'gems': 10,
-            'special_coins': 0,
-            'char_class': 'Adventurer',
-            'xp': 0,
-            'xp_needed': 100,
-            'login_at': datetime.now(UTC).isoformat(),
-            'ip': ip,
-            'auth_type': 'email',
-            'is_admin': bool(user['is_admin'])
-        }
-
-        sid = str(user['auth_id'])
-        _session_log.setdefault(sid, []).append({
-            'ip': ip,
-            'ua': request.headers.get('user-agent', '')[:120],
-            'at': datetime.now(UTC).isoformat(),
-        })
-        _session_log[sid] = _session_log[sid][-10:]
-
-        _log_activity(user['auth_id'], 'login', f'from {ip}')
-        log.info(f"[Login] {email} logged in successfully")
-
-        return _json({
-            'ok': True,
-            'logged_in': True,
-            'message': f'Welcome back, {nickname}! 🎉',
-            'user': request.session['user'],
-            'is_admin': bool(user['is_admin'])
-        })
-
-    except Exception as e:
-        log.error(f"[Login] Error: {e}")
-        return _json({
-            'ok': False,
-            'error': 'Something went wrong. Please try again.'
-        }, 500)
-    finally:
-        if conn:
-            conn.close()
-
-@app.post('/api/register')
-async def api_register_alias(request: Request):
-    """Alias for /api/signup."""
-    return await api_signup(request)
-
-@app.get('/api/me')
-async def api_me(request: Request):
-    """Get current user info."""
-    user = request.session.get('user')
-    if not user:
-        return {'logged_in': False}
-
-    # The session's 'is_admin' flag is only set at login time, so an old
-    # session cookie (or one created via Discord OAuth, which always logs in
-    # as a non-admin) could report stale/incorrect admin status forever.
-    # Re-check the database here so admin access always reflects reality,
-    # the same way /api/profile already does.
-    is_admin = bool(user.get('is_admin', False))
-    if user.get('auth_type') == 'email':
-        try:
-            conn = _db()
-            row = conn.execute(
-                "SELECT is_admin FROM auth_users WHERE auth_id = ?",
-                (int(user['discord_id']),)
-            ).fetchone()
-            conn.close()
-            if row is not None:
-                is_admin = bool(row['is_admin'])
-        except Exception as e:
-            log.warning(f"[api/me] is_admin re-check failed: {e}")
-
-    if is_admin != user.get('is_admin', False):
-        # Keep the session in sync so subsequent requests see the same value.
-        session_user = dict(request.session['user'])
-        session_user['is_admin'] = is_admin
-        request.session['user'] = session_user
-
-    return {'logged_in': True, **user, 'is_admin': is_admin}
-
-@app.get('/api/check-auth')
-async def api_check_auth(request: Request):
-    """Check if user is logged in."""
-    user = request.session.get('user')
-    if not user:
-        return {'logged_in': False}
-    return {'logged_in': True, 'user': user}
-
-@app.get('/logout')
-async def logout(request: Request):
-    """Log out the current user."""
-    u = request.session.pop('user', None)
-    if u:
-        _log_activity(u.get('discord_id', ''), "logout")
-    request.session.clear()
-    return RedirectResponse('/')
-
-@app.post('/api/profile')
-async def api_update_profile(request: Request):
-    """Update the logged-in user's nickname/bio."""
-    user = request.session.get('user')
-    if not user:
-        return _json({'ok': False, 'error': 'Not logged in'}, 401)
-
-    data = await _get_json(request)
-    nickname = str(data.get('nickname', '')).strip()[:50]
-    bio = str(data.get('bio', '')).strip()[:500]
-
-    conn = None
-    try:
-        conn = _db()
-        if user.get('auth_type') == 'email':
-            conn.execute(
-                "UPDATE auth_users SET nickname = ?, bio = ? WHERE auth_id = ?",
-                (nickname or None, bio or None, int(user['discord_id']))
-            )
-            conn.commit()
-
-        # Keep the session in sync so the sidebar/UI reflect the change immediately
-        session_user = dict(request.session['user'])
-        session_user['username'] = nickname or user.get('username')
-        session_user['bio'] = bio
-        request.session['user'] = session_user
-
-        _log_activity(user.get('discord_id', ''), 'profile_update')
-        return {'ok': True, 'message': 'Profile updated.'}
-    except Exception as e:
-        log.error(f"[profile update] Error: {e}")
-        return _json({'ok': False, 'error': 'Something went wrong.'}, 500)
-    finally:
-        if conn:
-            conn.close()
-
-@app.delete('/api/delete-account')
-async def api_delete_account(request: Request):
-    """Allow a logged-in user to permanently delete their own account."""
-    ip = _get_real_ip(request)
-    user = request.session.get('user')
-    if not user:
-        return _json({'ok': False, 'error': 'Not logged in'}, 401)
-
-    if user.get('is_admin', False):
-        return _json({
-            'ok': False,
-            'error': 'Admin accounts cannot self-delete. Ask another admin to revoke your admin status first.'
-        }, 403)
-
-    if _strict_rate_limit(ip, max_calls=5, window=300):
-        return _json({'ok': False, 'error': 'Too many attempts. Please wait a moment.'}, 429)
-
-    data = await _get_json(request)
-    password = str(data.get('password', ''))
-    user_id = user.get('discord_id')
-    auth_type = user.get('auth_type')
-
-    if not user_id:
-        return _json({'ok': False, 'error': 'Invalid session.'}, 400)
-
-    conn = None
-    try:
-        conn = _db()
-
-        if auth_type == 'email':
-            row = conn.execute(
-                "SELECT password_hash FROM auth_users WHERE auth_id = ?", (int(user_id),)
-            ).fetchone()
-            if not row:
-                return _json({'ok': False, 'error': 'Account not found.'}, 404)
-            if not password or not _verify_password(password, row['password_hash']):
-                return _json({'ok': False, 'error': 'Incorrect password.'}, 401)
-            conn.execute("DELETE FROM auth_users WHERE auth_id = ?", (int(user_id),))
-
-        # Remove any game data tied to this account, regardless of auth type
-        conn.execute("DELETE FROM players WHERE user_id = ?", (int(user_id),))
-        conn.execute("DELETE FROM users WHERE user_id = ?", (int(user_id),))
-        conn.execute("DELETE FROM account_links WHERE discord_id = ?", (str(user_id),))
-        conn.commit()
-
-        _log_activity(user_id, 'account_deleted', f'self-delete from {ip}')
-        log.info(f"[Account] User {user_id} deleted their own account")
-
-        request.session.pop('user', None)
-        request.session.clear()
-
-        return {'ok': True, 'message': 'Account deleted.'}
-    except Exception as e:
-        log.error(f"[delete-account] Error: {e}")
-        return _json({'ok': False, 'error': 'Something went wrong. Please try again.'}, 500)
-    finally:
-        if conn:
-            conn.close()
-
-@app.post('/api/password/request-reset')
-async def api_password_request_reset(request: Request):
-    """Request a password reset code."""
-    ip = _get_real_ip(request)
-
-    if _strict_rate_limit(ip, max_calls=5, window=600):
-        return _json({'ok': False, 'error': 'Too many requests. Please wait a few minutes.'}, 429)
-
-    data = await _get_json(request)
-    email = str(data.get('email', '')).strip().lower()
-
-    if not email or '@' not in email:
-        return _json({'ok': False, 'error': 'Please enter a valid email address.'}, 400)
-
-    _purge_reset_tokens()
-
-    otp = str(secrets.randbelow(900000) + 100000)
-    _reset_tokens[email] = {
-        'otp': otp,
-        'expires_at': datetime.now(UTC) + timedelta(minutes=5)
-    }
-
-    # SECURITY: the OTP must never be returned to the caller — it must only
-    # ever reach the account owner via their registered email address. Doing
-    # otherwise lets anyone who knows (or guesses) a victim's email take over
-    # their account without ever touching that inbox.
-    # TODO: wire up real email delivery (e.g. SES/SendGrid) and send `otp`
-    # there instead of logging it.
-    log.info(f'[Password Reset] OTP generated for {email[:20]} (delivery not yet wired up)')
-
-    return {
-        'ok': True,
-        'message': 'If that email is registered, you will receive a reset code.',
-    }
-
-@app.post('/api/password/verify-reset')
-async def api_password_reset(request: Request):
-    """Reset password using OTP."""
-    ip = _get_real_ip(request)
-
-    if _strict_rate_limit(ip, max_calls=8, window=300):
-        return _json({'ok': False, 'error': 'Too many attempts. Please wait a moment.'}, 429)
-
-    data = await _get_json(request)
-    email = str(data.get('email', '')).strip().lower()
-    otp = str(data.get('otp', '')).strip()
-    new_password = str(data.get('new_password', '')).strip()
-
-    if not email:
-        return _json({'ok': False, 'error': 'Email address is required.'}, 400)
-
-    if not otp or len(otp) != 6:
-        return _json({'ok': False, 'error': 'Please enter the 6-digit code.'}, 400)
-
-    if len(new_password) < 6:
-        return _json({'ok': False, 'error': 'Password must be at least 6 characters.'}, 400)
-
-    _purge_reset_tokens()
-    record = _reset_tokens.get(email)
-    if not record:
-        return _json({'ok': False, 'error': 'No reset request found.'}, 400)
-
-    if datetime.now(UTC) > record['expires_at']:
-        _reset_tokens.pop(email, None)
-        return _json({'ok': False, 'error': 'The code has expired.'}, 400)
-
-    if not hmac.compare_digest(record['otp'], otp):
-        return _json({'ok': False, 'error': 'Incorrect code.'}, 400)
-
-    conn = None
-    try:
-        conn = _db()
-        existing = conn.execute("SELECT auth_id FROM auth_users WHERE email = ?", (email,)).fetchone()
-        if not existing:
-            return _json({'ok': False, 'error': 'No account found for that email.'}, 404)
-
-        new_hash = _hash_password(new_password)
-        conn.execute("UPDATE auth_users SET password_hash = ? WHERE email = ?", (new_hash, email))
-        conn.commit()
-
-        _reset_tokens.pop(email, None)
-        _log_activity(existing['auth_id'], 'password_reset')
-
-        return {'ok': True, 'message': 'Password updated successfully!'}
-
-    except Exception as e:
-        log.error(f"[Password Reset] Error: {e}")
-        return _json({'ok': False, 'error': 'Something went wrong.'}, 500)
-    finally:
-        if conn:
-            conn.close()
-
-# ── Admin Routes ─────────────────────────────────────────────────────────────
-@app.get('/api/admin/users')
-async def api_admin_users(request: Request):
-    """Get all users for admin panel."""
-    user = request.session.get('user')
-    if not user:
-        return _json({'ok': False, 'error': 'Not logged in'}, 401)
-
-    if not user.get('is_admin', False):
-        return _json({'ok': False, 'error': 'Admin access required'}, 403)
-
-    conn = None
-    try:
-        conn = _db()
-        users = conn.execute(
-            """SELECT auth_id, email, nickname, avatar, bio, is_admin,
-                      created_at, last_login
-               FROM auth_users
-               ORDER BY auth_id DESC"""
-        ).fetchall()
-
-        user_list = []
-        for u in users:
-            user_list.append({
-                'id': u['auth_id'],
-                'email': u['email'],
-                'nickname': u['nickname'] or '—',
-                'avatar': u['avatar'] or 'https://api.dicebear.com/7.x/avataaars/svg?seed=default',
-                'bio': u['bio'] or '—',
-                'is_admin': bool(u['is_admin']),
-                'created_at': u['created_at'],
-                'last_login': u['last_login'] or 'Never',
-                'is_online': str(u['auth_id']) in _session_log and bool(_session_log.get(str(u['auth_id'])))
-            })
-
-        total_users = len(user_list)
-        online_users = sum(1 for u in user_list if u.get('is_online'))
-
-        conn.close()
-        return {
-            'ok': True,
-            'users': user_list,
-            'stats': {
-                'total': total_users,
-                'online': online_users,
-                'admins': sum(1 for u in user_list if u['is_admin'])
+        applySim(true);
+        spawnCharParticles();
+        loadCustomProfile().catch(console.error);
+
+        if (!isDashboardInitialized) {
+            isDashboardInitialized = true;
+            if (user.discord_id) {
+                loadLeaderboard();
+                loadInventory(user.discord_id);
+                loadAuctions();
             }
         }
 
-    except Exception as e:
-        log.error(f"[Admin/users] Error: {e}")
-        return _json({'ok': False, 'error': str(e)}, 500)
-    finally:
-        if conn:
-            conn.close()
-
-@app.delete('/api/admin/users/{user_id}')
-async def api_admin_delete_user(user_id: int, request: Request):
-    """Delete a user (admin only)."""
-    user = request.session.get('user')
-    if not user or not user.get('is_admin', False):
-        return _json({'ok': False, 'error': 'Admin access required'}, 403)
-
-    if str(user_id) == user.get('discord_id'):
-        return _json({'ok': False, 'error': 'Cannot delete your own account'}, 400)
-
-    conn = None
-    try:
-        conn = _db()
-        existing = conn.execute(
-            "SELECT auth_id, is_admin FROM auth_users WHERE auth_id = ?", (user_id,)
-        ).fetchone()
-
-        if not existing:
-            return _json({'ok': False, 'error': 'User not found'}, 404)
-
-        if existing['is_admin']:
-            return _json({'ok': False, 'error': 'Cannot delete admin accounts'}, 403)
-
-        conn.execute("DELETE FROM auth_users WHERE auth_id = ?", (user_id,))
-        conn.commit()
-
-        log.info(f"[Admin] User {user_id} deleted by admin")
-        return {'ok': True, 'message': 'User deleted successfully'}
-
-    except Exception as e:
-        log.error(f"[Admin/delete] Error: {e}")
-        return _json({'ok': False, 'error': str(e)}, 500)
-    finally:
-        if conn:
-            conn.close()
-@app.post('/api/admin/announce')
-async def api_admin_announce(request: Request):
-    """Admin-only: broadcast a message via the bot."""
-    user = request.session.get('user')
-    if not user or not user.get('is_admin'):
-        return JSONResponse({'ok': False, 'error': 'forbidden'}, status_code=403)
-
-    body = await request.json()
-    message = (body.get('message') or '').strip()
-    if not message:
-        return JSONResponse({'ok': False, 'error': 'message required'}, status_code=400)
-
-    status, resp = await _call_bot("POST", "/api/bot/announce", {
-        "channel_id": DISCORD_BID_CHANNEL,
-        "message": message,
-    })
-    return JSONResponse(resp, status_code=status)
-
-
-@app.post('/api/admin/give-gold')
-async def api_admin_give_gold(request: Request):
-    """Admin-only: grant gold to a user via the bot."""
-    user = request.session.get('user')
-    if not user or not user.get('is_admin'):
-        return JSONResponse({'ok': False, 'error': 'forbidden'}, status_code=403)
-
-    body = await request.json()
-    user_id = body.get('user_id')
-    amount = body.get('amount')
-    if not user_id or not isinstance(amount, (int, float)):
-        return JSONResponse({'ok': False, 'error': 'user_id and amount required'}, status_code=400)
-
-    status, resp = await _call_bot("POST", "/api/bot/give-gold", {
-        "user_id": user_id,
-        "amount": amount,
-    })
-    return JSONResponse(resp, status_code=status) 
-
-@app.post('/api/admin/users/{user_id}/toggle-admin')
-async def api_admin_toggle_admin(user_id: int, request: Request):
-    """Toggle admin status for a user."""
-    user = request.session.get('user')
-    if not user or not user.get('is_admin', False):
-        return _json({'ok': False, 'error': 'Admin access required'}, 403)
-
-    if str(user_id) == user.get('discord_id'):
-        return _json({'ok': False, 'error': 'Cannot modify your own admin status'}, 400)
-
-    conn = None
-    try:
-        conn = _db()
-        existing = conn.execute(
-            "SELECT auth_id, is_admin FROM auth_users WHERE auth_id = ?", (user_id,)
-        ).fetchone()
-
-        if not existing:
-            return _json({'ok': False, 'error': 'User not found'}, 404)
-
-        new_status = 0 if existing['is_admin'] else 1
-        conn.execute(
-            "UPDATE auth_users SET is_admin = ? WHERE auth_id = ?",
-            (new_status, user_id)
-        )
-        conn.commit()
-
-        return {
-            'ok': True,
-            'is_admin': bool(new_status),
-            'message': f"Admin status {'granted' if new_status else 'revoked'}"
+        if (user.is_admin) {
+            document.getElementById('adminPanel')?.classList.add('visible');
+            setTimeout(refreshAdminPanel, 600);
+        } else {
+            document.getElementById('adminPanel')?.classList.remove('visible');
         }
 
-    except Exception as e:
-        log.error(f"[Admin/toggle-admin] Error: {e}")
-        return _json({'ok': False, 'error': str(e)}, 500)
-    finally:
-        if conn:
-            conn.close()
+        setTimeout(() => navigateTo('overview'), 280);
+        setTimeout(maybeShowBotIntro, 700);
 
-@app.get('/api/admin/players')
-async def api_admin_players(request: Request):
-    """Get all game players (from the bot's synced data) for the admin panel."""
-    user = request.session.get('user')
-    if not user or not user.get('is_admin', False):
-        return _json({'ok': False, 'error': 'Admin access required'}, 403)
-
-    with _lock:
-        data = cached_data.copy()
-
-    q = (request.query_params.get('q') or '').strip().lower()
-
-    players = []
-    for pid, pd in data.get('players', {}).items():
-        if not isinstance(pd, dict):
-            continue
-        name = pd.get('name', 'Unknown')
-        if q and q not in name.lower() and q not in str(pid):
-            continue
-        players.append({
-            'id': pid,
-            'name': name,
-            'level': pd.get('level', 0),
-            'class': pd.get('char_class', '—'),
-            'gold': pd.get('gold', 0),
-            'gems': pd.get('gems', pd.get('Gems', 0)),
-            'special_coins': pd.get('special_coins', 0),
-            'xp': pd.get('xp', 0),
-            'guild': pd.get('guild', '—'),
-            'wins': pd.get('battles_won', 0),
-        })
-
-    players.sort(key=lambda p: (-p['level'], p['name']))
-    return {'ok': True, 'players': players, 'total': len(players)}
-
-@app.get('/api/admin/players/{user_id}')
-async def api_admin_player_detail(user_id: str, request: Request):
-    """Get a single player's full game-data blob (admin only), for editing."""
-    user = request.session.get('user')
-    if not user or not user.get('is_admin', False):
-        return _json({'ok': False, 'error': 'Admin access required'}, 403)
-
-    with _lock:
-        data = cached_data.copy()
-
-    pdata = data.get('players', {}).get(str(user_id))
-    if pdata is None:
-        return _json({'ok': False, 'error': 'Player not found'}, 404)
-
-    return {'ok': True, 'player': pdata}
-
-@app.post('/api/admin/players/{user_id}')
-async def api_admin_update_player(user_id: str, request: Request):
-    """Admin-only: update a player's stats/balance. Writes straight to this
-    dashboard's DB (so the change shows immediately here) and also pushes the
-    change live to the running bot, so the player's in-memory state updates
-    without waiting for the bot's next periodic /api/sync push."""
-    user = request.session.get('user')
-    if not user or not user.get('is_admin', False):
-        return _json({'ok': False, 'error': 'Admin access required'}, 403)
-
-    try:
-        uid = int(user_id)
-    except (ValueError, TypeError):
-        return _json({'ok': False, 'error': 'Invalid user id'}, 400)
-
-    body = await _get_json(request)
-    updates = body.get('updates')
-    if not isinstance(updates, dict) or not updates:
-        return _json({'ok': False, 'error': 'updates object required'}, 400)
-
-    with _lock:
-        current = cached_data.get('players', {}).get(str(uid))
-    if current is None:
-        current = get_player_game_data(uid)
-    if not isinstance(current, dict):
-        current = {}
-
-    merged = {**current, **updates}
-
-    conn = None
-    try:
-        conn = _db()
-        conn.execute(
-            "INSERT INTO players (user_id, data, last_updated) VALUES (?, ?, CURRENT_TIMESTAMP) "
-            "ON CONFLICT(user_id) DO UPDATE SET data=excluded.data, last_updated=CURRENT_TIMESTAMP",
-            (uid, json.dumps(merged)),
-        )
-        conn.commit()
-    except Exception as e:
-        log.error(f"[Admin/players] failed to save player {uid}: {e}")
-        return _json({'ok': False, 'error': 'Failed to save player data'}, 500)
-    finally:
-        if conn:
-            conn.close()
-
-    load_game_data()  # refresh in-memory cache so it shows immediately in the dashboard
-
-    # Push the change to the live bot process so it's reflected in-game right away.
-    # Requires the bot to expose a matching POST /api/bot/update-player route,
-    # the same way it already exposes /api/bot/give-gold and /api/bot/announce.
-    bot_synced = False
-    bot_error = None
-    try:
-        status, resp = await _call_bot("POST", "/api/bot/update-player", {
-            "user_id": uid,
-            "updates": updates,
-        })
-        bot_synced = status == 200 and (resp or {}).get('ok', False)
-        if not bot_synced:
-            bot_error = (resp or {}).get('error', f'bot returned status {status}')
-    except Exception as e:
-        bot_error = str(e)
-        log.warning(f"[Admin/players] could not push live update to bot for {uid}: {e}")
-
-    _log_activity(uid, "admin_edit_player", f"Admin updated fields: {', '.join(updates.keys())}")
-    log.info(f"[Admin] Player {uid} stats updated by admin (bot_synced={bot_synced})")
-
-    return {
-        'ok': True,
-        'player': merged,
-        'bot_synced': bot_synced,
-        'bot_error': None if bot_synced else bot_error,
+    } catch (err) {
+        console.error('showDashboard error:', err);
+    } finally {
+        setTimeout(() => { isShowingDashboard = false; }, 100);
     }
+}
 
-@app.get('/api/admin/stats')
-async def api_admin_stats(request: Request):
-    """Get admin statistics."""
-    user = request.session.get('user')
-    if not user or not user.get('is_admin', False):
-        return _json({'ok': False, 'error': 'Admin access required'}, 403)
+async function loadCustomProfile() {
+    const res  = await fetch(`${API_BASE}/api/profile`);
+    const data = await res.json();
+    if (!data.logged_in) return;
 
-    try:
-        conn = _db()
-        total_users = conn.execute("SELECT COUNT(*) FROM auth_users").fetchone()[0]
-        active_sessions = len(_session_log)
-
-        recent_activity = conn.execute(
-            "SELECT action, detail, ts FROM activity_log ORDER BY ts DESC LIMIT 20"
-        ).fetchall()
-
-        conn.close()
-
-        return {
-            'ok': True,
-            'stats': {
-                'total_users': total_users,
-                'active_sessions': active_sessions,
-                'total_requests': _global_req_count.get('n', 0),
-                'banned_ips': len([v for v in _ip_banned.values() if time.time() < v])
-            },
-            'recent_activity': [
-                {'action': r['action'], 'detail': r['detail'], 'ts': r['ts']}
-                for r in recent_activity
-            ]
-        }
-    except Exception as e:
-        return _json({'ok': False, 'error': str(e)}, 500)
-
-# ── Page Routes ──────────────────────────────────────────────────────────────
-@app.head('/')
-@app.get('/')
-@app.get('/dashboard')
-async def index(request: Request):
-    """Main dashboard page."""
-    with _lock:
-        data = cached_data.copy()
-        updated = last_updated
-
-    world_state = data.get('world_state', {})
-    players_list = []
-
-    for pid, pd in data.get('players', {}).items():
-        xp = pd.get('xp', 0)
-        xp_needed = pd.get('xp_needed', 100) or 100
-        players_list.append({
-            'id': pid,
-            'name': pd.get('name', 'Unknown'),
-            'level': pd.get('level', 0),
-            'class': pd.get('char_class', '—'),
-            'gold': pd.get('gold', 0),
-            'guild': pd.get('guild', '—'),
-            'xp': xp,
-            'xp_needed': xp_needed,
-            'xp_pct': round(xp / xp_needed * 100, 1),
-        })
-
-    players_list.sort(key=lambda p: (-p['level'], p['name']))
-
-    guilds_list = [
-        {'name': g, 'member_count': len(d.get('members', []))}
-        for g, d in data.get('guilds', {}).items()
-    ]
-    guilds_list.sort(key=lambda g: (-g['member_count'], g['name']))
-
-    return templates.TemplateResponse(request, 'dashboard.html', {
-        'num_players': len(players_list),
-        'num_guilds': len(guilds_list),
-        'players': players_list,
-        'guilds': guilds_list,
-        'invasion_active': world_state.get('invasion_active', False),
-        'invasion_details': world_state.get('current_invasion', 'None'),
-        'king': world_state.get('king', '—'),
-        'season': world_state.get('season', 'Normal'),
-        'weather': world_state.get('weather', 'Clear'),
-        'active_events': world_state.get('active_events', []),
-        'last_updated': updated.strftime('%Y-%m-%d %H:%M:%S') if updated else 'Never',
-    })
-
-@app.get('/battle-log')
-async def battle_log(request: Request):
-    return templates.TemplateResponse(request, 'battle-log.html', {})
-
-@app.get('/profile')
-async def profile_page(request: Request):
-    return templates.TemplateResponse(request, 'profile.html', {})
-
-@app.get('/achievements')
-async def achievements_page(request: Request):
-    return templates.TemplateResponse(request, 'achievements.html', {})
-
-@app.get('/leaderboard')
-async def leaderboards_page(request: Request):
-    return templates.TemplateResponse(request, 'leaderboard.html', {})
-
-@app.get('/inventory')
-async def inventory(request: Request):
-    return templates.TemplateResponse(request, 'inventory.html', {})
-
-@app.get('/quest-board')
-async def quest_board(request: Request):
-    return templates.TemplateResponse(request, 'quest-board.html', {})
-
-@app.get('/guild-hall')
-async def guild_hall(request: Request):
-    return templates.TemplateResponse(request, 'guild-hall.html', {})
-
-@app.get('/settings')
-async def settings(request: Request):
-    return templates.TemplateResponse(request, 'settings.html', {})
-
-# ── API Routes ──────────────────────────────────────────────────────────────
-@app.get('/api/stats')
-async def api_stats():
-    """Get server stats."""
-    with _lock:
-        data = cached_data.copy()
-        updated = last_updated
-
-    ws = data.get('world_state', {})
-    return {
-        'num_players': len(data.get('players', {})),
-        'num_guilds': len(data.get('guilds', {})),
-        'last_updated': updated.strftime('%Y-%m-%d %H:%M:%S') if updated else None,
-        'total_cmds': ws.get('total_commands', 0),
-        'battles': ws.get('total_battles', 0),
-        'uptime': ws.get('uptime', '—'),
-        'cmd_count': ws.get('command_count', 0),
+    if (data.avatar) {
+        const el = document.getElementById('user-avatar');
+        if (el && el.src !== data.avatar) el.src = data.avatar;
+        const sidebarAv = document.getElementById('sidebar-avatar');
+        if (sidebarAv && sidebarAv.src !== data.avatar) sidebarAv.src = data.avatar;
     }
+    if (data.nickname) {
+        document.querySelectorAll('#dash-name, #user-name-display, #sidebar-username').forEach(el => {
+            if (el.textContent !== data.nickname) el.textContent = data.nickname;
+        });
+    }
+}
 
-@app.get('/api/leaderboard')
-async def api_leaderboard():
-    """Get full leaderboard."""
-    with _lock:
-        data = cached_data.copy()
+// ════════════════════════════════════════════════════════════════════
+// LOGOUT
+// ════════════════════════════════════════════════════════════════════
+async function logout() {
+    try { await fetch('/logout'); } catch (e) { console.error(e); }
 
-    pl = []
-    for pid, pd in data.get('players', {}).items():
-        xp = pd.get('xp', 0)
-        xp_needed = pd.get('xp_needed', 100) or 100
-        pl.append({
-            'id': pid,
-            'name': pd.get('name', 'Unknown'),
-            'level': pd.get('level', 0),
-            'class': pd.get('char_class', '—'),
-            'gold': pd.get('gold', 0),
-            'gems': pd.get('gems', pd.get('Gems', 0)),
-            'guild': pd.get('guild', '—'),
-            'xp': xp,
-            'xp_needed': xp_needed,
-            'xp_pct': round(xp / xp_needed * 100, 1),
-            'wins': pd.get('battles_won', 0),
-            'prestige': pd.get('prestige_level', 0),
-        })
+    document.getElementById('dashboard-app').style.display  = 'none';
+    document.getElementById('auth-screen').style.display = 'flex';
+    document.getElementById('login-form').reset();
+    document.getElementById('register-form').reset();
+    document.getElementById('forgot-form').reset();
+    document.getElementById('otp-form').reset();
+    document.querySelectorAll('.otp-input').forEach(i => i.value = '');
+    updatePasswordStrength('');
+    updatePasswordStrength('', 'otp');
+    switchTab('login');
+    isDashboardInitialized = false;
+    isShowingDashboard     = false;
+    currentUser            = null;
+    showToast('Logged out successfully');
+}
 
-    pl.sort(key=lambda p: (-p['level'], -p['xp'], p['name']))
-    return {'leaderboard': pl[:50], 'total': len(pl)}
+// ════════════════════════════════════════════════════════════════════
+// AUTH FUNCTIONS
+// ════════════════════════════════════════════════════════════════════
+function switchTab(tab) {
+    document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
+    if (tab === 'login') {
+        document.querySelector('.auth-tab:first-child').classList.add('active');
+        document.getElementById('login-form').classList.add('active');
+    } else {
+        document.querySelector('.auth-tab:last-child').classList.add('active');
+        document.getElementById('register-form').classList.add('active');
+    }
+}
 
-@app.get('/api/activity/{user_id}')
-async def api_activity(user_id: str):
-    """Get user activity log."""
-    try:
-        conn = _db()
-        rows = conn.execute(
-            "SELECT action, detail, ts FROM activity_log "
-            "WHERE user_id=? ORDER BY ts DESC LIMIT 30",
-            (str(user_id),),
-        ).fetchall()
-        conn.close()
-        return {
-            'items': [{'action': r['action'], 'detail': r['detail'], 'ts': r['ts']} for r in rows]
+function togglePassword(inputId) {
+    const input = document.getElementById(inputId);
+    const icon  = input.parentElement.querySelector('.password-toggle i');
+    if (input.type === 'password') {
+        input.type = 'text';
+        icon.classList.replace('fa-eye', 'fa-eye-slash');
+    } else {
+        input.type = 'password';
+        icon.classList.replace('fa-eye-slash', 'fa-eye');
+    }
+}
+
+function getPasswordStrength(password) {
+    if (!password) return { score: 0, label: '', color: '#666', hint: '' };
+    const hasLower  = /[a-z]/.test(password);
+    const hasUpper  = /[A-Z]/.test(password);
+    const hasNumber = /[0-9]/.test(password);
+    const hasSymbol = /[^a-zA-Z0-9]/.test(password);
+    const variety   = [hasLower, hasUpper, hasNumber, hasSymbol].filter(Boolean).length;
+    let score = 0;
+    if (password.length >= 8)  score++;
+    if (password.length >= 12) score++;
+    if (variety >= 3) score++;
+    if (variety === 4 && password.length >= 12) score++;
+    score = Math.min(4, score);
+    const levels = [
+        { label: 'Very Weak',    color: '#ef4444' },
+        { label: 'Weak',         color: '#f97316' },
+        { label: 'Fair',         color: '#f59e0b' },
+        { label: 'Strong',       color: '#22c55e' },
+        { label: 'Very Strong',  color: '#00f3ff' }
+    ];
+    const hint = password.length < 8 ? 'Use at least 8 characters'
+               : variety < 3         ? 'Add numbers, symbols, or uppercase'
+               : password.length < 12? 'Longer passwords are stronger'
+               : 'Great password!';
+    return { score, label: levels[score].label, color: levels[score].color, hint };
+}
+
+function updatePasswordStrength(password, suffix = '') {
+    const tag  = suffix ? `-${suffix}` : '';
+    const wrap  = document.getElementById(`pw-strength-wrap${tag}`);
+    const fill  = document.getElementById(`pw-strength-fill${tag}`);
+    const label = document.getElementById(`pw-strength-label${tag}`);
+    const hint  = document.getElementById(`pw-strength-hint${tag}`);
+    if (!wrap || !fill || !label || !hint) return;
+    if (!password) { wrap.style.display = 'none'; return; }
+    wrap.style.display = 'block';
+    const result = getPasswordStrength(password);
+    fill.style.width           = (result.score / 4 * 100) + '%';
+    fill.style.backgroundColor = result.color;
+    label.textContent          = result.label;
+    label.style.color          = result.color;
+    hint.textContent           = result.hint;
+}
+
+async function handleLogin(event) {
+    event.preventDefault();
+    const email    = document.getElementById('login-email').value.trim();
+    const password = document.getElementById('login-pass').value;
+    if (!email || !password) { showToast('Please fill in all fields', true); return; }
+
+    const btn = document.getElementById('login-btn');
+    btn.disabled = true; btn.textContent = 'VERIFYING...';
+
+    try {
+        const res  = await fetch(`${API_BASE}/api/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+        });
+        const data = await res.json();
+        if (data.ok && data.logged_in) {
+            showToast('Welcome back, ' + (data.user?.username || 'Adventurer') + '!');
+            showDashboard(data.user);
+        } else {
+            showToast(data.error || 'Login failed. Check your credentials.', true);
         }
-    except Exception as e:
-        log.error(f"[api/activity] error: {e}")
-        return _json({'items': []}, 500)
+    } catch (err) {
+        console.error(err);
+        showToast('Cannot reach server. Check your connection.', true);
+    } finally {
+        btn.disabled = false; btn.textContent = 'SIGN IN';
+    }
+}
 
-@app.get('/api/inventory/{user_id}')
-async def api_inventory(user_id: str):
-    """Get a player's inventory items."""
-    try:
-        uid = int(user_id)
-    except (ValueError, TypeError):
-        return _json({'items': []}, 400)
+async function handleRegister(event) {
+    event.preventDefault();
+    const email       = document.getElementById('reg-email').value.trim();
+    const pass        = document.getElementById('reg-pass').value;
+    const confirmPass = document.getElementById('reg-confirm-pass').value;
+    const btn         = document.getElementById('register-btn');
 
-    game = get_player_game_data(uid)
-    if not game:
-        return _json({'items': []}, 404)
+    if (pass !== confirmPass) { showToast('Passwords do not match!', true); return; }
+    if (getPasswordStrength(pass).score < 2) { showToast('Please choose a stronger password.', true); return; }
 
-    raw_inventory = game.get('inventory', {})
-    items = []
+    btn.disabled = true; btn.textContent = 'VERIFYING SECURITY...';
 
-    if isinstance(raw_inventory, dict):
-        for name, info in raw_inventory.items():
-            if isinstance(info, dict):
-                items.append({
-                    'name': info.get('name', name),
-                    'quantity': info.get('quantity', info.get('qty', 1)),
-                    'rarity': info.get('rarity', 'common'),
-                })
-            else:
-                items.append({'name': name, 'quantity': info, 'rarity': 'common'})
-    elif isinstance(raw_inventory, list):
-        for entry in raw_inventory:
-            if isinstance(entry, dict):
-                items.append({
-                    'name': entry.get('name', 'Unknown Item'),
-                    'quantity': entry.get('quantity', entry.get('qty', 1)),
-                    'rarity': entry.get('rarity', 'common'),
-                })
-            else:
-                items.append({'name': str(entry), 'quantity': 1, 'rarity': 'common'})
+    const submit = async (token) => {
+        try {
+            const res  = await fetch(`${API_BASE}/api/signup`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password: pass, recaptcha_token: token })
+            });
+            const data = await res.json();
+            if (data.ok && data.logged_in) {
+                showToast('Account created! Welcome, ' + (data.user?.username || 'Adventurer') + '!');
+                showDashboard(data.user);
+            } else {
+                showToast(data.error || 'Registration failed.', true);
+            }
+        } catch (err) {
+            showToast('Cannot reach server.', true);
+        } finally {
+            btn.disabled = false; btn.textContent = 'CREATE ACCOUNT';
+        }
+    };
 
-    return {'items': items}
+    if (typeof grecaptcha !== 'undefined' && RECAPTCHA_SITE_KEY) {
+        grecaptcha.ready(() => {
+            grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: 'register' })
+                .then(submit).catch(() => submit(null));
+        });
+    } else {
+        submit(null);
+    }
+}
 
-@app.get('/api/auctions')
-async def api_auctions():
-    """Get active auctions."""
-    try:
-        conn = _db()
-        rows = conn.execute(
-            "SELECT * FROM auctions WHERE status='active' ORDER BY end_time ASC LIMIT 50"
-        ).fetchall()
-        conn.close()
+function showForgotPasswordForm() {
+    document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
+    document.getElementById('forgot-form').classList.add('active');
+    document.getElementById('forgot-email').focus();
+}
 
-        auctions = []
-        for r in rows:
-            try:
-                tl = max(0, int((datetime.fromisoformat(r['end_time']) - datetime.now(UTC)).total_seconds()))
-            except Exception:
-                tl = 0
+function showOTPForm(email) {
+    document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
+    document.getElementById('otp-form').classList.add('active');
+    document.getElementById('otp-email-display').textContent = email;
+    document.querySelectorAll('.otp-input')[0].focus();
+}
 
-            auctions.append({
-                'id': r['id'],
-                'name': r['item_name'],
-                'icon': '⚔️',
-                'rarity': 'common',
-                'category': 'weapon',
-                'seller': str(r['seller_id']),
-                'current_bid': r['current_bid'],
-                'bids': 0,
-                'time_left': tl,
-                'top_bidder': str(r['highest_bidder']) if r['highest_bidder'] else None,
-                'bid_history': [],
+async function handleForgotPassword(event) {
+    event.preventDefault();
+    const email = document.getElementById('forgot-email').value.trim();
+    const btn   = document.getElementById('forgot-btn');
+    if (!email) { showToast('Please enter your email address.', true); return; }
+    btn.disabled = true; btn.textContent = 'SENDING...';
+
+    try {
+        const res  = await fetch(`${API_BASE}/api/password/request-reset`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+        });
+        const data = await res.json();
+
+        if (data.ok) {
+            resetEmail = email;
+            showOTPForm(email);
+            showToast('If that email is registered, a reset code is on its way.');
+        } else {
+            showToast(data.error || 'Could not request a reset code.', true);
+        }
+    } catch (err) {
+        showToast(err.message || 'Cannot reach server.', true);
+    } finally {
+        btn.disabled = false; btn.textContent = 'SEND RESET CODE';
+    }
+}
+
+async function handleOTPSubmit(event) {
+    event.preventDefault();
+    let otp = '';
+    document.querySelectorAll('.otp-input').forEach(i => otp += i.value);
+    const newPassword = document.getElementById('otp-new-pass').value;
+    const btn         = document.getElementById('otp-btn');
+
+    if (otp.length !== 6)        { showToast('Please enter the complete 6-digit code.', true); return; }
+    if (!newPassword || newPassword.length < 6) { showToast('Password must be at least 6 characters.', true); return; }
+
+    btn.disabled = true; btn.textContent = 'VERIFYING...';
+
+    try {
+        const res  = await fetch(`${API_BASE}/api/password/verify-reset`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: resetEmail, otp, new_password: newPassword })
+        });
+        const data = await res.json();
+        if (data.ok) {
+            showToast('Password updated successfully!');
+            document.getElementById('otp-form').reset();
+            document.querySelectorAll('.otp-input').forEach(i => i.value = '');
+            updatePasswordStrength('', 'otp');
+            switchTab('login');
+        } else {
+            showToast(data.error || 'Invalid or expired code.', true);
+        }
+    } catch (err) {
+        showToast(err.message || 'Cannot reach server.', true);
+    } finally {
+        btn.disabled = false; btn.textContent = 'RESET PASSWORD';
+    }
+}
+
+function resendOTP() {
+    if (!resetEmail) return;
+    showToast('Requesting new code...');
+    document.getElementById('forgot-form').dispatchEvent(new Event('submit'));
+}
+
+function setupOTPInputs() {
+    const inputs = document.querySelectorAll('.otp-input');
+    inputs.forEach((input, idx) => {
+        input.addEventListener('input', e => {
+            e.target.value = e.target.value.replace(/[^0-9]/g, '');
+            if (e.target.value.length === 1 && idx < inputs.length - 1) inputs[idx + 1].focus();
+        });
+        input.addEventListener('keydown', e => {
+            if (e.key === 'Backspace' && !e.target.value && idx > 0) inputs[idx - 1].focus();
+            if (e.key === 'Enter') document.getElementById('otp-btn')?.click();
+        });
+    });
+}
+
+function setupDiscordButtons() {
+    document.querySelectorAll('.social-btn.discord').forEach(btn => {
+        btn.addEventListener('click', e => {
+            e.preventDefault();
+            showToast('Redirecting to Discord...');
+            setTimeout(() => { window.location.href = '/login/discord'; }, 500);
+        });
+    });
+}
+
+// ════════════════════════════════════════════════════════════════════
+// DATA LOADERS
+// ════════════════════════════════════════════════════════════════════
+async function loadLeaderboard() {
+    try {
+        const res     = await fetch(`${API_BASE}/api/leaderboard`);
+        const data    = await res.json();
+        const players = data.leaderboard || [];
+
+        const podium = document.getElementById('lb-podium');
+        const tbody  = document.getElementById('lb-tbody');
+        if (!podium || !tbody) return;
+
+        podium.innerHTML = '';
+        if (players[1]) podium.innerHTML += createPodiumHTML(players[1], 'second', '🥈');
+        if (players[0]) podium.innerHTML += createPodiumHTML(players[0], 'first', '👑');
+        if (players[2]) podium.innerHTML += createPodiumHTML(players[2], 'third', '🥉');
+
+        tbody.innerHTML = '';
+        players.slice(0, 10).forEach((p, i) => {
+            const rankCls = i === 0 ? 'top1' : i === 1 ? 'top2' : i === 2 ? 'top3' : '';
+            const meCls   = currentUser && p.id == currentUser.discord_id ? 'lb-you' : '';
+            const safeName  = escapeHTML(p.name);
+            const safeClass = escapeHTML(p.class);
+            const safeSeed  = encodeURIComponent(p.name || '');
+            tbody.innerHTML += `
+                <tr class="${meCls}">
+                    <td><span class="lb-rank ${rankCls}">#${i + 1}</span></td>
+                    <td><img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${safeSeed}&backgroundColor=b6e3f4" class="lb-avatar">
+                        <span class="lb-name">${safeName}</span></td>
+                    <td><span class="lb-class">${safeClass}</span></td>
+                    <td style="text-align:right"><span class="lb-score">${(p.xp || 0).toLocaleString()} XP</span></td>
+                </tr>`;
+        });
+    } catch (e) { console.error('Leaderboard error:', e); }
+}
+
+function createPodiumHTML(player, rankClass, icon) {
+    const colorClass = rankClass === 'first' ? 'gold' : rankClass === 'second' ? 'silver' : 'bronze';
+    const safeName = escapeHTML(player.name);
+    const safeSeed = encodeURIComponent(player.name || '');
+    return `
+        <div class="podium-item ${rankClass}">
+            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${safeSeed}&backgroundColor=b6e3f4" class="podium-avatar" alt="">
+            <div class="podium-rank ${colorClass}">${icon}</div>
+            <div class="podium-name">${safeName}</div>
+            <div class="podium-score">${(player.xp || 0).toLocaleString()} XP</div>
+        </div>`;
+}
+
+const tooltipEls = {
+    root: null, name: null, desc: null, stat: null,
+    init() {
+        this.root = document.getElementById('tooltip');
+        this.name = document.getElementById('tt-name');
+        this.desc = document.getElementById('tt-desc');
+        this.stat = document.getElementById('tt-stat');
+        return !!(this.root && this.name && this.desc && this.stat);
+    }
+};
+
+async function loadInventory(userId) {
+    try {
+        const res   = await fetch(`${API_BASE}/api/inventory/${userId}`);
+        const data  = await res.json();
+        const items = data.items || [];
+        const cont  = document.getElementById('inventory-container');
+        if (!cont) return;
+
+        cachedInventoryItems = items;
+        const countEl = document.getElementById('inventory-count');
+        if (countEl) countEl.textContent = items.length + ' items';
+
+        cont.innerHTML = '';
+        if (items.length === 0) {
+            cont.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:#333;padding:20px;">Inventory is empty.</p>';
+            return;
+        }
+
+        if (!tooltipEls.root) tooltipEls.init();
+
+        items.slice(0, 8).forEach(item => {
+            const rarity   = (item.rarity || 'common').toLowerCase();
+            const icon     = getItemIcon(item.name);
+            const safeName = escapeHTML(item.name);
+            const qty      = Number(item.quantity) || 0;
+            const slot     = document.createElement('div');
+            slot.className = `inv-slot ${rarity}`;
+            slot.innerHTML = `<i class="fa-solid ${icon}"></i>${qty > 1 ? `<span class="item-count">${qty}</span>` : ''}`;
+
+            slot.addEventListener('mousemove', e => {
+                if (!tooltipEls.root && !tooltipEls.init()) return;
+                tooltipEls.name.textContent = safeName;
+                tooltipEls.desc.textContent = rarity.charAt(0).toUpperCase() + rarity.slice(1) + ' Item';
+                tooltipEls.stat.textContent = `Qty: ${qty}`;
+                tooltipEls.root.style.opacity = '1';
+                tooltipEls.root.style.left    = Math.min(e.clientX + 15, window.innerWidth - 220) + 'px';
+                tooltipEls.root.style.top     = Math.min(e.clientY + 15, window.innerHeight - 100) + 'px';
+            });
+            slot.addEventListener('mouseleave', () => {
+                if (tooltipEls.root) tooltipEls.root.style.opacity = '0';
+            });
+            cont.appendChild(slot);
+        });
+    } catch (e) { console.error('Inventory error:', e); }
+}
+
+function getItemIcon(name) {
+    const n = (name || '').toLowerCase();
+    if (n.includes('sword') || n.includes('blade') || n.includes('weapon')) return 'fa-khanda';
+    if (n.includes('shield') || n.includes('armor'))  return 'fa-shield-halved';
+    if (n.includes('potion') || n.includes('elixir')) return 'fa-flask';
+    if (n.includes('gem')    || n.includes('crystal'))return 'fa-gem';
+    if (n.includes('scroll') || n.includes('map'))    return 'fa-scroll';
+    if (n.includes('coin')   || n.includes('gold'))   return 'fa-coins';
+    return 'fa-box';
+}
+
+async function loadAuctions() {
+    try {
+        const res      = await fetch(`${API_BASE}/api/auctions`);
+        const data     = await res.json();
+        const auctions = data.auctions || [];
+        const cont     = document.getElementById('auction-items');
+        if (!cont) return;
+
+        cont.innerHTML = '';
+        if (auctions.length === 0) {
+            cont.innerHTML = '<p style="text-align:center;color:#333;padding:20px;">No active auctions.</p>';
+            return;
+        }
+
+        const listed = document.getElementById('items-listed');
+        if (listed) listed.textContent = auctions.length;
+
+        auctions.slice(0, 4).forEach(a => {
+            const col = a.rarity === 'legendary' ? 'var(--rarity-legendary)'
+                      : a.rarity === 'epic'       ? 'var(--rarity-epic)'
+                      : a.rarity === 'rare'        ? 'var(--rarity-rare)'
+                      : '#22c55e';
+            const safeName   = escapeHTML(a.name);
+            const safeSeller = escapeHTML(a.seller || 'Unknown');
+            const div = document.createElement('div');
+            div.className = 'auction-item';
+            div.innerHTML = `
+                <div class="auction-item-icon" style="background:${col}15;color:${col}">
+                    <i class="fa-solid fa-gavel"></i>
+                </div>
+                <div class="auction-item-info">
+                    <div class="auction-item-name" style="color:${col}">${safeName}</div>
+                    <div class="auction-item-desc">Seller: ${safeSeller}</div>
+                </div>
+                <div class="auction-item-price">💰 ${(a.current_bid || 0).toLocaleString()} Gold</div>
+                <button class="btn-bid" type="button">Bid</button>`;
+            div.addEventListener('click', () => placeBid(a.name));
+            div.querySelector('.btn-bid').addEventListener('click', (e) => {
+                e.stopPropagation();
+                placeBid(a.name);
+            });
+            cont.appendChild(div);
+        });
+    } catch (e) { console.error('Auctions error:', e); }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// LIST ITEM
+// ════════════════════════════════════════════════════════════════════
+function setupListItemModal() {
+    const modal = document.getElementById('listItemModal');
+    if (!modal) return;
+
+    modal.addEventListener('click', (e) => { if (e.target === modal) closeListItemModal(); });
+    document.getElementById('listItemClose')?.addEventListener('click', closeListItemModal);
+    document.getElementById('listItemCancel')?.addEventListener('click', closeListItemModal);
+    document.getElementById('listItemForm')?.addEventListener('submit', handleListItemSubmit);
+}
+
+function openListItemModal() {
+    const select = document.getElementById('listItemSelect');
+    if (select) {
+        if (cachedInventoryItems.length === 0) {
+            select.innerHTML = '<option value="">No items available</option>';
+        } else {
+            select.innerHTML = cachedInventoryItems.map((item, i) =>
+                `<option value="${i}">${escapeHTML(item.name)} (x${Number(item.quantity) || 1})</option>`
+            ).join('');
+        }
+    }
+    document.getElementById('listItemModal')?.classList.add('is-open');
+}
+
+function closeListItemModal() {
+    document.getElementById('listItemModal')?.classList.remove('is-open');
+    document.getElementById('listItemForm')?.reset();
+}
+
+async function handleListItemSubmit(event) {
+    event.preventDefault();
+    const select   = document.getElementById('listItemSelect');
+    const bidInput = document.getElementById('listItemStartBid');
+    const duration = document.getElementById('listItemDuration');
+    const submitBtn = document.getElementById('listItemSubmit');
+
+    const idx = select?.value;
+    const item = cachedInventoryItems[idx];
+    const startBid = parseInt(bidInput?.value, 10);
+
+    if (!item) { showToast('Please select an item to list.', true); return; }
+    if (!startBid || startBid < 1) { showToast('Enter a valid starting bid.', true); return; }
+
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = 'Listing...';
+
+    try {
+        const res  = await fetch(`${API_BASE}/api/auctions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                item_name: item.name,
+                starting_bid: startBid,
+                duration_hours: parseInt(duration?.value, 10) || 24
             })
-        return {'auctions': auctions}
-    except Exception as e:
-        log.warning(f'[api/auctions] {e}')
-        return _json({'auctions': []}, 200)
+        });
+        const data = await res.json();
+        if (data.ok) {
+            showToast(`${item.name} listed on the Auction House!`);
+            addNotification('auction', 'Item listed', `${item.name} is now up for auction.`);
+            closeListItemModal();
+            loadAuctions();
+        } else {
+            showToast(data.error || 'Failed to list item.', true);
+        }
+    } catch (err) {
+        console.error('List item error:', err);
+        showToast('Cannot reach server to list item.', true);
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="fa-solid fa-gavel"></i> List Item';
+    }
+}
 
-@app.get('/api/profile')
-async def api_profile(request: Request):
-    """Get logged-in user's profile."""
-    user = request.session.get('user')
-    if not user:
-        return {'logged_in': False}
+// ════════════════════════════════════════════════════════════════════
+// ADMIN PANEL
+// ════════════════════════════════════════════════════════════════════
+async function refreshAdminPanel() {
+    try {
+        const [usersRes, statsRes] = await Promise.all([
+            fetch(`${API_BASE}/api/admin/users`),
+            fetch(`${API_BASE}/api/admin/stats`)
+        ]);
+        const usersData = await usersRes.json();
+        const statsData = await statsRes.json();
 
-    nickname = user.get('username')
-    avatar = user.get('avatar')
-    bio = user.get('bio', '')
-    is_admin = bool(user.get('is_admin', False))
+        if (usersData.ok) {
+            setEl('adminTotalUsers',  usersData.stats.total);
+            setEl('adminOnlineUsers', usersData.stats.online);
+            setEl('adminTotalAdmins', usersData.stats.admins);
 
-    if user.get('auth_type') == 'email':
-        try:
-            conn = _db()
-            row = conn.execute(
-                "SELECT nickname, avatar, bio, is_admin FROM auth_users WHERE auth_id = ?",
-                (int(user['discord_id']),)
-            ).fetchone()
-            conn.close()
-            if row:
-                nickname = row['nickname'] or nickname
-                avatar = row['avatar'] or avatar
-                bio = row['bio'] or bio
-                is_admin = bool(row['is_admin'])
-        except Exception as e:
-            log.warning(f"[profile] lookup failed: {e}")
+            const tbody = document.getElementById('adminUsersTbody');
+            if (tbody) {
+                tbody.innerHTML = '';
+                usersData.users.forEach(user => {
+                    const isYou = user.id == currentUser?.discord_id;
+                    const tr    = document.createElement('tr');
+                    if (isYou) tr.className = 'lb-you';
+                    const safeNickname = escapeHTML(user.nickname);
+                    const safeEmail    = escapeHTML(user.email);
+                    const safeAvatar   = escapeHTML(user.avatar || '');
+                    tr.innerHTML = `
+                        <td><span style="font-family:'Orbitron',sans-serif;font-size:0.7rem;color:#444">#${escapeHTML(user.id)}</span></td>
+                        <td><img src="${safeAvatar}" class="user-avatar"><span class="lb-name">${safeNickname}</span></td>
+                        <td style="font-size:0.8rem;color:#666">${safeEmail}</td>
+                        <td><span class="admin-role-badge ${user.is_admin ? 'admin' : 'user'}">${user.is_admin ? '👑 Admin' : 'User'}</span></td>
+                        <td><span class="${user.is_online ? 'admin-status-online' : 'admin-status-offline'}">${user.is_online ? '🟢 Online' : '⚫ Offline'}</span></td>
+                        <td style="font-size:0.7rem;color:#444">${new Date(user.created_at).toLocaleDateString()}</td>
+                        <td style="text-align:center">${!isYou ? `
+                            <button onclick="toggleAdmin(${user.id})" class="admin-action-btn ${user.is_admin ? 'warning' : ''}">${user.is_admin ? '👑' : '⭐'}</button>
+                            <button onclick="deleteUser(${user.id})" class="admin-action-btn danger"><i class="fa-solid fa-trash"></i></button>
+                        ` : `<span style="font-size:0.65rem;color:#444;padding:3px 10px;background:rgba(255,255,255,.03);border-radius:6px">You</span>`}</td>`;
+                    tbody.appendChild(tr);
+                });
+            }
+        }
 
-    return {'logged_in': True, 'nickname': nickname, 'avatar': avatar, 'bio': bio, 'is_admin': is_admin}
-def run_dashboard():
-    """Start the dashboard server."""
-    host = "0.0.0.0"
-    port = int(os.environ.get("PORT", 25507))
+        if (statsData.ok) setEl('adminActiveSessions', statsData.stats.active_sessions || 0);
+    } catch (e) {
+        console.error('Admin refresh error:', e);
+        showToast('Failed to load admin data', true);
+    }
 
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            s.bind((host, port))
-    except OSError:
-        # desired port is in use; pick an ephemeral free port
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.bind((host, 0))
-                free_port = s.getsockname()[1]
-            log.warning(f"[Dashboard] Port {port} in use; switching to {free_port}")
-            port = free_port
-        except Exception as e:
-            log.error(f"[Dashboard] Failed to find free port: {e}")
-            raise SystemExit(1)
+    refreshAdminPlayers();
+}
 
-    uvicorn.run(app, host=host, port=port, log_level="info")
+// ── Player Management ──────────────────────────────────────────────
+let playerSearchDebounce = null;
+let cachedAdminPlayers   = [];
 
-if __name__ == '__main__':
-    run_dashboard()
+function handlePlayerSearch() {
+    clearTimeout(playerSearchDebounce);
+    playerSearchDebounce = setTimeout(() => refreshAdminPlayers(), 300);
+}
+
+async function refreshAdminPlayers() {
+    const tbody = document.getElementById('adminPlayersTbody');
+    if (!tbody) return;
+
+    const q = document.getElementById('playerSearchInput')?.value.trim() || '';
+
+    try {
+        const res  = await fetch(`${API_BASE}/api/admin/players?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+
+        if (!data.ok) {
+            tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:20px; color:#666;">${escapeHTML(data.error || 'Failed to load players')}</td></tr>`;
+            return;
+        }
+
+        cachedAdminPlayers = data.players;
+
+        if (data.players.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px; color:#666;">No players found.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = '';
+        data.players.forEach(p => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><span style="font-family:'Orbitron',sans-serif;font-size:0.7rem;color:#444">#${escapeHTML(p.id)}</span></td>
+                <td><span class="lb-name">${escapeHTML(p.name)}</span></td>
+                <td>${escapeHTML(p.level)}</td>
+                <td style="font-size:0.8rem;color:#666">${escapeHTML(p.class)}</td>
+                <td style="color:var(--gold)">${Number(p.gold || 0).toLocaleString()}</td>
+                <td>${Number(p.gems || 0).toLocaleString()}</td>
+                <td>${Number(p.xp || 0).toLocaleString()}</td>
+                <td style="font-size:0.8rem;color:#666">${escapeHTML(p.guild)}</td>
+                <td style="text-align:center">
+                    <button onclick="openEditPlayerModal('${escapeHTML(p.id)}')" class="admin-action-btn">
+                        <i class="fa-solid fa-pen"></i>
+                    </button>
+                </td>`;
+            tbody.appendChild(tr);
+        });
+    } catch (e) {
+        console.error('Admin players refresh error:', e);
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px; color:#666;">Failed to load players.</td></tr>';
+    }
+}
+
+let currentEditPlayerId = null;
+
+async function openEditPlayerModal(userId) {
+    currentEditPlayerId = userId;
+    setEl('editPlayerIdLabel', `#${userId}`);
+
+    try {
+        const res  = await fetch(`${API_BASE}/api/admin/players/${userId}`);
+        const data = await res.json();
+        if (!data.ok) { showToast(data.error || 'Failed to load player', true); return; }
+
+        const p = data.player || {};
+        document.getElementById('editPlayerGold').value          = p.gold ?? 0;
+        document.getElementById('editPlayerGems').value          = p.gems ?? p.Gems ?? 0;
+        document.getElementById('editPlayerSpecialCoins').value  = p.special_coins ?? 0;
+        document.getElementById('editPlayerLevel').value         = p.level ?? 1;
+        document.getElementById('editPlayerXp').value            = p.xp ?? 0;
+        document.getElementById('editPlayerWins').value          = p.battles_won ?? 0;
+
+        const jsonBox = document.getElementById('editPlayerRawJson');
+        jsonBox.value = JSON.stringify(p, null, 2);
+        jsonBox.style.display = 'none';
+        document.getElementById('advancedJsonChevron')?.classList.remove('fa-chevron-up');
+        document.getElementById('advancedJsonChevron')?.classList.add('fa-chevron-down');
+
+        document.getElementById('editPlayerModal')?.classList.add('is-open');
+    } catch (e) {
+        console.error('Open edit player error:', e);
+        showToast('Failed to load player data', true);
+    }
+}
+
+function closeEditPlayerModal() {
+    document.getElementById('editPlayerModal')?.classList.remove('is-open');
+    document.getElementById('editPlayerForm')?.reset();
+    currentEditPlayerId = null;
+}
+
+function toggleAdvancedPlayerJSON(event) {
+    event.preventDefault();
+    const box = document.getElementById('editPlayerRawJson');
+    const chevron = document.getElementById('advancedJsonChevron');
+    const isHidden = box.style.display === 'none';
+    box.style.display = isHidden ? 'block' : 'none';
+    chevron?.classList.toggle('fa-chevron-down', !isHidden);
+    chevron?.classList.toggle('fa-chevron-up', isHidden);
+}
+
+async function handleEditPlayerSubmit(event) {
+    event.preventDefault();
+    if (!currentEditPlayerId) return;
+
+    const submitBtn = document.getElementById('editPlayerSubmit');
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = 'Saving...';
+
+    const updates = {
+        gold: Number(document.getElementById('editPlayerGold').value) || 0,
+        gems: Number(document.getElementById('editPlayerGems').value) || 0,
+        special_coins: Number(document.getElementById('editPlayerSpecialCoins').value) || 0,
+        level: Number(document.getElementById('editPlayerLevel').value) || 1,
+        xp: Number(document.getElementById('editPlayerXp').value) || 0,
+        battles_won: Number(document.getElementById('editPlayerWins').value) || 0,
+    };
+
+    const jsonBox = document.getElementById('editPlayerRawJson');
+    if (jsonBox.style.display !== 'none' && jsonBox.value.trim()) {
+        try {
+            const parsed = JSON.parse(jsonBox.value);
+            Object.assign(updates, parsed);
+        } catch (e) {
+            showToast('Advanced JSON is not valid — fix it or collapse that section.', true);
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save Changes';
+            return;
+        }
+    }
+
+    try {
+        const res  = await fetch(`${API_BASE}/api/admin/players/${currentEditPlayerId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ updates })
+        });
+        const data = await res.json();
+
+        if (data.ok) {
+            showToast(data.bot_synced
+                ? 'Player updated and synced live to the bot!'
+                : 'Player saved here, but the bot could not be reached — it will pick up the change on its next sync.');
+            closeEditPlayerModal();
+            refreshAdminPlayers();
+        } else {
+            showToast(data.error || 'Failed to update player', true);
+        }
+    } catch (e) {
+        console.error('Save player error:', e);
+        showToast('Request failed', true);
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save Changes';
+    }
+}
+
+function setupEditPlayerModal() {
+    const modal = document.getElementById('editPlayerModal');
+    if (!modal) return;
+
+    modal.addEventListener('click', (e) => { if (e.target === modal) closeEditPlayerModal(); });
+    document.getElementById('editPlayerClose')?.addEventListener('click', closeEditPlayerModal);
+    document.getElementById('editPlayerCancel')?.addEventListener('click', closeEditPlayerModal);
+    document.getElementById('editPlayerForm')?.addEventListener('submit', handleEditPlayerSubmit);
+}
+
+async function toggleAdmin(userId) {
+    if (!confirm('Change this user\'s admin status?')) return;
+    try {
+        const res  = await fetch(`${API_BASE}/api/admin/users/${userId}/toggle-admin`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+        const data = await res.json();
+        if (data.ok) { showToast(data.message); await refreshAdminPanel(); }
+        else showToast(data.error || 'Failed to toggle admin status', true);
+    } catch { showToast('Server error', true); }
+}
+
+async function deleteUser(userId) {
+    if (!confirm('⚠️ Delete this user permanently?')) return;
+    if (!confirm('Really? All data will be destroyed.')) return;
+    try {
+        const res  = await fetch(`${API_BASE}/api/admin/users/${userId}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' } });
+        const data = await res.json();
+        if (data.ok) { showToast(data.message); await refreshAdminPanel(); }
+        else showToast(data.error || 'Failed to delete user', true);
+    } catch { showToast('Server error', true); }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// BACKGROUND MUSIC
+// ════════════════════════════════════════════════════════════════════
+const YT_MUSIC_VIDEO_ID = 'dQw4w9WgXcQ';
+let musicEnabled  = localStorage.getItem('rpgGhostMusic') === 'on';
+let ytPlayer      = null;
+let ytPlayerReady = false;
+
+function onYouTubeIframeAPIReady() {
+    ytPlayer = new YT.Player('ytMusicPlayer', {
+        height: '1',
+        width: '1',
+        videoId: YT_MUSIC_VIDEO_ID,
+        playerVars: {
+            autoplay: 0,
+            controls: 0,
+            disablekb: 1,
+            fs: 0,
+            modestbranding: 1,
+            playsinline: 1
+        },
+        events: {
+            onReady: () => {
+                console.log("YouTube player is ready");
+
+                ytPlayerReady = true;
+                ytPlayer.setVolume(100);
+
+                const btn = document.getElementById('musicToggle');
+
+                console.log("Music enabled:", musicEnabled);
+
+                if (musicEnabled) {
+                    tryPlayMusic(btn);
+                } else {
+                    updateMusicButton(btn);
+                }
+            },
+
+            onStateChange: (e) => {
+                if (e.data === YT.PlayerState.ENDED) {
+                    ytPlayer.seekTo(0);
+                    ytPlayer.playVideo();
+                }
+            },
+            onError: (event) => {
+                console.error("YT Error:", event.data);
+            }
+        }
+    });
+}
+
+function setupMusicToggle() {
+    const btn = document.getElementById('musicToggle');
+    if (!btn) return;
+
+    updateMusicButton(btn);
+
+    btn.addEventListener('click', () => {
+        musicEnabled = !musicEnabled;
+        localStorage.setItem('rpgGhostMusic', musicEnabled ? 'on' : 'off');
+        if (musicEnabled) tryPlayMusic(btn);
+        else { ytPlayer?.pauseVideo(); updateMusicButton(btn); }
+    });
+
+    document.addEventListener('click', () => {
+        if (musicEnabled && ytPlayerReady && ytPlayer?.getPlayerState() !== YT.PlayerState.PLAYING) {
+            tryPlayMusic(btn);
+        }
+    }, { once: true });
+}
+function tryPlayMusic(btn) {
+    console.log("Trying to play...");
+
+    if (!ytPlayerReady || !ytPlayer) {
+        console.log("Player not ready");
+        return;
+    }
+
+    ytPlayer.playVideo();
+
+    setTimeout(() => {
+        console.log("Player state:", ytPlayer.getPlayerState());
+    }, 1000);
+
+    updateMusicButton(btn);
+}
+function updateMusicButton(btn) {
+    if (!btn) return;
+    const icon = btn.querySelector('i');
+    btn.classList.toggle('is-playing', musicEnabled);
+    if (icon) icon.className = musicEnabled ? 'fa-solid fa-volume-high' : 'fa-solid fa-volume-xmark';
+}
+
+// ════════════════════════════════════════════════════════════════════
+// BOT INTRO OVERLAY
+// ════════════════════════════════════════════════════════════════════
+function maybeShowBotIntro() {
+    if (sessionStorage.getItem('botIntroSeen') === '1') return;
+    sessionStorage.setItem('botIntroSeen', '1');
+    launchBotIntro();
+}
+
+async function launchBotIntro() {
+    const overlay  = document.getElementById('botIntroOverlay');
+    const enterBtn = document.getElementById('botIntroEnter');
+    const skipBtn  = document.getElementById('botIntroSkip');
+    const descEl   = document.getElementById('botIntroDesc');
+    if (!overlay || !descEl) return;
+
+    const defaultDesc = "Hey there, Adventurer. I'm RPG Ghost — a fully-featured Discord RPG bot where you can battle monsters, loot rare gear, complete quests, trade in the auction house, and climb the leaderboard with your guild. Your journey through the spectral realm starts here.";
+
+    overlay.classList.add('visible');
+
+    await humanTypewriter(descEl, defaultDesc, () => enterBtn?.classList.add('ready'));
+
+    const dismiss = () => {
+        overlay.classList.remove('visible');
+        setTimeout(() => overlay.style.display = 'none', 400);
+    };
+
+    enterBtn?.addEventListener('click', () => {
+        const musicBtn = document.getElementById('musicToggle');
+        if (musicEnabled && ytPlayerReady && ytPlayer?.getPlayerState() !== YT.PlayerState.PLAYING) {
+            tryPlayMusic(musicBtn);
+        }
+        dismiss();
+    });
+    skipBtn?.addEventListener('click', dismiss);
+}
+
+function humanTypewriter(el, text, onDone) {
+    return new Promise(resolve => {
+        el.innerHTML = '<span class="tw-cursor"></span>';
+        let i = 0;
+        function next() {
+            if (i >= text.length) {
+                el.innerHTML = text + '<span class="tw-cursor"></span>';
+                if (onDone) onDone();
+                resolve();
+                return;
+            }
+            const ch = text[i];
+            el.innerHTML = text.slice(0, i + 1) + '<span class="tw-cursor"></span>';
+            i++;
+            let delay = 18 + Math.random() * 14;
+            if (ch === '.' || ch === '!' || ch === '?') delay = 260 + Math.random() * 100;
+            else if (ch === ',') delay = 110 + Math.random() * 50;
+            else if (ch === ' ') delay = 14 + Math.random() * 16;
+            setTimeout(next, delay);
+        }
+        next();
+    });
+}
+
+// ════════════════════════════════════════════════════════════════════
+// VISUAL HELPERS
+// ════════════════════════════════════════════════════════════════════
+function updateLevelRing(pct) {
+    const ring = document.getElementById('levelRing');
+    if (!ring) return;
+    const circumference = 339;
+    const offset = circumference - (circumference * Math.max(0, Math.min(100, pct)) / 100);
+    requestAnimationFrame(() => { ring.style.strokeDashoffset = offset; });
+}
+
+function spawnCharParticles() {
+    const cont = document.getElementById('charParticles');
+    if (!cont || cont.dataset.seeded) return;
+    cont.dataset.seeded = '1';
+    for (let i = 0; i < 10; i++) {
+        const p = document.createElement('span');
+        p.className = 'char-particle';
+        p.style.left            = (10 + Math.random() * 80) + '%';
+        p.style.bottom          = '20px';
+        p.style.setProperty('--drift', (Math.random() * 30 - 15) + 'px');
+        p.style.animationDelay  = (Math.random() * 6) + 's';
+        p.style.animationDuration = (5 + Math.random() * 3) + 's';
+        cont.appendChild(p);
+    }
+}
+
+function countUpTo(elId, target, duration = 900) {
+    const el = document.getElementById(elId);
+    if (!el || !target) { if (el) el.textContent = '0'; return; }
+    const start = performance.now();
+    (function tick(now) {
+        const p     = Math.min((now - start) / duration, 1);
+        const eased = 1 - Math.pow(1 - p, 3);
+        el.textContent = Math.round(target * eased).toLocaleString();
+        if (p < 1) requestAnimationFrame(tick);
+    })(start);
+}
+
+document.addEventListener('click', e => {
+    const btn = e.target.closest('[data-ripple]');
+    if (!btn) return;
+    const rect   = btn.getBoundingClientRect();
+    const ripple = document.createElement('span');
+    const size   = Math.max(rect.width, rect.height);
+    ripple.className = 'ripple';
+    ripple.style.width  = ripple.style.height = size + 'px';
+    ripple.style.left   = (e.clientX - rect.left - size / 2) + 'px';
+    ripple.style.top    = (e.clientY - rect.top  - size / 2) + 'px';
+    btn.appendChild(ripple);
+    ripple.addEventListener('animationend', () => ripple.remove());
+    setTimeout(() => ripple.remove(), 800); // safety net if animationend never fires
+});
+
+// ════════════════════════════════════════════════════════════════════
+// GAME ACTIONS
+// ════════════════════════════════════════════════════════════════════
+// Local-only stats simulation. Nothing here talks to the server or the bot:
+// the numbers shown on the dashboard live in `simState` and are saved in
+// this browser's localStorage so they survive a refresh.
+let simState = null;
+let simKey   = null;
+
+function initSim(user) {
+    simKey = 'rpgGhostSim:' + (user.discord_id || user.username || 'guest');
+    const fresh = {
+        level:    Number(user.level) || 1,
+        xp:       Number(user.xp) || 0,
+        xpNeeded: Number(user.xp_needed) || 100,
+        hp:       Number.isFinite(Number(user.hp)) && Number(user.hp) > 0 ? Number(user.hp) : 850,
+        maxHp:    Number(user.max_hp) > 0 ? Number(user.max_hp) : 1000,
+        mp:       Number.isFinite(Number(user.mp)) && Number(user.mp) > 0 ? Number(user.mp) : 310,
+        maxMp:    Number(user.max_mp) > 0 ? Number(user.max_mp) : 500,
+        gold:     Number(user.gold) || 0,
+        gems:     Number(user.gems) || 0,
+        wins:     Number(user.battles_won) || 0,
+        losses:   Number(user.battles_lost) || 0,
+        dailyAt:  0
+    };
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(simKey) || 'null'); } catch { /* ignore */ }
+    simState = Object.assign(fresh, saved || {});
+}
+
+function saveSim() {
+    try { localStorage.setItem(simKey, JSON.stringify(simState)); } catch { /* storage blocked */ }
+}
+
+function applySim(initial = false) {
+    const s = simState;
+    if (!s) return;
+    const num = n => Math.round(n).toLocaleString();
+
+    // Gold / gems (the initial render is animated by countUpTo instead)
+    if (!initial) {
+        setEl('gold-display', num(s.gold));
+        setEl('gems-display', num(s.gems));
+    }
+    setEl('stat-gold', num(s.gold));
+    setEl('stat-gems', num(s.gems));
+    const balance = document.getElementById('auction-balance');
+    if (balance) balance.innerHTML = num(s.gold) + ' <span style="font-size:0.7rem;color:#333;">Gold</span>';
+
+    // Level + XP
+    const cls = (currentUser && currentUser.char_class) || 'Explorer';
+    setEl('dash-level', s.level);
+    setEl('dash-level-chip', s.level);
+    setEl('dash-class', `Level ${s.level} · ${cls}`);
+    setEl('sidebar-userrole', `Level ${s.level}`);
+    const xpPct = Math.max(0, Math.min(100, (s.xp / s.xpNeeded) * 100));
+    const xpBar = document.getElementById('xp-bar');
+    if (xpBar) xpBar.style.width = xpPct + '%';
+    setEl('xp-text', `${num(s.xp)} / ${num(s.xpNeeded)}`);
+    updateLevelRing(xpPct);
+
+    // HP / MP
+    const hpBar = document.getElementById('hp-bar');
+    if (hpBar) hpBar.style.width = Math.max(0, Math.min(100, (s.hp / s.maxHp) * 100)) + '%';
+    setEl('hp-text', `${num(s.hp)} / ${num(s.maxHp)}`);
+    const mpBar = document.getElementById('mp-bar');
+    if (mpBar) mpBar.style.width = Math.max(0, Math.min(100, (s.mp / s.maxMp) * 100)) + '%';
+    setEl('mp-text', `${num(s.mp)} / ${num(s.maxMp)}`);
+
+    // Battle record
+    setEl('stat-wins', num(s.wins));
+    setEl('stat-losses', num(s.losses));
+}
+
+// Adds XP / gold and handles level-ups. Returns true if the player levelled up.
+function simGain({ xp = 0, gold = 0, gems = 0 } = {}) {
+    const s = simState;
+    if (!s) return false;
+    s.gold += gold;
+    s.gems += gems;
+    s.xp   += xp;
+    let leveled = false;
+    while (s.xp >= s.xpNeeded) {
+        s.xp -= s.xpNeeded;
+        s.level++;
+        s.xpNeeded = Math.floor(s.xpNeeded * 1.25);
+        s.maxHp += 50;
+        s.maxMp += 20;
+        s.hp = s.maxHp;
+        s.mp = s.maxMp;
+        leveled = true;
+    }
+    if (leveled) {
+        showToast(`⭐ Level up! You are now level ${s.level}.`);
+        addNotification('level', 'Level up!', `You reached level ${s.level}.`);
+    }
+    saveSim();
+    applySim();
+    return leveled;
+}
+
+const rand = (min, max) => Math.floor(min + Math.random() * (max - min + 1));
+const HEAL_COST = 30;
+const DAILY_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const HUNT_ENEMIES = ['Slime', 'Goblin', 'Skeleton', 'Wraith', 'Dire Wolf', 'Bone Drake'];
+
+function performAction(action) {
+    const s = simState;
+    if (!s) return;
+
+    if (action === 'heal') {
+        if (s.hp >= s.maxHp && s.mp >= s.maxMp) { showToast('You are already at full health.'); return; }
+        if (s.gold < HEAL_COST) { showToast(`Healing costs ${HEAL_COST} gold.`, true); return; }
+        s.gold -= HEAL_COST;
+        s.hp = s.maxHp;
+        s.mp = s.maxMp;
+        saveSim(); applySim();
+        showToast(`💚 Healed to full for ${HEAL_COST} gold.`);
+        addNotification('level', 'Healed up', `HP and MP restored for ${HEAL_COST} gold.`);
+        return;
+    }
+
+    if (action === 'hunt') {
+        if (s.hp < Math.ceil(s.maxHp * 0.1)) { showToast('Too wounded to hunt. Heal first!', true); return; }
+        const enemy = HUNT_ENEMIES[rand(0, Math.min(HUNT_ENEMIES.length - 1, 1 + Math.floor(s.level / 2)))];
+        const win   = Math.random() < 0.7;
+        if (win) {
+            const xp = rand(15, 35) + s.level * 2, gold = rand(10, 40);
+            s.hp = Math.max(1, s.hp - rand(5, 15));
+            s.wins++;
+            showToast(`⚔️ Defeated a ${enemy}! +${xp} XP, +${gold} gold.`);
+            addNotification('battle', 'Hunt won', `You defeated a ${enemy}. +${xp} XP, +${gold} gold.`);
+            simGain({ xp, gold });
+        } else {
+            const dmg = rand(15, 30);
+            s.hp = Math.max(1, s.hp - dmg);
+            s.losses++;
+            showToast(`💀 A ${enemy} beat you. -${dmg} HP, +5 XP.`, true);
+            addNotification('battle', 'Hunt lost', `A ${enemy} beat you. -${dmg} HP.`);
+            simGain({ xp: 5 });
+        }
+        return;
+    }
+
+    if (action === 'daily') {
+        const left = s.dailyAt + DAILY_COOLDOWN_MS - Date.now();
+        if (left > 0) {
+            const h = Math.floor(left / 3600000), m = Math.ceil((left % 3600000) / 60000);
+            showToast(`Daily already claimed. Come back in ${h}h ${m}m.`, true);
+            return;
+        }
+        s.dailyAt = Date.now();
+        showToast('🎁 Daily reward claimed: +100 XP, +50 Gold!');
+        addNotification('gift', 'Daily reward claimed', '+100 XP, +50 Gold added.');
+        simGain({ xp: 100, gold: 50 });
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// MINI GAME — Spirit Catcher (bottom-right corner)
+// ════════════════════════════════════════════════════════════════════
+const spirit = {
+    running: false, score: 0, timeLeft: 0, last: -1,
+    tick: null, spawn: null, hide: null, best: 0
+};
+const SPIRIT_SECONDS = 20;
+
+function setupSpiritGame() {
+    const root = document.getElementById('miniGame');
+    const grid = document.getElementById('mgGrid');
+    if (!root || !grid) return;
+
+    try { spirit.best = Number(localStorage.getItem('rpgGhostSpiritBest')) || 0; } catch { /* ignore */ }
+    setEl('mgBest', spirit.best);
+
+    for (let i = 0; i < 9; i++) {
+        const cell = document.createElement('button');
+        cell.type = 'button';
+        cell.className = 'mg-cell';
+        cell.setAttribute('aria-label', 'Spirit spot ' + (i + 1));
+        cell.addEventListener('click', () => {
+            if (!spirit.running || !cell.classList.contains('ghost')) return;
+            cell.classList.remove('ghost');
+            cell.classList.add('caught');
+            setTimeout(() => cell.classList.remove('caught'), 180);
+            spirit.score++;
+            setEl('mgScore', spirit.score);
+            spawnSpirit(true);
+        });
+        grid.appendChild(cell);
+    }
+
+    document.getElementById('miniGameFab')?.addEventListener('click', () => root.classList.toggle('is-open'));
+    document.getElementById('miniGameClose')?.addEventListener('click', () => root.classList.remove('is-open'));
+    document.getElementById('mgStart')?.addEventListener('click', startSpiritGame);
+}
+
+function clearSpiritBoard() {
+    document.querySelectorAll('#mgGrid .mg-cell').forEach(c => c.classList.remove('ghost', 'caught'));
+}
+
+function spawnSpirit(immediate = false) {
+    if (!spirit.running) return;
+    clearTimeout(spirit.spawn); clearTimeout(spirit.hide);
+    clearSpiritBoard();
+
+    const show = () => {
+        if (!spirit.running) return;
+        const cells = document.querySelectorAll('#mgGrid .mg-cell');
+        let i;
+        do { i = rand(0, cells.length - 1); } while (i === spirit.last);
+        spirit.last = i;
+        cells[i].classList.add('ghost');
+        // Ghosts vanish faster as the round goes on
+        const life = Math.max(550, 1000 - (SPIRIT_SECONDS - spirit.timeLeft) * 25);
+        spirit.hide = setTimeout(() => { clearSpiritBoard(); spawnSpirit(); }, life);
+    };
+    spirit.spawn = setTimeout(show, immediate ? 120 : rand(150, 350));
+}
+
+function startSpiritGame() {
+    if (spirit.running) return;
+    spirit.running  = true;
+    spirit.score    = 0;
+    spirit.timeLeft = SPIRIT_SECONDS;
+    spirit.last     = -1;
+    setEl('mgScore', 0);
+    setEl('mgTime', spirit.timeLeft);
+    setEl('mgMsg', 'Tap the ghosts before they vanish!');
+    const startBtn = document.getElementById('mgStart');
+    if (startBtn) { startBtn.disabled = true; startBtn.textContent = 'Playing…'; }
+
+    spirit.tick = setInterval(() => {
+        spirit.timeLeft--;
+        setEl('mgTime', spirit.timeLeft);
+        if (spirit.timeLeft <= 0) endSpiritGame();
+    }, 1000);
+    spawnSpirit(true);
+}
+
+function endSpiritGame() {
+    spirit.running = false;
+    clearInterval(spirit.tick); clearTimeout(spirit.spawn); clearTimeout(spirit.hide);
+    clearSpiritBoard();
+
+    const score = spirit.score;
+    const gold  = score * 3;
+    const xp    = score * 2;
+    if (score > spirit.best) {
+        spirit.best = score;
+        setEl('mgBest', score);
+        try { localStorage.setItem('rpgGhostSpiritBest', String(score)); } catch { /* ignore */ }
+    }
+
+    const startBtn = document.getElementById('mgStart');
+    if (startBtn) { startBtn.disabled = false; startBtn.textContent = 'Play again'; }
+
+    if (score > 0 && simState) {
+        setEl('mgMsg', `Caught ${score}! +${gold} gold, +${xp} XP.`);
+        showToast(`👻 Spirit Catcher: ${score} caught. +${gold} gold, +${xp} XP.`);
+        simGain({ gold, xp });
+    } else {
+        setEl('mgMsg', 'No ghosts caught. Try again!');
+    }
+}
+
+function placeBid(itemName) {
+    showToast(`💰 Bid placed on ${itemName}!`);
+    addNotification('auction', 'Bid placed', `You placed a bid on ${itemName}.`);
+    const el = document.getElementById('active-bids');
+    if (el) el.textContent = (parseInt(el.textContent) || 0) + 1;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// TOAST
+// ════════════════════════════════════════════════════════════════════
+function showToast(message, isError = false) {
+    const toast   = document.getElementById('toast');
+    const msgEl   = document.getElementById('toast-message');
+    const iconEl  = toast?.querySelector('i');
+    if (!toast || !msgEl) return;
+
+    msgEl.textContent = message;
+    toast.style.borderLeftColor = isError ? '#ef4444' : 'var(--dash-teal)';
+    if (iconEl) iconEl.style.color = isError ? '#ef4444' : 'var(--spectral-teal)';
+
+    const old = toast.querySelector('.toast-progress');
+    if (old) old.remove();
+    const bar = document.createElement('div');
+    bar.className = 'toast-progress';
+    toast.appendChild(bar);
+
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 3500);
+}
+
+function setEl(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// LOGOUT BUTTON
+// ════════════════════════════════════════════════════════════════════
+document.getElementById('logoutBtn')?.addEventListener('click', logout);
