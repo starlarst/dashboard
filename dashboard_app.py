@@ -1,3 +1,8 @@
+import os
+import json
+import urllib.request
+import urllib.error
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, RedirectResponse, PlainTextResponse
@@ -20,6 +25,42 @@ load_dotenv()
 # Setup logging
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(name)s — %(message)s")
+
+EMAILJS_PUBLIC_KEY = ("eMQUadu5q-_pONmwc")
+EMAILJS_SERVICE_ID = ("service_miabeqg")
+EMAILJS_TEMPLATE_ID = ("template_tntozpq")
+
+
+def send_reset_email(email: str, otp: str):
+    payload = {
+        "service_id": EMAILJS_SERVICE_ID,
+        "template_id": EMAILJS_TEMPLATE_ID,
+        "user_id": EMAILJS_PUBLIC_KEY,
+        "template_params": {
+            "to_email": email,
+            "otp_code": otp,
+            "from_name": "RPG Ghost",
+        },
+    }
+
+    request = urllib.request.Request(
+        "https://api.emailjs.com/api/v1.0/email/send",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            if response.status != 200:
+                raise RuntimeError(
+                    f"EmailJS returned HTTP {response.status}"
+                )
+    except urllib.error.HTTPError as exc:
+        details = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(
+            f"EmailJS failed ({exc.code}): {details}"
+        ) from exc
 
 # ── Load Configuration from .env ──────────────────────────────────────────────
 DISCORD_CLIENT_ID = os.getenv('DISCORD_CLIENT_ID')
@@ -52,44 +93,6 @@ DISCORD_BOT_TOKEN = os.getenv('DISCORD_BOT_TOKEN', '')
 DISCORD_GUILD_ID = '1466740140163731488'
 DISCORD_BID_CHANNEL = 1466835513074778383
 BOT_API_URL = os.getenv('BOT_API_URL', 'http://bot.rpghost.qzz.io:25509')
-
-# ── Password reset email delivery ───────────────────────────────────────────
-# Sent server-side via EmailJS's REST API so the OTP itself never has to pass
-# through the browser. The service/template/public-key values below match the
-# ones already public in dashboard.js (EmailJS public keys are meant to be
-# used from untrusted clients, so reusing them here adds no new exposure);
-# set the env vars instead if you rotate them or move to a different account.
-EMAILJS_SERVICE_ID = os.getenv('EMAILJS_SERVICE_ID', 'service_miabeqg')
-EMAILJS_TEMPLATE_ID = os.getenv('EMAILJS_TEMPLATE_ID', 'template_tntozpq')
-EMAILJS_PUBLIC_KEY = os.getenv('EMAILJS_PUBLIC_KEY', 'eMQUadu5q-_pONmwc')
-EMAILJS_PRIVATE_KEY = os.getenv('EMAILJS_PRIVATE_KEY', '')  # only needed if the EmailJS account has "strict mode" on
-EMAILJS_SEND_URL = 'https://api.emailjs.com/api/v1.0/email/send'
-
-def _send_reset_email(email: str, otp: str) -> bool:
-    """Send the OTP to the user's inbox via EmailJS. Returns True on success.
-    Never raises — a delivery failure should not reveal account existence or
-    crash the request, it should just be logged for the operator to notice."""
-    payload = {
-        'service_id': EMAILJS_SERVICE_ID,
-        'template_id': EMAILJS_TEMPLATE_ID,
-        'user_id': EMAILJS_PUBLIC_KEY,
-        'template_params': {
-            'to_email': email,
-            'otp_code': otp,
-            'from_name': 'RPG Ghost'
-        }
-    }
-    if EMAILJS_PRIVATE_KEY:
-        payload['accessToken'] = EMAILJS_PRIVATE_KEY
-    try:
-        res = http_requests.post(EMAILJS_SEND_URL, json=payload, timeout=10)
-        if res.status_code == 200:
-            return True
-        log.warning(f"[Password Reset] EmailJS send failed ({res.status_code}): {res.text[:200]}")
-        return False
-    except Exception as e:
-        log.warning(f"[Password Reset] EmailJS send error: {e}")
-        return False
 
 async def _call_bot(method: str, path: str, json_body: dict = None):
     """Call the bot's own HTTP API directly (two-way comms)."""
@@ -371,11 +374,6 @@ async def _get_json(request: Request) -> dict:
     except Exception:
         return {}
 
-# ── Admin Configuration ──────────────────────────────────────────────────────
-# SECURITY: no hardcoded admin email/password in source. Both must be supplied
-# via the environment; if ADMIN_PASSWORD is missing, a strong random password
-# is generated at startup and logged once so an operator can capture it and
-# then change it — never a fixed secret baked into the codebase/repo.
 ADMIN_EMAIL = os.getenv('ADMIN_EMAIL')
 _ADMIN_PASSWORD_ENV = os.getenv('ADMIN_PASSWORD')
 _ADMIN_PASSWORD_GENERATED = False
@@ -1143,59 +1141,81 @@ async def api_delete_account(request: Request):
         if conn:
             conn.close()
 
+
 @app.post('/api/password/request-reset')
 async def api_password_request_reset(request: Request):
-    """Request a password reset code."""
+    """Request a password reset code and send it through EmailJS."""
     ip = _get_real_ip(request)
 
     if _strict_rate_limit(ip, max_calls=5, window=600):
-        return _json({'ok': False, 'error': 'Too many requests. Please wait a few minutes.'}, 429)
+        return _json({
+            'ok': False,
+            'error': 'Too many requests. Please wait a few minutes.'
+        }, 429)
 
     data = await _get_json(request)
     email = str(data.get('email', '')).strip().lower()
 
     if not email or '@' not in email:
-        return _json({'ok': False, 'error': 'Please enter a valid email address.'}, 400)
+        return _json({
+            'ok': False,
+            'error': 'Please enter a valid email address.'
+        }, 400)
 
     _purge_reset_tokens()
 
-    # SECURITY: the OTP must never be returned to the caller — it must only
-    # ever reach the account owner via their registered email address. Doing
-    # otherwise lets anyone who knows (or guesses) a victim's email take over
-    # their account without ever touching that inbox. The response below is
-    # identical whether or not the account exists, so the API can't be used
-    # to probe which emails are registered.
+    # Check whether this email belongs to an account.
     conn = None
     try:
         conn = _db()
         account = conn.execute(
-            "SELECT auth_id FROM auth_users WHERE email = ?", (email,)
+            "SELECT auth_id FROM auth_users WHERE email = ?",
+            (email,)
         ).fetchone()
-
-        if account:
-            otp = str(secrets.randbelow(900000) + 100000)
-            _reset_tokens[email] = {
-                'otp': otp,
-                'expires_at': datetime.now(UTC) + timedelta(minutes=5)
-            }
-            sent = _send_reset_email(email, otp)
-            if sent:
-                log.info(f'[Password Reset] OTP emailed for {email[:20]}')
-            else:
-                # Delivery failed (bad EmailJS config, network issue, etc).
-                # The token still exists so a retry within 5 minutes can
-                # reuse it, but we don't tell the caller — same response
-                # either way, by design.
-                log.error(f'[Password Reset] OTP generated but email delivery FAILED for {email[:20]}')
-        # else: no account for this email — do nothing, same response below.
+    except Exception:
+        log.exception("[Password Reset] Database lookup failed")
+        return _json({
+            'ok': False,
+            'error': 'Unable to process the request right now.'
+        }, 500)
     finally:
         if conn:
             conn.close()
 
-    return {
+    # Use a generic response so the endpoint doesn't reveal
+    # whether an account exists.
+    generic_response = {
         'ok': True,
-        'message': 'If that email is registered, you will receive a reset code.',
+        'message': 'If that email is registered, you will receive a reset code.'
     }
+
+    if not account:
+        return generic_response
+
+    # Generate a six-digit OTP.
+    otp = str(secrets.randbelow(900000) + 100000)
+
+    # Send the OTP through EmailJS before storing it.
+    try:
+        await asyncio.to_thread(send_reset_email, email, otp)
+    except Exception:
+        log.exception(
+            "[Password Reset] EmailJS delivery failed"
+        )
+        return _json({
+            'ok': False,
+            'error': 'Unable to send the reset email. Please try again later.'
+        }, 500)
+
+    # Store the OTP only after EmailJS accepts the email.
+    _reset_tokens[email] = {
+        'otp': otp,
+        'expires_at': datetime.now(UTC) + timedelta(minutes=5)
+    }
+
+    log.info("[Password Reset] Reset email accepted by EmailJS")
+
+    return generic_response
 
 @app.post('/api/password/verify-reset')
 async def api_password_reset(request: Request):
@@ -1833,7 +1853,7 @@ async def api_profile(request: Request):
     return {'logged_in': True, 'nickname': nickname, 'avatar': avatar, 'bio': bio, 'is_admin': is_admin}
 def run_dashboard():
     """Start the dashboard server."""
-    host = "0.0.0.0"
+    host = "127.0.0.1"
     port = int(os.environ.get("PORT", 25507))
 
     try:
