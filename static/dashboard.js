@@ -46,6 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupListItemModal();
     setupEditPlayerModal();
     setupMusicToggle();
+    setupSpiritGame();
 
     // Admin tab switching
     document.getElementById('adminTabUsers')?.addEventListener('click', () => switchAdminTab('users'));
@@ -347,8 +348,9 @@ function showDashboard(user) {
         setEl('char-lck', user.luck || 0);
         setEl('char-crit', (user.critical_chance || 0) + '%');
 
-        countUpTo('gold-display', user.gold || 0);
-        countUpTo('gems-display', user.gems || 0);
+        initSim(user);
+        countUpTo('gold-display', simState.gold);
+        countUpTo('gems-display', simState.gems);
 
         // Stats widgets
         setEl('stat-gold', (user.gold || 0).toLocaleString());
@@ -389,7 +391,7 @@ function showDashboard(user) {
             setEl('mp-text', `${mp} / ${maxMp}`);
         }
 
-        updateLevelRing(xpPct);
+        applySim(true);
         spawnCharParticles();
         loadCustomProfile().catch(console.error);
 
@@ -1421,47 +1423,266 @@ document.addEventListener('click', e => {
 // ════════════════════════════════════════════════════════════════════
 // GAME ACTIONS
 // ════════════════════════════════════════════════════════════════════
-const ACTION_META = {
-    heal:  { type: 'level',  title: 'Healed up' },
-    hunt:  { type: 'battle', title: 'Hunt finished' },
-    daily: { type: 'gift',   title: 'Daily reward' }
-};
-let actionInFlight = false;
+// Local-only stats simulation. Nothing here talks to the server or the bot:
+// the numbers shown on the dashboard live in `simState` and are saved in
+// this browser's localStorage so they survive a refresh.
+let simState = null;
+let simKey   = null;
 
-// Calls POST /api/action/<heal|hunt|daily>. The server decides the outcome
-// (cooldowns, rewards, damage) and returns { ok, message, error? }.
-async function performAction(action) {
-    const meta = ACTION_META[action];
-    if (!meta || actionInFlight) return;
-    actionInFlight = true;
-    const btns = document.querySelectorAll('.quick-actions .action-btn');
-    btns.forEach(b => b.disabled = true);
+function initSim(user) {
+    simKey = 'rpgGhostSim:' + (user.discord_id || user.username || 'guest');
+    const fresh = {
+        level:    Number(user.level) || 1,
+        xp:       Number(user.xp) || 0,
+        xpNeeded: Number(user.xp_needed) || 100,
+        hp:       Number.isFinite(Number(user.hp)) && Number(user.hp) > 0 ? Number(user.hp) : 850,
+        maxHp:    Number(user.max_hp) > 0 ? Number(user.max_hp) : 1000,
+        mp:       Number.isFinite(Number(user.mp)) && Number(user.mp) > 0 ? Number(user.mp) : 310,
+        maxMp:    Number(user.max_mp) > 0 ? Number(user.max_mp) : 500,
+        gold:     Number(user.gold) || 0,
+        gems:     Number(user.gems) || 0,
+        wins:     Number(user.battles_won) || 0,
+        losses:   Number(user.battles_lost) || 0,
+        dailyAt:  0
+    };
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(simKey) || 'null'); } catch { /* ignore */ }
+    simState = Object.assign(fresh, saved || {});
+}
 
-    try {
-        const res  = await fetch(`${API_BASE}/api/action/${action}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        });
-        let data = {};
-        try { data = await res.json(); } catch { /* non-JSON error page */ }
+function saveSim() {
+    try { localStorage.setItem(simKey, JSON.stringify(simState)); } catch { /* storage blocked */ }
+}
 
-        if (res.ok && data.ok) {
-            showToast(data.message || 'Done!');
-            addNotification(meta.type, meta.title, data.message || '');
-            // Pull fresh stats so HP / gold / XP update on screen.
-            const me = await (await fetch(`${API_BASE}/api/me`)).json();
-            if (me.logged_in) { isShowingDashboard = false; showDashboard(me); }
-        } else if (res.status === 404) {
-            showToast(`The server has no /api/action/${action} route yet.`, true);
+function applySim(initial = false) {
+    const s = simState;
+    if (!s) return;
+    const num = n => Math.round(n).toLocaleString();
+
+    // Gold / gems (the initial render is animated by countUpTo instead)
+    if (!initial) {
+        setEl('gold-display', num(s.gold));
+        setEl('gems-display', num(s.gems));
+    }
+    setEl('stat-gold', num(s.gold));
+    setEl('stat-gems', num(s.gems));
+    const balance = document.getElementById('auction-balance');
+    if (balance) balance.innerHTML = num(s.gold) + ' <span style="font-size:0.7rem;color:#333;">Gold</span>';
+
+    // Level + XP
+    const cls = (currentUser && currentUser.char_class) || 'Explorer';
+    setEl('dash-level', s.level);
+    setEl('dash-level-chip', s.level);
+    setEl('dash-class', `Level ${s.level} · ${cls}`);
+    setEl('sidebar-userrole', `Level ${s.level}`);
+    const xpPct = Math.max(0, Math.min(100, (s.xp / s.xpNeeded) * 100));
+    const xpBar = document.getElementById('xp-bar');
+    if (xpBar) xpBar.style.width = xpPct + '%';
+    setEl('xp-text', `${num(s.xp)} / ${num(s.xpNeeded)}`);
+    updateLevelRing(xpPct);
+
+    // HP / MP
+    const hpBar = document.getElementById('hp-bar');
+    if (hpBar) hpBar.style.width = Math.max(0, Math.min(100, (s.hp / s.maxHp) * 100)) + '%';
+    setEl('hp-text', `${num(s.hp)} / ${num(s.maxHp)}`);
+    const mpBar = document.getElementById('mp-bar');
+    if (mpBar) mpBar.style.width = Math.max(0, Math.min(100, (s.mp / s.maxMp) * 100)) + '%';
+    setEl('mp-text', `${num(s.mp)} / ${num(s.maxMp)}`);
+
+    // Battle record
+    setEl('stat-wins', num(s.wins));
+    setEl('stat-losses', num(s.losses));
+}
+
+// Adds XP / gold and handles level-ups. Returns true if the player levelled up.
+function simGain({ xp = 0, gold = 0, gems = 0 } = {}) {
+    const s = simState;
+    if (!s) return false;
+    s.gold += gold;
+    s.gems += gems;
+    s.xp   += xp;
+    let leveled = false;
+    while (s.xp >= s.xpNeeded) {
+        s.xp -= s.xpNeeded;
+        s.level++;
+        s.xpNeeded = Math.floor(s.xpNeeded * 1.25);
+        s.maxHp += 50;
+        s.maxMp += 20;
+        s.hp = s.maxHp;
+        s.mp = s.maxMp;
+        leveled = true;
+    }
+    if (leveled) {
+        showToast(`⭐ Level up! You are now level ${s.level}.`);
+        addNotification('level', 'Level up!', `You reached level ${s.level}.`);
+    }
+    saveSim();
+    applySim();
+    return leveled;
+}
+
+const rand = (min, max) => Math.floor(min + Math.random() * (max - min + 1));
+const HEAL_COST = 30;
+const DAILY_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const HUNT_ENEMIES = ['Slime', 'Goblin', 'Skeleton', 'Wraith', 'Dire Wolf', 'Bone Drake'];
+
+function performAction(action) {
+    const s = simState;
+    if (!s) return;
+
+    if (action === 'heal') {
+        if (s.hp >= s.maxHp && s.mp >= s.maxMp) { showToast('You are already at full health.'); return; }
+        if (s.gold < HEAL_COST) { showToast(`Healing costs ${HEAL_COST} gold.`, true); return; }
+        s.gold -= HEAL_COST;
+        s.hp = s.maxHp;
+        s.mp = s.maxMp;
+        saveSim(); applySim();
+        showToast(`💚 Healed to full for ${HEAL_COST} gold.`);
+        addNotification('level', 'Healed up', `HP and MP restored for ${HEAL_COST} gold.`);
+        return;
+    }
+
+    if (action === 'hunt') {
+        if (s.hp < Math.ceil(s.maxHp * 0.1)) { showToast('Too wounded to hunt. Heal first!', true); return; }
+        const enemy = HUNT_ENEMIES[rand(0, Math.min(HUNT_ENEMIES.length - 1, 1 + Math.floor(s.level / 2)))];
+        const win   = Math.random() < 0.7;
+        if (win) {
+            const xp = rand(15, 35) + s.level * 2, gold = rand(10, 40);
+            s.hp = Math.max(1, s.hp - rand(5, 15));
+            s.wins++;
+            showToast(`⚔️ Defeated a ${enemy}! +${xp} XP, +${gold} gold.`);
+            addNotification('battle', 'Hunt won', `You defeated a ${enemy}. +${xp} XP, +${gold} gold.`);
+            simGain({ xp, gold });
         } else {
-            showToast(data.error || data.message || `${meta.title} failed.`, true);
+            const dmg = rand(15, 30);
+            s.hp = Math.max(1, s.hp - dmg);
+            s.losses++;
+            showToast(`💀 A ${enemy} beat you. -${dmg} HP, +5 XP.`, true);
+            addNotification('battle', 'Hunt lost', `A ${enemy} beat you. -${dmg} HP.`);
+            simGain({ xp: 5 });
         }
-    } catch (err) {
-        console.error('Action error:', err);
-        showToast('Cannot reach server.', true);
-    } finally {
-        actionInFlight = false;
-        btns.forEach(b => b.disabled = false);
+        return;
+    }
+
+    if (action === 'daily') {
+        const left = s.dailyAt + DAILY_COOLDOWN_MS - Date.now();
+        if (left > 0) {
+            const h = Math.floor(left / 3600000), m = Math.ceil((left % 3600000) / 60000);
+            showToast(`Daily already claimed. Come back in ${h}h ${m}m.`, true);
+            return;
+        }
+        s.dailyAt = Date.now();
+        showToast('🎁 Daily reward claimed: +100 XP, +50 Gold!');
+        addNotification('gift', 'Daily reward claimed', '+100 XP, +50 Gold added.');
+        simGain({ xp: 100, gold: 50 });
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// MINI GAME — Spirit Catcher (bottom-right corner)
+// ════════════════════════════════════════════════════════════════════
+const spirit = {
+    running: false, score: 0, timeLeft: 0, last: -1,
+    tick: null, spawn: null, hide: null, best: 0
+};
+const SPIRIT_SECONDS = 20;
+
+function setupSpiritGame() {
+    const root = document.getElementById('miniGame');
+    const grid = document.getElementById('mgGrid');
+    if (!root || !grid) return;
+
+    try { spirit.best = Number(localStorage.getItem('rpgGhostSpiritBest')) || 0; } catch { /* ignore */ }
+    setEl('mgBest', spirit.best);
+
+    for (let i = 0; i < 9; i++) {
+        const cell = document.createElement('button');
+        cell.type = 'button';
+        cell.className = 'mg-cell';
+        cell.setAttribute('aria-label', 'Spirit spot ' + (i + 1));
+        cell.addEventListener('click', () => {
+            if (!spirit.running || !cell.classList.contains('ghost')) return;
+            cell.classList.remove('ghost');
+            cell.classList.add('caught');
+            setTimeout(() => cell.classList.remove('caught'), 180);
+            spirit.score++;
+            setEl('mgScore', spirit.score);
+            spawnSpirit(true);
+        });
+        grid.appendChild(cell);
+    }
+
+    document.getElementById('miniGameFab')?.addEventListener('click', () => root.classList.toggle('is-open'));
+    document.getElementById('miniGameClose')?.addEventListener('click', () => root.classList.remove('is-open'));
+    document.getElementById('mgStart')?.addEventListener('click', startSpiritGame);
+}
+
+function clearSpiritBoard() {
+    document.querySelectorAll('#mgGrid .mg-cell').forEach(c => c.classList.remove('ghost', 'caught'));
+}
+
+function spawnSpirit(immediate = false) {
+    if (!spirit.running) return;
+    clearTimeout(spirit.spawn); clearTimeout(spirit.hide);
+    clearSpiritBoard();
+
+    const show = () => {
+        if (!spirit.running) return;
+        const cells = document.querySelectorAll('#mgGrid .mg-cell');
+        let i;
+        do { i = rand(0, cells.length - 1); } while (i === spirit.last);
+        spirit.last = i;
+        cells[i].classList.add('ghost');
+        // Ghosts vanish faster as the round goes on
+        const life = Math.max(550, 1000 - (SPIRIT_SECONDS - spirit.timeLeft) * 25);
+        spirit.hide = setTimeout(() => { clearSpiritBoard(); spawnSpirit(); }, life);
+    };
+    spirit.spawn = setTimeout(show, immediate ? 120 : rand(150, 350));
+}
+
+function startSpiritGame() {
+    if (spirit.running) return;
+    spirit.running  = true;
+    spirit.score    = 0;
+    spirit.timeLeft = SPIRIT_SECONDS;
+    spirit.last     = -1;
+    setEl('mgScore', 0);
+    setEl('mgTime', spirit.timeLeft);
+    setEl('mgMsg', 'Tap the ghosts before they vanish!');
+    const startBtn = document.getElementById('mgStart');
+    if (startBtn) { startBtn.disabled = true; startBtn.textContent = 'Playing…'; }
+
+    spirit.tick = setInterval(() => {
+        spirit.timeLeft--;
+        setEl('mgTime', spirit.timeLeft);
+        if (spirit.timeLeft <= 0) endSpiritGame();
+    }, 1000);
+    spawnSpirit(true);
+}
+
+function endSpiritGame() {
+    spirit.running = false;
+    clearInterval(spirit.tick); clearTimeout(spirit.spawn); clearTimeout(spirit.hide);
+    clearSpiritBoard();
+
+    const score = spirit.score;
+    const gold  = score * 3;
+    const xp    = score * 2;
+    if (score > spirit.best) {
+        spirit.best = score;
+        setEl('mgBest', score);
+        try { localStorage.setItem('rpgGhostSpiritBest', String(score)); } catch { /* ignore */ }
+    }
+
+    const startBtn = document.getElementById('mgStart');
+    if (startBtn) { startBtn.disabled = false; startBtn.textContent = 'Play again'; }
+
+    if (score > 0 && simState) {
+        setEl('mgMsg', `Caught ${score}! +${gold} gold, +${xp} XP.`);
+        showToast(`👻 Spirit Catcher: ${score} caught. +${gold} gold, +${xp} XP.`);
+        simGain({ gold, xp });
+    } else {
+        setEl('mgMsg', 'No ghosts caught. Try again!');
     }
 }
 
