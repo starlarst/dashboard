@@ -2363,3 +2363,31 @@ body.sidebar-is-collapsed .main-content {
         z-index: 3;
     }
 }
+/* ── Notification panel tabs (Alerts / Activity log) ── */
+.notif-tabs { display: flex; gap: 4px; }
+.notif-panel-head .notif-tab {
+    background: none; border: 1px solid transparent; border-radius: 8px;
+    padding: 4px 10px; font-size: 0.72rem; font-weight: 600;
+    color: var(--dash-text-faint); cursor: pointer;
+    font-family: 'Sora', 'Plus Jakarta Sans', 'Inter', sans-serif;
+}
+.notif-panel-head .notif-tab:hover { color: var(--dash-text); }
+.notif-panel-head .notif-tab.active {
+    color: var(--dash-teal); background: var(--dash-teal-dim);
+    border-color: rgba(45, 217, 232, 0.25);
+}
+
+/* ── Action log (hunt / heal / daily results) ── */
+.action-log {
+    width: 100%; margin-top: 0.75rem; padding: 8px 10px;
+    background: rgba(0, 0, 0, 0.25); border: 1px solid var(--dash-border);
+    border-radius: var(--radius-sm); text-align: left; z-index: 1;
+    max-height: 150px; overflow-y: auto;
+}
+.action-log-row {
+    display: flex; gap: 8px; font-size: 0.72rem; line-height: 1.5;
+    color: var(--dash-text-dim); padding: 2px 0;
+}
+.action-log-row.is-error { color: var(--dash-red); }
+.action-log-time { color: var(--dash-text-faint); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.action-log-empty { font-size: 0.7rem; color: var(--dash-text-faint); text-align: center; }
