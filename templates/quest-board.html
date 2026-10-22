@@ -193,6 +193,9 @@
             color:#666; font-size:0.85rem; cursor:pointer; transition:color .2s;
         }.bot-intro-skip:hover { color:var(--bone-white); }.animate-rise { opacity:0; animation:panelRise 0.55s var(--ease) forwards; }
         @keyframes panelRise{ from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }.delay-1 {animation-delay:0.05s}.delay-2 {animation-delay:0.1s}.delay-3 {animation-delay:0.15s}
+            @media (max-width: 600px) {
+            .quest-search-input-wrap { max-width: 100%; }
+        }
     </style>
 </head>
 <body data-page="quest-board">
