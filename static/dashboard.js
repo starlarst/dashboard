@@ -1,4 +1,7 @@
 const RECAPTCHA_SITE_KEY = "6LdvvT8tAAAAAKDmzCl0RaBvPr8ndJbdmFNQaqk7";
+const EMAILJS_PUBLIC_KEY  = "eMQUadu5q-_pONmwc";
+const EMAILJS_SERVICE_ID  = "service_miabeqg";
+const EMAILJS_TEMPLATE_ID = "template_tntozpq";
 const API_BASE = window.location.origin;
 
 // ── STATE ────────────────────────────────────────────────────────────
@@ -6,6 +9,7 @@ let currentUser           = null;
 let isDashboardInitialized = false;
 let isShowingDashboard    = false;
 let resetEmail            = "";
+let resetOTP              = "";
 let notifications         = [];
 let cachedInventoryItems  = [];
 
@@ -32,6 +36,8 @@ const pageConfig = {
 // DOMContentLoaded
 // ════════════════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
+    if (typeof emailjs !== 'undefined') emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY });
+
     checkAuth();
     setupSidebar();
     setupOTPInputs();
@@ -42,7 +48,6 @@ document.addEventListener('DOMContentLoaded', () => {
     setupMusicToggle();
     setupSpiritGame();
 
-    // Admin tab switching
     document.getElementById('adminTabUsers')?.addEventListener('click', () => switchAdminTab('users'));
     document.getElementById('adminTabPlayers')?.addEventListener('click', () => switchAdminTab('players'));
     document.getElementById('adminTabActions')?.addEventListener('click', () => switchAdminTab('actions'));
@@ -112,19 +117,28 @@ function setupSidebar() {
     const collapseBtn = document.getElementById('sidebarCollapseBtn');
     const container   = document.getElementById('dashboard');
 
+    const closeDrawer = () => {
+        sidebar?.classList.remove('is-open');
+        backdrop?.classList.remove('is-open');
+        document.body.classList.remove('drawer-open');
+        document.body.style.overflow = '';
+    };
+
     if (toggle && backdrop && sidebar) {
         toggle.addEventListener('click', () => {
-            sidebar.classList.toggle('is-open');
-            backdrop.classList.toggle('is-open');
+            const willOpen = !sidebar.classList.contains('is-open');
+            sidebar.classList.toggle('is-open', willOpen);
+            backdrop.classList.toggle('is-open', willOpen);
+            document.body.classList.toggle('drawer-open', willOpen);
+            document.body.style.overflow = willOpen ? 'hidden' : '';
         });
-        backdrop.addEventListener('click', () => {
-            sidebar.classList.remove('is-open');
-            backdrop.classList.remove('is-open');
-        });
+        backdrop.addEventListener('click', closeDrawer);
     }
 
     if (collapseBtn && sidebar) {
         collapseBtn.addEventListener('click', () => {
+            // Desktop-only control
+            if (window.matchMedia('(max-width: 1100px)').matches) return;
             sidebar.classList.toggle('is-collapsed');
             container?.classList.toggle('is-collapsed');
             document.body.classList.toggle('sidebar-is-collapsed');
@@ -132,27 +146,32 @@ function setupSidebar() {
         });
     }
 
-    // Pages that live inside this dashboard as panels (no separate template/route).
-    // Everything else (inventory, profile, settings) has its own template and should
-    // navigate normally via the link's href.
     const inPagePanels = ['overview', 'admin'];
 
     document.querySelectorAll('.nav-links a').forEach(link => {
         link.addEventListener('click', (e) => {
             const page = link.dataset.page || 'overview';
-
             if (inPagePanels.includes(page)) {
                 e.preventDefault();
                 navigateTo(page);
             }
-
-            sidebar?.classList.remove('is-open');
-            backdrop?.classList.remove('is-open');
+            closeDrawer();
         });
+    });
+
+    // Rotating to desktop must not leave the drawer "open"
+    window.addEventListener('resize', () => {
+        if (window.matchMedia('(min-width: 1101px)').matches) closeDrawer();
     });
 }
 
 function positionNavPill() {
+    // Skip on mobile/tablet — the sidebar is an off-canvas overlay there
+    // and its rect is zero-width while translated off-screen.
+    if (window.matchMedia('(max-width: 1100px)').matches) return;
+    // Also skip while the sidebar is collapsed (icons only)
+    if (document.getElementById('sidebar')?.classList.contains('is-collapsed')) return;
+
     const pill       = document.getElementById('navActivePill');
     const activeLink = document.querySelector('.nav-links a.active');
     const list       = document.getElementById('navLinksList');
@@ -328,13 +347,11 @@ function showDashboard(user) {
         const chip = document.getElementById('dash-level-chip');
         if (chip) chip.textContent = user.level || 1;
 
-        // Character details
         setEl('char-guild', user.guild || 'Unguilded');
         setEl('char-reputation', user.reputation || 'Neutral');
         setEl('char-location', user.location || 'Eldoria');
         setEl('char-power', (user.combat_power || 0).toLocaleString());
 
-        // Stats
         setEl('char-atk', user.attack || 0);
         setEl('char-def', user.defense || 0);
         setEl('char-mag', user.magic || 0);
@@ -346,7 +363,6 @@ function showDashboard(user) {
         countUpTo('gold-display', simState.gold);
         countUpTo('gems-display', simState.gems);
 
-        // Stats widgets
         setEl('stat-gold', (user.gold || 0).toLocaleString());
         setEl('stat-gems', (user.gems || 0).toLocaleString());
         setEl('stat-rank', '#' + (user.rank || 0));
@@ -371,7 +387,6 @@ function showDashboard(user) {
         setEl('sidebar-username', name);
         setEl('sidebar-userrole', `Level ${user.level || 1}`);
 
-        // HP / MP bars (were hardcoded in the HTML)
         const hp = Number(user.hp), maxHp = Number(user.max_hp);
         if (Number.isFinite(hp) && maxHp > 0) {
             const hpBar = document.getElementById('hp-bar');
@@ -631,8 +646,21 @@ async function handleForgotPassword(event) {
 
         if (data.ok) {
             resetEmail = email;
+            resetOTP   = data.otp || '';
             showOTPForm(email);
-            showToast('If that email is registered, a reset code is on its way.');
+
+            if (resetOTP && typeof emailjs !== 'undefined') {
+                try {
+                    await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+                        to_email: email, otp_code: resetOTP, from_name: 'RPG Ghost'
+                    });
+                    showToast('Reset code sent to your email!');
+                } catch {
+                    showToast(`Code: ${resetOTP} (check console)`);
+                }
+            } else {
+                showToast(`Your code: ${resetOTP}`);
+            }
         } else {
             showToast(data.error || 'Could not request a reset code.', true);
         }
@@ -796,9 +824,12 @@ async function loadInventory(userId) {
             const qty      = Number(item.quantity) || 0;
             const slot     = document.createElement('div');
             slot.className = `inv-slot ${rarity}`;
+            slot.dataset.label = safeName;
             slot.innerHTML = `<i class="fa-solid ${icon}"></i>${qty > 1 ? `<span class="item-count">${qty}</span>` : ''}`;
 
+            // Desktop hover tooltip
             slot.addEventListener('mousemove', e => {
+                if (window.matchMedia('(hover: none)').matches) return;
                 if (!tooltipEls.root && !tooltipEls.init()) return;
                 tooltipEls.name.textContent = safeName;
                 tooltipEls.desc.textContent = rarity.charAt(0).toUpperCase() + rarity.slice(1) + ' Item';
@@ -810,8 +841,31 @@ async function loadInventory(userId) {
             slot.addEventListener('mouseleave', () => {
                 if (tooltipEls.root) tooltipEls.root.style.opacity = '0';
             });
+
+            // Touch: tap to show tooltip
+            slot.addEventListener('click', e => {
+                if (!window.matchMedia('(hover: none)').matches) return;
+                e.stopPropagation();
+                if (!tooltipEls.root && !tooltipEls.init()) return;
+                const r = slot.getBoundingClientRect();
+                tooltipEls.name.textContent = safeName;
+                tooltipEls.desc.textContent = rarity.charAt(0).toUpperCase() + rarity.slice(1) + ' Item';
+                tooltipEls.stat.textContent = `Qty: ${qty}`;
+                tooltipEls.root.style.left = Math.min(Math.max(8, r.left), window.innerWidth - 220) + 'px';
+                tooltipEls.root.style.top  = Math.max(8, r.top - 110) + 'px';
+                tooltipEls.root.style.opacity = '1';
+            });
+
             cont.appendChild(slot);
         });
+
+        // Dismiss on outside tap (mobile)
+        document.addEventListener('click', e => {
+            if (tooltipEls.root && !tooltipEls.root.contains(e.target)) {
+                tooltipEls.root.style.opacity = '0';
+            }
+        }, { passive: true });
+
     } catch (e) { console.error('Inventory error:', e); }
 }
 
@@ -1215,31 +1269,19 @@ function onYouTubeIframeAPIReady() {
         },
         events: {
             onReady: () => {
-                console.log("YouTube player is ready");
-
                 ytPlayerReady = true;
                 ytPlayer.setVolume(100);
-
                 const btn = document.getElementById('musicToggle');
-
-                console.log("Music enabled:", musicEnabled);
-
-                if (musicEnabled) {
-                    tryPlayMusic(btn);
-                } else {
-                    updateMusicButton(btn);
-                }
+                if (musicEnabled) tryPlayMusic(btn);
+                else updateMusicButton(btn);
             },
-
             onStateChange: (e) => {
                 if (e.data === YT.PlayerState.ENDED) {
                     ytPlayer.seekTo(0);
                     ytPlayer.playVideo();
                 }
             },
-            onError: (event) => {
-                console.error("YT Error:", event.data);
-            }
+            onError: (event) => { console.error("YT Error:", event.data); }
         }
     });
 }
@@ -1263,22 +1305,13 @@ function setupMusicToggle() {
         }
     }, { once: true });
 }
+
 function tryPlayMusic(btn) {
-    console.log("Trying to play...");
-
-    if (!ytPlayerReady || !ytPlayer) {
-        console.log("Player not ready");
-        return;
-    }
-
+    if (!ytPlayerReady || !ytPlayer) return;
     ytPlayer.playVideo();
-
-    setTimeout(() => {
-        console.log("Player state:", ytPlayer.getPlayerState());
-    }, 1000);
-
     updateMusicButton(btn);
 }
+
 function updateMusicButton(btn) {
     if (!btn) return;
     const icon = btn.querySelector('i');
@@ -1398,15 +1431,12 @@ document.addEventListener('click', e => {
     ripple.style.top    = (e.clientY - rect.top  - size / 2) + 'px';
     btn.appendChild(ripple);
     ripple.addEventListener('animationend', () => ripple.remove());
-    setTimeout(() => ripple.remove(), 800); // safety net if animationend never fires
+    setTimeout(() => ripple.remove(), 800);
 });
 
 // ════════════════════════════════════════════════════════════════════
 // GAME ACTIONS
 // ════════════════════════════════════════════════════════════════════
-// Local-only stats simulation. Nothing here talks to the server or the bot:
-// the numbers shown on the dashboard live in `simState` and are saved in
-// this browser's localStorage so they survive a refresh.
 let simState = null;
 let simKey   = null;
 
@@ -1440,7 +1470,6 @@ function applySim(initial = false) {
     if (!s) return;
     const num = n => Math.round(n).toLocaleString();
 
-    // Gold / gems (the initial render is animated by countUpTo instead)
     if (!initial) {
         setEl('gold-display', num(s.gold));
         setEl('gems-display', num(s.gems));
@@ -1450,7 +1479,6 @@ function applySim(initial = false) {
     const balance = document.getElementById('auction-balance');
     if (balance) balance.innerHTML = num(s.gold) + ' <span style="font-size:0.7rem;color:#333;">Gold</span>';
 
-    // Level + XP
     const cls = (currentUser && currentUser.char_class) || 'Explorer';
     setEl('dash-level', s.level);
     setEl('dash-level-chip', s.level);
@@ -1462,7 +1490,6 @@ function applySim(initial = false) {
     setEl('xp-text', `${num(s.xp)} / ${num(s.xpNeeded)}`);
     updateLevelRing(xpPct);
 
-    // HP / MP
     const hpBar = document.getElementById('hp-bar');
     if (hpBar) hpBar.style.width = Math.max(0, Math.min(100, (s.hp / s.maxHp) * 100)) + '%';
     setEl('hp-text', `${num(s.hp)} / ${num(s.maxHp)}`);
@@ -1470,12 +1497,10 @@ function applySim(initial = false) {
     if (mpBar) mpBar.style.width = Math.max(0, Math.min(100, (s.mp / s.maxMp) * 100)) + '%';
     setEl('mp-text', `${num(s.mp)} / ${num(s.maxMp)}`);
 
-    // Battle record
     setEl('stat-wins', num(s.wins));
     setEl('stat-losses', num(s.losses));
 }
 
-// Adds XP / gold and handles level-ups. Returns true if the player levelled up.
 function simGain({ xp = 0, gold = 0, gems = 0 } = {}) {
     const s = simState;
     if (!s) return false;
@@ -1560,7 +1585,7 @@ function performAction(action) {
 }
 
 // ════════════════════════════════════════════════════════════════════
-// MINI GAME — Spirit Catcher (bottom-right corner)
+// MINI GAME — Spirit Catcher
 // ════════════════════════════════════════════════════════════════════
 const spirit = {
     running: false, score: 0, timeLeft: 0, last: -1,
@@ -1614,7 +1639,6 @@ function spawnSpirit(immediate = false) {
         do { i = rand(0, cells.length - 1); } while (i === spirit.last);
         spirit.last = i;
         cells[i].classList.add('ghost');
-        // Ghosts vanish faster as the round goes on
         const life = Math.max(550, 1000 - (SPIRIT_SECONDS - spirit.timeLeft) * 25);
         spirit.hide = setTimeout(() => { clearSpiritBoard(); spawnSpirit(); }, life);
     };
@@ -1701,7 +1725,42 @@ function setEl(id, value) {
     const el = document.getElementById(id);
     if (el) el.textContent = value;
 }
+// FIX: Forgot Password click handler
+document.addEventListener("click", function (event) {
+    const element = event.target.closest(
+        'a, button, [role="button"]'
+    );
 
+    if (!element) return;
+
+    const text = (
+        element.textContent ||
+        element.getAttribute("aria-label") ||
+        ""
+    ).trim();
+
+    if (!/forgot\s*password/i.test(text)) return;
+
+    event.preventDefault();
+
+    const forgotForm = document.getElementById("forgot-form");
+    const emailInput = document.getElementById("forgot-email");
+
+    if (!forgotForm || !emailInput) {
+        console.error(
+            "Forgot Password: #forgot-form or #forgot-email is missing."
+        );
+        return;
+    }
+
+    document.querySelectorAll(".auth-tab, .auth-form")
+        .forEach(function (item) {
+            item.classList.remove("active");
+        });
+
+    forgotForm.classList.add("active");
+    emailInput.focus();
+}, true);
 // ════════════════════════════════════════════════════════════════════
 // LOGOUT BUTTON
 // ════════════════════════════════════════════════════════════════════
