@@ -501,6 +501,27 @@
                 </div>
             </div>
         </main>
+
+        <!-- ===== MINI GAME (bottom-right corner) ===== -->
+        <div class="mini-game" id="miniGame">
+            <div class="mini-game-card" id="miniGameCard" role="dialog" aria-label="Spirit Catcher mini game">
+                <div class="mini-game-head">
+                    <span><i class="fa-solid fa-ghost"></i> Spirit Catcher</span>
+                    <button type="button" class="mini-game-close" id="miniGameClose" aria-label="Close mini game">&times;</button>
+                </div>
+                <div class="mini-game-stats">
+                    <span>Score <strong id="mgScore">0</strong></span>
+                    <span>Time <strong id="mgTime">20</strong>s</span>
+                    <span>Best <strong id="mgBest">0</strong></span>
+                </div>
+                <div class="mini-game-grid" id="mgGrid"></div>
+                <button type="button" class="btn-bid mini-game-start" id="mgStart">Start</button>
+                <div class="mini-game-msg" id="mgMsg">Catch ghosts to earn gold and XP.</div>
+            </div>
+            <button type="button" class="mini-game-fab" id="miniGameFab" aria-label="Toggle mini game">
+                <i class="fa-solid fa-ghost"></i>
+            </button>
+        </div>
     </div>
 
     <!-- ============================================
