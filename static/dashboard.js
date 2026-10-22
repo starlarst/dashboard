@@ -375,6 +375,20 @@ function showDashboard(user) {
         setEl('sidebar-username', name);
         setEl('sidebar-userrole', `Level ${user.level || 1}`);
 
+        // HP / MP bars (were hardcoded in the HTML)
+        const hp = Number(user.hp), maxHp = Number(user.max_hp);
+        if (Number.isFinite(hp) && maxHp > 0) {
+            const hpBar = document.getElementById('hp-bar');
+            if (hpBar) hpBar.style.width = Math.min(100, (hp / maxHp) * 100) + '%';
+            setEl('hp-text', `${hp} / ${maxHp}`);
+        }
+        const mp = Number(user.mp), maxMp = Number(user.max_mp);
+        if (Number.isFinite(mp) && maxMp > 0) {
+            const mpBar = document.getElementById('mp-bar');
+            if (mpBar) mpBar.style.width = Math.min(100, (mp / maxMp) * 100) + '%';
+            setEl('mp-text', `${mp} / ${maxMp}`);
+        }
+
         updateLevelRing(xpPct);
         spawnCharParticles();
         loadCustomProfile().catch(console.error);
@@ -1401,23 +1415,53 @@ document.addEventListener('click', e => {
     ripple.style.top    = (e.clientY - rect.top  - size / 2) + 'px';
     btn.appendChild(ripple);
     ripple.addEventListener('animationend', () => ripple.remove());
+    setTimeout(() => ripple.remove(), 800); // safety net if animationend never fires
 });
 
 // ════════════════════════════════════════════════════════════════════
 // GAME ACTIONS
 // ════════════════════════════════════════════════════════════════════
-function performAction(action) {
-    if (action === 'heal') {
-        showToast('💚 Casting Heal... HP Restored!');
-        addNotification('level', 'Healed up', 'Your HP has been fully restored.');
-    }
-    if (action === 'hunt') {
-        showToast('⚔️ Entering the hunting grounds...');
-        addNotification('battle', 'Hunt started', 'You entered the hunting grounds.');
-    }
-    if (action === 'daily') {
-        showToast('🎁 Daily reward claimed: +100 XP, +50 Gold!');
-        addNotification('gift', 'Daily reward claimed', '+100 XP, +50 Gold added to your account.');
+const ACTION_META = {
+    heal:  { type: 'level',  title: 'Healed up' },
+    hunt:  { type: 'battle', title: 'Hunt finished' },
+    daily: { type: 'gift',   title: 'Daily reward' }
+};
+let actionInFlight = false;
+
+// Calls POST /api/action/<heal|hunt|daily>. The server decides the outcome
+// (cooldowns, rewards, damage) and returns { ok, message, error? }.
+async function performAction(action) {
+    const meta = ACTION_META[action];
+    if (!meta || actionInFlight) return;
+    actionInFlight = true;
+    const btns = document.querySelectorAll('.quick-actions .action-btn');
+    btns.forEach(b => b.disabled = true);
+
+    try {
+        const res  = await fetch(`${API_BASE}/api/action/${action}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        let data = {};
+        try { data = await res.json(); } catch { /* non-JSON error page */ }
+
+        if (res.ok && data.ok) {
+            showToast(data.message || 'Done!');
+            addNotification(meta.type, meta.title, data.message || '');
+            // Pull fresh stats so HP / gold / XP update on screen.
+            const me = await (await fetch(`${API_BASE}/api/me`)).json();
+            if (me.logged_in) { isShowingDashboard = false; showDashboard(me); }
+        } else if (res.status === 404) {
+            showToast(`The server has no /api/action/${action} route yet.`, true);
+        } else {
+            showToast(data.error || data.message || `${meta.title} failed.`, true);
+        }
+    } catch (err) {
+        console.error('Action error:', err);
+        showToast('Cannot reach server.', true);
+    } finally {
+        actionInFlight = false;
+        btns.forEach(b => b.disabled = false);
     }
 }
 
