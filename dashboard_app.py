@@ -26,7 +26,7 @@ load_dotenv()
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(name)s — %(message)s")
 
-EMAILJS_PUBLIC_KEY = ("4buatakEvr4OCHJz37e4g")
+EMAILJS_PUBLIC_KEY = ("eMQUadu5q-_pONmwc")
 EMAILJS_SERVICE_ID = ("service_miabeqg")
 EMAILJS_TEMPLATE_ID = ("template_tntozpq")
 
