@@ -176,6 +176,17 @@
         }.toast.visible { transform:translateY(0); opacity:1; }
         @media(max-width:560px){.achv-grid { grid-template-columns:1fr; }.completion-panel { flex-direction:column; align-items:flex-start; }
         }
+                @media (max-width: 600px) {
+            .filter-pills, .achv-controls > div:last-child {
+                gap: 4px;
+                overflow-x: auto;
+                flex-wrap: nowrap;
+                -webkit-overflow-scrolling: touch;
+                padding-bottom: 4px;
+            }
+            .filter-pill { flex-shrink: 0; }
+            .achv-search-wrap { max-width: 100%; }
+        }
     </style>
 </head>
 <body data-page="achievements">
