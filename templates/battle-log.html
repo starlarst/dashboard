@@ -290,6 +290,12 @@
             from { opacity:0; transform:translateY(18px); }
             to   { opacity:1; transform:translateY(0); }
         }.delay-1 { animation-delay: 0.05s; }.delay-2 { animation-delay: 0.10s; }.delay-3 { animation-delay: 0.15s; }.delay-4 { animation-delay: 0.20s; }.delay-5 { animation-delay: 0.25s; }
+            @media (max-width: 600px) {
+            .log-entry { grid-template-columns: 36px 1fr; gap: 0.65rem; padding: 0.75rem 1rem; }
+            .log-entry > div:last-child { grid-column: 2; justify-content: flex-start; margin-top: 2px; }
+            .log-icon { width: 32px; height: 32px; font-size: 0.85rem; }
+            .log-entry-detail-inner { padding: 0 1rem 1rem 1rem; }
+        }
     </style>
 </head>
 <body data-page="battle-log">
