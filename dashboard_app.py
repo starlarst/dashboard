@@ -26,12 +26,18 @@ load_dotenv()
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(name)s — %(message)s")
 
-EMAILJS_PUBLIC_KEY = ("eMQUadu5q-_pONmwc")
+EMAILJS_PUBLIC_KEY = ("4buatakEvr4OCHJz37e4g")
 EMAILJS_SERVICE_ID = ("service_miabeqg")
 EMAILJS_TEMPLATE_ID = ("template_tntozpq")
 
 
+
 def send_reset_email(email: str, otp: str):
+    email = email.strip().lower()
+
+    if not email:
+        raise ValueError("Cannot send reset email: recipient is empty")
+
     payload = {
         "service_id": EMAILJS_SERVICE_ID,
         "template_id": EMAILJS_TEMPLATE_ID,
@@ -52,15 +58,17 @@ def send_reset_email(email: str, otp: str):
 
     try:
         with urllib.request.urlopen(request, timeout=15) as response:
-            if response.status != 200:
-                raise RuntimeError(
-                    f"EmailJS returned HTTP {response.status}"
-                )
+            result = response.read().decode("utf-8", errors="replace")
+            log.info("[EmailJS] HTTP %s: %s", response.status, result)
+
     except urllib.error.HTTPError as exc:
         details = exc.read().decode("utf-8", errors="replace")
+        log.error("[EmailJS] HTTP %s: %s", exc.code, details)
+        log.info("[EmailJS] Recipient provided: %s", bool(email.strip()))
         raise RuntimeError(
-            f"EmailJS failed ({exc.code}): {details}"
+            f"EmailJS failed ({exc.code}): {details[:500]}"
         ) from exc
+
 
 # ── Load Configuration from .env ──────────────────────────────────────────────
 DISCORD_CLIENT_ID = os.getenv('DISCORD_CLIENT_ID')
