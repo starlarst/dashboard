@@ -2128,6 +2128,12 @@ body.sidebar-is-collapsed .main-content {
 
 /* Eye icon button */
 .password-toggle { padding: 4px; line-height: 1; }
+/* .input-group i is absolutely positioned for the left-hand icons; the eye icon
+   lives inside the toggle button and must not inherit that. */
+.input-group .password-toggle i {
+    position: static; transform: none; left: auto; top: auto;
+    color: inherit; pointer-events: none;
+}
 
 /* Password strength meter stays hidden until the user types (JS shows it) */
 .pw-strength-wrap { display: none; }
