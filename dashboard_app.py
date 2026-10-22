@@ -278,10 +278,20 @@ def _log_activity(user_id, action, detail=""):
         log.warning(f"[activity_log] write failed: {e}")
 
 def _get_real_ip(request: Request):
-    """Get the real client IP."""
+    """Get the real client IP.
+
+    SECURITY: X-Forwarded-For is attacker-controlled input — a direct client
+    can set it to anything. Behind a single trusted reverse proxy (Render),
+    the proxy appends the actual client IP as the *last* hop, so we read the
+    last entry (what our proxy observed) rather than the first (whatever the
+    client claimed), which a client cannot forge away. If the header is
+    missing entirely we fall back to the raw socket peer address.
+    """
     xff = request.headers.get('X-Forwarded-For', '')
     if xff:
-        return xff.split(',')[0].strip()
+        parts = [p.strip() for p in xff.split(',') if p.strip()]
+        if parts:
+            return parts[-1]
     return request.client.host if request.client else '0.0.0.0'
 
 def _is_banned(ip):
@@ -324,12 +334,26 @@ async def _get_json(request: Request) -> dict:
         return {}
 
 # ── Admin Configuration ──────────────────────────────────────────────────────
-ADMIN_EMAIL = 'Admin@gmail.com'
-ADMIN_PASSWORD = 'Rerir@123DND'
-ADMIN_PASSWORD_HASH = _hash_password(ADMIN_PASSWORD)
+# SECURITY: no hardcoded admin email/password in source. Both must be supplied
+# via the environment; if ADMIN_PASSWORD is missing, a strong random password
+# is generated at startup and logged once so an operator can capture it and
+# then change it — never a fixed secret baked into the codebase/repo.
+ADMIN_EMAIL = os.getenv('ADMIN_EMAIL')
+_ADMIN_PASSWORD_ENV = os.getenv('ADMIN_PASSWORD')
+_ADMIN_PASSWORD_GENERATED = False
+if not _ADMIN_PASSWORD_ENV:
+    _ADMIN_PASSWORD_ENV = secrets.token_urlsafe(18)
+    _ADMIN_PASSWORD_GENERATED = True
+ADMIN_PASSWORD = _ADMIN_PASSWORD_ENV
+ADMIN_PASSWORD_HASH = _hash_password(ADMIN_PASSWORD) if ADMIN_EMAIL else None
 
 def ensure_admin_user():
-    """Create admin user if it doesn't exist."""
+    """Create the admin user if it doesn't exist yet. No-op if ADMIN_EMAIL
+    is not configured, since there is no hardcoded fallback account anymore."""
+    if not ADMIN_EMAIL:
+        log.warning("[Admin] ADMIN_EMAIL not set — skipping admin account bootstrap.")
+        return
+
     conn = None
     try:
         conn = _db()
@@ -347,6 +371,12 @@ def ensure_admin_user():
             )
             conn.commit()
             log.info(f"[Admin] Admin account created with email: {ADMIN_EMAIL}")
+            if _ADMIN_PASSWORD_GENERATED:
+                log.warning(
+                    "[Admin] ADMIN_PASSWORD was not set — generated a random one-time "
+                    f"password for {ADMIN_EMAIL}: {ADMIN_PASSWORD}  "
+                    "Log in now and change it, then set ADMIN_PASSWORD/remove this from logs."
+                )
     except Exception as e:
         log.error(f"[Admin] Failed to create admin account: {e}")
     finally:
@@ -443,7 +473,17 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY, max_age=SESSION_LIFETIME_SECONDS, same_site="lax")
+# SECURITY: default to HTTPS-only session cookies so the signed session (which
+# carries login state) can't be sniffed over plain HTTP. Opt out explicitly via
+# SESSION_HTTPS_ONLY=false only for local non-TLS development.
+SESSION_HTTPS_ONLY = os.getenv('SESSION_HTTPS_ONLY', 'true').strip().lower() not in ('false', '0', 'no')
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=SECRET_KEY,
+    max_age=SESSION_LIFETIME_SECONDS,
+    same_site="lax",
+    https_only=SESSION_HTTPS_ONLY,
+)
 
 from routes_profile import register_profile_routes
 register_profile_routes(app)
@@ -591,52 +631,26 @@ async def api_sync(request: Request):
     log.info(f"[SYNC] received push: {len(players)} players, {len(guilds)} guilds")
     return _json({'ok': True, 'received': {'players': len(players), 'guilds': len(guilds)}})
 
-@app.post('/api/admin/give-gold')
-async def api_give_gold(request: Request):
-    """Example two-way call: dashboard tells the bot to grant gold live."""
-    data = await _get_json(request)
-    try:
-        status, body = await _call_bot("POST", "/api/bot/give-gold", {
-            "user_id": data["user_id"],
-            "amount": data["amount"],
-        })
-    except Exception as e:
-        log.error(f"[BOT-CALL] give-gold failed: {e}")
-        return _json({'ok': False, 'error': 'could not reach bot'}, 502)
-    return _json(body, status)
-
-@app.post('/api/admin/announce')
-async def api_announce(request: Request):
-    data = await _get_json(request)
-
-    channel_id = data.get("channel_id")
-    if channel_id is None:
-        channel_id = DISCORD_BID_CHANNEL
-
-    try:
-        status, body = await _call_bot(
-            "POST",
-            "/api/bot/announce",
-            {
-                "message": data.get("message", ""),
-                "channel_id": channel_id,
-            },
-        )
-    except Exception as e:
-        log.error(f"[BOT-CALL] announce failed: {e}")
-        return _json({"ok": False, "error": "could not reach bot"}, 502)
-
-    return _json(body, status)
+# NOTE: unauthenticated /api/admin/give-gold and /api/admin/announce handlers
+# used to live here. They had no session/is_admin check and, because Starlette
+# matches routes in registration order, they silently shadowed the properly
+# admin-protected handlers of the same name defined later in this file —
+# giving *any* anonymous caller the ability to grant gold or broadcast bot
+# announcements. They have been removed; see api_admin_give_gold and
+# api_admin_announce below for the real, auth-checked implementations.
 
 # ── Discord OAuth ─────────────────────────────────────────────────────────────
 @app.get('/login/discord')
-async def discord_login():
+async def discord_login(request: Request):
     """Redirect user to Discord for OAuth."""
+    state = secrets.token_urlsafe(32)
+    request.session['oauth_state'] = state
     params = {
         'client_id': DISCORD_CLIENT_ID,
         'redirect_uri': DISCORD_REDIRECT_URI,
         'response_type': 'code',
         'scope': 'identify email',
+        'state': state,
     }
     oauth_url = f"{DISCORD_API}/oauth2/authorize?{urlencode(params)}"
     return RedirectResponse(oauth_url)
@@ -647,6 +661,12 @@ async def discord_callback(request: Request):
     ip = _get_real_ip(request)
     code = request.query_params.get('code')
     error = request.query_params.get('error')
+    state = request.query_params.get('state', '')
+
+    expected_state = request.session.pop('oauth_state', None)
+    if not expected_state or not hmac.compare_digest(state, expected_state):
+        log.warning(f"[OAuth] state mismatch/missing from {ip} — possible CSRF, rejecting callback")
+        return RedirectResponse('/?auth=failed')
 
     if error or not code:
         log.warning(f"[OAuth] callback error param={error} code_present={bool(code)}")
@@ -1107,12 +1127,17 @@ async def api_password_request_reset(request: Request):
         'expires_at': datetime.now(UTC) + timedelta(minutes=5)
     }
 
-    log.info(f'[Password Reset] OTP generated for {email[:20]}')
+    # SECURITY: the OTP must never be returned to the caller — it must only
+    # ever reach the account owner via their registered email address. Doing
+    # otherwise lets anyone who knows (or guesses) a victim's email take over
+    # their account without ever touching that inbox.
+    # TODO: wire up real email delivery (e.g. SES/SendGrid) and send `otp`
+    # there instead of logging it.
+    log.info(f'[Password Reset] OTP generated for {email[:20]} (delivery not yet wired up)')
 
     return {
         'ok': True,
         'message': 'If that email is registered, you will receive a reset code.',
-        'otp': otp
     }
 
 @app.post('/api/password/verify-reset')
@@ -1751,7 +1776,7 @@ async def api_profile(request: Request):
     return {'logged_in': True, 'nickname': nickname, 'avatar': avatar, 'bio': bio, 'is_admin': is_admin}
 def run_dashboard():
     """Start the dashboard server."""
-    host = "0.0.0.0"
+    host = "127.0.0.1"
     port = int(os.environ.get("PORT", 25507))
 
     try:
