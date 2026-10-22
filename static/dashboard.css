@@ -2087,3 +2087,60 @@ body.sidebar-is-collapsed .main-content {
 .lb-table td:first-child { width: 90px; }
 .lb-table th:last-child,
 .lb-table td:last-child { text-align: right; }
+/* ══════════════════════════════════════════════════════════════════
+   MINI GAME — Spirit Catcher (fixed, bottom-right)
+   ══════════════════════════════════════════════════════════════════ */
+.mini-game {
+    position: fixed; right: 20px; bottom: 20px; z-index: 900;
+    display: flex; flex-direction: column; align-items: flex-end; gap: 10px;
+}
+.mini-game-fab {
+    width: 52px; height: 52px; border-radius: 50%; cursor: pointer;
+    border: 1px solid rgba(45,217,232, 0.35);
+    background: linear-gradient(135deg, rgba(45,217,232,0.2), rgba(168,85,247,0.25));
+    color: var(--dash-teal); font-size: 1.25rem;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.45);
+    transition: transform 180ms var(--ease-snap), box-shadow 180ms;
+}
+.mini-game-fab:hover { transform: translateY(-2px) scale(1.05); box-shadow: 0 10px 28px rgba(45,217,232,0.2); }
+.mini-game-card {
+    width: 260px; padding: 14px;
+    background: rgba(8,9,13,0.96); border: 1px solid var(--dash-border);
+    border-radius: var(--radius-md); box-shadow: 0 16px 48px rgba(0,0,0,0.6);
+    display: none;
+}
+.mini-game.is-open .mini-game-card { display: block; }
+.mini-game-head {
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: 'Sora', sans-serif; font-size: 0.8rem; font-weight: 700; margin-bottom: 10px;
+}
+.mini-game-head i { color: var(--dash-teal); margin-right: 6px; }
+.mini-game-close {
+    background: none; border: none; color: var(--dash-text-dim);
+    font-size: 1.3rem; line-height: 1; cursor: pointer;
+}
+.mini-game-close:hover { color: #fff; }
+.mini-game-stats {
+    display: flex; justify-content: space-between; margin-bottom: 10px;
+    font-size: 0.68rem; color: var(--dash-text-dim); font-weight: 600;
+}
+.mini-game-stats strong { color: #fff; font-size: 0.85rem; margin-left: 2px; }
+.mini-game-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+.mg-cell {
+    aspect-ratio: 1; border-radius: 12px; cursor: pointer;
+    background: rgba(255,255,255,0.04); border: 1px solid var(--dash-border);
+    font-size: 1.6rem; line-height: 1; transition: background 120ms, transform 120ms;
+    -webkit-tap-highlight-color: transparent;
+}
+.mg-cell.ghost { background: var(--dash-teal-dim); border-color: rgba(45,217,232,0.5); animation: mgPop 160ms ease-out; }
+.mg-cell.ghost::after { content: '👻'; }
+.mg-cell.caught { background: rgba(52,211,153,0.2); transform: scale(0.92); }
+.mini-game-start { width: 100%; padding: 9px; font-size: 0.78rem; }
+.mini-game-start:disabled { opacity: 0.6; cursor: default; }
+.mini-game-msg { margin-top: 8px; font-size: 0.68rem; color: var(--dash-text-faint); text-align: center; min-height: 1em; }
+@keyframes mgPop { from { transform: scale(0.7); } to { transform: scale(1); } }
+
+@media (max-width: 480px) {
+    .mini-game { right: 12px; bottom: 12px; }
+    .mini-game-card { width: 232px; }
+}
