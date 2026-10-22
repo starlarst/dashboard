@@ -1,7 +1,6 @@
 const RECAPTCHA_SITE_KEY = "6LdvvT8tAAAAAKDmzCl0RaBvPr8ndJbdmFNQaqk7";
-const EMAILJS_PUBLIC_KEY  = "eMQUadu5q-_pONmwc";
-const EMAILJS_SERVICE_ID  = "service_miabeqg";
-const EMAILJS_TEMPLATE_ID = "template_tntozpq";
+// NOTE: EmailJS is called from the SERVER (see dashboard_app.py / .env).
+// Sending the OTP from the browser would require exposing the code to the client.
 const API_BASE = window.location.origin;
 
 // ── STATE ────────────────────────────────────────────────────────────
@@ -36,7 +35,8 @@ const pageConfig = {
 // DOMContentLoaded
 // ════════════════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
-    if (typeof emailjs !== 'undefined') emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY });
+    // Auth UI wiring runs first and is isolated so a failure elsewhere can't break it.
+    try { setupAuthUI(); } catch (e) { console.error('setupAuthUI failed:', e); }
 
     checkAuth();
     setupSidebar();
@@ -54,8 +54,64 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ════════════════════════════════════════════════════════════════════
-// AUTH CHECK
+// AUTH UI WIRING (tabs, eye toggles, forgot / OTP / resend links)
+// The HTML has no inline onclick on these controls, so wire them here.
 // ════════════════════════════════════════════════════════════════════
+let resendCooldownTimer = null;
+
+function showAuthForm(id) {
+    document.querySelectorAll('.auth-tab').forEach(t => {
+        t.classList.remove('active');
+        t.setAttribute('aria-selected', 'false');
+    });
+    document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
+    document.getElementById(id)?.classList.add('active');
+}
+
+function setupAuthUI() {
+    // Sign In / Create Account tabs
+    document.querySelectorAll('.auth-tab').forEach(tab => {
+        tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+    });
+
+    // Show / hide password
+    document.querySelectorAll('.password-toggle[data-target]').forEach(btn => {
+        btn.addEventListener('click', () => togglePassword(btn.dataset.target));
+    });
+
+    // Forgot password link
+    document.getElementById('show-forgot')?.addEventListener('click', e => {
+        e.preventDefault();
+        showForgotPasswordForm();
+    });
+
+    // Back to sign in links
+    ['show-login-from-forgot', 'show-login-from-otp'].forEach(id => {
+        document.getElementById(id)?.addEventListener('click', e => {
+            e.preventDefault();
+            switchTab('login');
+        });
+    });
+
+    // Resend code
+    document.getElementById('resend-otp')?.addEventListener('click', e => {
+        e.preventDefault();
+        resendOTP();
+    });
+
+    // Allow pasting a full 6-digit code into the OTP boxes
+    const otpInputs = document.querySelectorAll('.otp-input');
+    otpInputs.forEach(input => {
+        input.addEventListener('paste', e => {
+            const digits = (e.clipboardData?.getData('text') || '').replace(/\D/g, '').slice(0, 6);
+            if (!digits) return;
+            e.preventDefault();
+            otpInputs.forEach((box, i) => { box.value = digits[i] || ''; });
+            otpInputs[Math.min(digits.length, 6) - 1]?.focus();
+        });
+    });
+}
+
 async function sendAnnouncement() {
     const message = document.getElementById('announceMsg').value.trim();
     if (!message) return showToast('Enter a message first');
@@ -573,6 +629,7 @@ async function handleLogin(event) {
 
 async function handleRegister(event) {
     event.preventDefault();
+    const username    = document.getElementById('reg-username')?.value.trim() || '';
     const email       = document.getElementById('reg-email').value.trim();
     const pass        = document.getElementById('reg-pass').value;
     const confirmPass = document.getElementById('reg-confirm-pass').value;
@@ -588,7 +645,7 @@ async function handleRegister(event) {
             const res  = await fetch(`${API_BASE}/api/signup`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password: pass, recaptcha_token: token })
+                body: JSON.stringify({ email, nickname: username, password: pass, recaptcha_token: token })
             });
             const data = await res.json();
             if (data.ok && data.logged_in) {
@@ -645,22 +702,11 @@ async function handleForgotPassword(event) {
         const data = await res.json();
 
         if (data.ok) {
+            // The server generates the OTP and sends it through EmailJS.
             resetEmail = email;
-            resetOTP   = data.otp || '';
             showOTPForm(email);
-
-            if (resetOTP && typeof emailjs !== 'undefined') {
-                try {
-                    await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
-                        to_email: email, otp_code: resetOTP, from_name: 'RPG Ghost'
-                    });
-                    showToast('Reset code sent to your email!');
-                } catch {
-                    showToast(`Code: ${resetOTP} (check console)`);
-                }
-            } else {
-                showToast(`Your code: ${resetOTP}`);
-            }
+            startResendCooldown(60);
+            showToast('If that email is registered, a reset code is on its way.');
         } else {
             showToast(data.error || 'Could not request a reset code.', true);
         }
@@ -706,10 +752,50 @@ async function handleOTPSubmit(event) {
     }
 }
 
-function resendOTP() {
-    if (!resetEmail) return;
+function startResendCooldown(seconds) {
+    const link = document.getElementById('resend-otp');
+    if (!link) return;
+    clearInterval(resendCooldownTimer);
+    let left = seconds;
+    link.style.pointerEvents = 'none';
+    link.style.opacity = '0.5';
+    link.textContent = `Resend (${left}s)`;
+    resendCooldownTimer = setInterval(() => {
+        left--;
+        if (left <= 0) {
+            clearInterval(resendCooldownTimer);
+            link.style.pointerEvents = '';
+            link.style.opacity = '';
+            link.textContent = 'Resend';
+        } else {
+            link.textContent = `Resend (${left}s)`;
+        }
+    }, 1000);
+}
+
+async function resendOTP() {
+    if (!resetEmail) {
+        showToast('Enter your email first.', true);
+        showForgotPasswordForm();
+        return;
+    }
     showToast('Requesting new code...');
-    document.getElementById('forgot-form').dispatchEvent(new Event('submit'));
+    try {
+        const res  = await fetch(`${API_BASE}/api/password/request-reset`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: resetEmail })
+        });
+        const data = await res.json();
+        if (data.ok) {
+            showToast('A new code has been sent.');
+            startResendCooldown(60);
+        } else {
+            showToast(data.error || 'Could not resend the code.', true);
+        }
+    } catch (err) {
+        showToast('Cannot reach server.', true);
+    }
 }
 
 function setupOTPInputs() {
@@ -1761,7 +1847,4 @@ document.addEventListener("click", function (event) {
     forgotForm.classList.add("active");
     emailInput.focus();
 }, true);
-// ════════════════════════════════════════════════════════════════════
-// LOGOUT BUTTON
-// ════════════════════════════════════════════════════════════════════
 document.getElementById('logoutBtn')?.addEventListener('click', logout);
