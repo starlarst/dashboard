@@ -248,11 +248,17 @@
                         <span class="notif-dot"></span>
                         <div class="notif-panel" id="notifPanel">
                             <div class="notif-panel-head">
-                                <span>Notifications</span>
+                                <div class="notif-tabs" role="tablist">
+                                    <button type="button" class="notif-tab active" data-tab="alerts" role="tab">Alerts</button>
+                                    <button type="button" class="notif-tab" data-tab="log" role="tab">Activity log</button>
+                                </div>
                                 <button id="notifClearBtn">Clear all</button>
                             </div>
                             <div id="notifList">
                                 <div class="notif-empty">You're all caught up.</div>
+                            </div>
+                            <div id="logList" style="display:none;">
+                                <div class="notif-empty">No activity yet.</div>
                             </div>
                         </div>
                     </div>
@@ -356,6 +362,10 @@
                             <button class="action-btn" data-ripple onclick="performAction('heal')"><i class="fa-solid fa-heart-pulse"></i><span>Heal</span></button>
                             <button class="action-btn" data-ripple onclick="performAction('hunt')"><i class="fa-solid fa-crosshairs"></i><span>Hunt</span></button>
                             <button class="action-btn" data-ripple onclick="performAction('daily')"><i class="fa-solid fa-gift"></i><span>Daily</span></button>
+                        </div>
+
+                        <div class="action-log" id="actionLog" aria-live="polite">
+                            <div class="action-log-empty">Hunt, heal or claim your daily reward. Results show up here.</div>
                         </div>
 
                         <div class="char-divider"></div>
