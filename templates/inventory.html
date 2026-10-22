@@ -267,8 +267,6 @@
     </div>
 
 <script>
-
-
 let allItems = [];
 let currentFilter = 'all';
 let currentSort = 'rarity';
@@ -338,8 +336,6 @@ function sellSelected() {
     const count = selectedIndices.size;
     if (!confirm(`Sell ${count} selected item(s)? This cannot be undone.`)) return;
 
-    // Remove selected items from the local view. Wire this to a real
-    // POST /api/inventory/sell endpoint server-side to persist the sale.
     const originalIndexed = allItems.map((item, i) => ({ item, i }));
     allItems = originalIndexed.filter(({ i }) => !selectedIndices.has(i)).map(({ item }) => item);
     selectedIndices.clear();
@@ -387,8 +383,6 @@ function renderItems(items) {
 
     container.innerHTML = '';
     items.forEach((item, idx) => {
-        // idx here is the index within the *filtered/sorted* view; find the
-        // stable index in allItems so selection survives filter/sort changes.
         const stableIdx = allItems.indexOf(item);
         const rarity = (item.rarity || 'common').toLowerCase();
         const icon = getIcon(item.name || '');
@@ -400,6 +394,7 @@ function renderItems(items) {
         const el = document.createElement('div');
         el.className = `inv-slot ${rarity} ${bulkMode ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`;
         el.style.animationDelay = `${idx * 0.02}s`;
+        el.dataset.label = safeName;
         el.innerHTML = `
             <div class="rarity-corner"></div>
             <div class="inv-slot-check"><i class="fa-solid fa-check"></i></div>
@@ -408,15 +403,28 @@ function renderItems(items) {
             ${qty > 1 ? `<span class="item-qty">×${qty}</span>` : ''}
         `;
 
-        el.addEventListener('click', () => {
-            if (!bulkMode) return;
-            if (selectedIndices.has(stableIdx)) selectedIndices.delete(stableIdx);
-            else selectedIndices.add(stableIdx);
-            updateBulkSellBar();
-            renderCurrentView();
+        // Unified click: bulk-select OR touch tooltip
+        el.addEventListener('click', (e) => {
+            if (bulkMode) {
+                if (selectedIndices.has(stableIdx)) selectedIndices.delete(stableIdx);
+                else selectedIndices.add(stableIdx);
+                updateBulkSellBar();
+                renderCurrentView();
+                return;
+            }
+            if (window.matchMedia('(hover: none)').matches) {
+                e.stopPropagation();
+                showTooltipAt(el.getBoundingClientRect(), item, rarity);
+            }
         });
-        el.addEventListener('mousemove', (e) => showTooltip(e, item, rarity));
+
+        // Desktop hover tooltip only
+        el.addEventListener('mousemove', (e) => {
+            if (window.matchMedia('(hover: none)').matches) return;
+            showTooltip(e, item, rarity);
+        });
         el.addEventListener('mouseleave', hideTooltip);
+
         container.appendChild(el);
     });
 }
@@ -441,7 +449,27 @@ function showTooltip(e, item, rarity) {
     tooltip.classList.add('visible');
 }
 
+function showTooltipAt(rect, item, rarity) {
+    document.getElementById('tt-name').textContent = item.name || 'Unknown';
+    const ttRarity = document.getElementById('tt-rarity');
+    ttRarity.textContent = rarity.charAt(0).toUpperCase() + rarity.slice(1);
+    ttRarity.className = `tooltip-rarity ${rarity}`;
+    const badge = item.equipped ? `<div class="tooltip-badge"><i class="fa-solid fa-check"></i> Equipped</div>` : '';
+    document.getElementById('tt-desc').innerHTML = badge + escapeHTML(item.description || `A ${rarity} item of unknown power.`);
+
+    const top = Math.max(8, rect.top - 120);
+    const left = Math.min(Math.max(8, rect.left), window.innerWidth - 220);
+    tooltip.style.left = left + 'px';
+    tooltip.style.top  = top + 'px';
+    tooltip.classList.add('visible');
+}
+
 function hideTooltip() { tooltip.classList.remove('visible'); }
+
+// Dismiss tooltip on any outside tap
+document.addEventListener('click', (e) => {
+    if (!tooltip.contains(e.target)) hideTooltip();
+});
 
 function getIcon(name) {
     const n = name.toLowerCase();
