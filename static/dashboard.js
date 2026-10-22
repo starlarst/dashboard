@@ -1847,4 +1847,7 @@ document.addEventListener("click", function (event) {
     forgotForm.classList.add("active");
     emailInput.focus();
 }, true);
+// ════════════════════════════════════════════════════════════════════
+// LOGOUT BUTTON
+// ════════════════════════════════════════════════════════════════════
 document.getElementById('logoutBtn')?.addEventListener('click', logout);
