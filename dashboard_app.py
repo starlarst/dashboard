@@ -26,10 +26,25 @@ load_dotenv()
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(name)s — %(message)s")
 
-EMAILJS_PUBLIC_KEY = ("eMQUadu5q-_pONmwc")
-EMAILJS_SERVICE_ID = ("service_miabeqg")
-EMAILJS_TEMPLATE_ID = ("template_tntozpq")
+# ── EmailJS credentials ───────────────────────────────────────────────────────
+# Put your real values in .env (see .env.example), or replace the placeholder
+# strings below. EmailJS dashboard locations:
+#   Service ID   -> Email Services
+#   Template ID  -> Email Templates
+#   Public Key   -> Account > General
+#   Private Key  -> Account > Security (required for server-side sending)
+EMAILJS_SERVICE_ID  = os.getenv("EMAILJS_SERVICE_ID",  "service_miabeqg")
+EMAILJS_TEMPLATE_ID = os.getenv("EMAILJS_TEMPLATE_ID", "template_tntozpq")
+EMAILJS_PUBLIC_KEY  = os.getenv("EMAILJS_PUBLIC_KEY",  "eMQUadu5q-_pONmwc")
+EMAILJS_PRIVATE_KEY = os.getenv("EMAILJS_PRIVATE_KEY", "4buatakEvr4OCHJz37e4g")
 
+
+def _emailjs_configured() -> bool:
+    return not any(
+        v.startswith("YOUR_") or not v.strip()
+        for v in (EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID,
+                  EMAILJS_PUBLIC_KEY, EMAILJS_PRIVATE_KEY)
+    )
 
 
 def send_reset_email(email: str, otp: str):
@@ -38,10 +53,17 @@ def send_reset_email(email: str, otp: str):
     if not email:
         raise ValueError("Cannot send reset email: recipient is empty")
 
+    if not _emailjs_configured():
+        raise RuntimeError(
+            "EmailJS is not configured. Set EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, "
+            "EMAILJS_PUBLIC_KEY and EMAILJS_PRIVATE_KEY in your .env file."
+        )
+
     payload = {
         "service_id": EMAILJS_SERVICE_ID,
         "template_id": EMAILJS_TEMPLATE_ID,
         "user_id": EMAILJS_PUBLIC_KEY,
+        "accessToken": EMAILJS_PRIVATE_KEY,   # must be the PRIVATE key, not the public key
         "template_params": {
             "to_email": email,
             "otp_code": otp,
@@ -52,7 +74,12 @@ def send_reset_email(email: str, otp: str):
     request = urllib.request.Request(
         "https://api.emailjs.com/api/v1.0/email/send",
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            # The default Python-urllib User-Agent is often rejected.
+            "User-Agent": "Mozilla/5.0 (compatible; RPGGhostDashboard/1.0)",
+            "Origin": "http://localhost",
+        },
         method="POST",
     )
 
@@ -358,10 +385,12 @@ def _ban_ip(ip, reason='', duration=DDOS_BAN_DURATION):
     _ip_banned[ip] = time.time() + duration
     log.warning(f"[DDoS] BANNED {ip} for {duration}s — {reason}")
 
-def _strict_rate_limit(ip, max_calls=3, window=60):
-    """Strict rate limiter for sensitive endpoints."""
+def _strict_rate_limit(ip, max_calls=3, window=60, scope='default'):
+    """Strict rate limiter for sensitive endpoints.
+    `scope` keeps each endpoint's counter separate, so logins/signups
+    don't use up the password-reset allowance (and vice versa)."""
     now = time.time()
-    key = f'strict:{ip}'
+    key = f'strict:{scope}:{ip}'
     hits = [t for t in _rate_limits.get(key, []) if now - t < window]
     _rate_limits[key] = hits
     if len(hits) >= max_calls:
@@ -803,7 +832,7 @@ async def api_signup(request: Request):
     """Register a new email/password account."""
     ip = _get_real_ip(request)
 
-    if _strict_rate_limit(ip, max_calls=8, window=600):
+    if _strict_rate_limit(ip, max_calls=8, window=600, scope='signup'):
         return _json({
             'ok': False,
             'error': 'Too many signup attempts. Please wait a few minutes.'
@@ -905,14 +934,14 @@ async def api_login(request: Request):
     """Log in with email and password."""
     ip = _get_real_ip(request)
 
-    if _strict_rate_limit(ip, max_calls=10, window=300):
+    if _strict_rate_limit(ip, max_calls=10, window=300, scope='login'):
         return _json({
             'ok': False,
             'error': 'Too many login attempts. Please wait a moment.'
         }, 429)
 
     data = await _get_json(request)
-    email = str(data.get('email', '')).strip()
+    email = str(data.get('email', '')).strip().lower()   # signup stores lowercase emails
     password = str(data.get('password', '')).strip()
     keep_signed_in = bool(data.get('keep_signed_in', False))  # noqa: F841 (see session note above)
 
@@ -924,7 +953,7 @@ async def api_login(request: Request):
         conn = _db()
         user = conn.execute(
             "SELECT auth_id, email, password_hash, nickname, avatar, bio, is_admin, created_at, last_login "
-            "FROM auth_users WHERE email = ?",
+            "FROM auth_users WHERE lower(email) = ?",
             (email,)
         ).fetchone()
 
@@ -1104,7 +1133,7 @@ async def api_delete_account(request: Request):
             'error': 'Admin accounts cannot self-delete. Ask another admin to revoke your admin status first.'
         }, 403)
 
-    if _strict_rate_limit(ip, max_calls=5, window=300):
+    if _strict_rate_limit(ip, max_calls=5, window=300, scope='delete'):
         return _json({'ok': False, 'error': 'Too many attempts. Please wait a moment.'}, 429)
 
     data = await _get_json(request)
@@ -1155,7 +1184,7 @@ async def api_password_request_reset(request: Request):
     """Request a password reset code and send it through EmailJS."""
     ip = _get_real_ip(request)
 
-    if _strict_rate_limit(ip, max_calls=5, window=600):
+    if _strict_rate_limit(ip, max_calls=5, window=600, scope='reset-request'):
         return _json({
             'ok': False,
             'error': 'Too many requests. Please wait a few minutes.'
@@ -1177,7 +1206,7 @@ async def api_password_request_reset(request: Request):
     try:
         conn = _db()
         account = conn.execute(
-            "SELECT auth_id FROM auth_users WHERE email = ?",
+            "SELECT auth_id FROM auth_users WHERE lower(email) = ?",
             (email,)
         ).fetchone()
     except Exception:
@@ -1230,7 +1259,7 @@ async def api_password_reset(request: Request):
     """Reset password using OTP."""
     ip = _get_real_ip(request)
 
-    if _strict_rate_limit(ip, max_calls=8, window=300):
+    if _strict_rate_limit(ip, max_calls=8, window=300, scope='reset-verify'):
         return _json({'ok': False, 'error': 'Too many attempts. Please wait a moment.'}, 429)
 
     data = await _get_json(request)
@@ -1262,12 +1291,12 @@ async def api_password_reset(request: Request):
     conn = None
     try:
         conn = _db()
-        existing = conn.execute("SELECT auth_id FROM auth_users WHERE email = ?", (email,)).fetchone()
+        existing = conn.execute("SELECT auth_id FROM auth_users WHERE lower(email) = ?", (email,)).fetchone()
         if not existing:
             return _json({'ok': False, 'error': 'No account found for that email.'}, 404)
 
         new_hash = _hash_password(new_password)
-        conn.execute("UPDATE auth_users SET password_hash = ? WHERE email = ?", (new_hash, email))
+        conn.execute("UPDATE auth_users SET password_hash = ? WHERE auth_id = ?", (new_hash, existing['auth_id']))
         conn.commit()
 
         _reset_tokens.pop(email, None)
@@ -1861,7 +1890,7 @@ async def api_profile(request: Request):
     return {'logged_in': True, 'nickname': nickname, 'avatar': avatar, 'bio': bio, 'is_admin': is_admin}
 def run_dashboard():
     """Start the dashboard server."""
-    host = "0.0.0.0"
+    host = "127.0.0.1"
     port = int(os.environ.get("PORT", 25507))
 
     try:
