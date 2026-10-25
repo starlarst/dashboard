@@ -22,17 +22,9 @@ import uvicorn
 
 load_dotenv()
 
-# Setup logging
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(name)s — %(message)s")
 
-# ── EmailJS credentials ───────────────────────────────────────────────────────
-# Put your real values in .env (see .env.example), or replace the placeholder
-# strings below. EmailJS dashboard locations:
-#   Service ID   -> Email Services
-#   Template ID  -> Email Templates
-#   Public Key   -> Account > General
-#   Private Key  -> Account > Security (required for server-side sending)
 EMAILJS_SERVICE_ID  = os.getenv("EMAILJS_SERVICE_ID",  "service_miabeqg")
 EMAILJS_TEMPLATE_ID = os.getenv("EMAILJS_TEMPLATE_ID", "template_tntozpq")
 EMAILJS_PUBLIC_KEY  = os.getenv("EMAILJS_PUBLIC_KEY",  "eMQUadu5q-_pONmwc")
@@ -63,7 +55,7 @@ def send_reset_email(email: str, otp: str):
         "service_id": EMAILJS_SERVICE_ID,
         "template_id": EMAILJS_TEMPLATE_ID,
         "user_id": EMAILJS_PUBLIC_KEY,
-        "accessToken": EMAILJS_PRIVATE_KEY,   # must be the PRIVATE key, not the public key
+        "accessToken": EMAILJS_PRIVATE_KEY,
         "template_params": {
             "to_email": email,
             "otp_code": otp,
@@ -76,7 +68,6 @@ def send_reset_email(email: str, otp: str):
         data=json.dumps(payload).encode("utf-8"),
         headers={
             "Content-Type": "application/json",
-            # The default Python-urllib User-Agent is often rejected.
             "User-Agent": "Mozilla/5.0 (compatible; RPGGhostDashboard/1.0)",
             "Origin": "http://localhost",
         },
@@ -120,25 +111,79 @@ if not RECAPTCHA_SECRET:
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, 'veyra.db')
 
-BOT_LINK_SECRET = os.getenv('BOT_LINK_SECRET')
-if not BOT_LINK_SECRET:
-    raise ValueError("BOT_LINK_SECRET not found in .env file!")
+# ── Standalone stats store ─────────────────────────────────────────────────────
+# The dashboard owns its player stats (table `player_stats`, keyed by the
+# account id used in the session: auth_id for email accounts, Discord id for
+# Discord logins). Nothing here talks to the Discord bot.
+DEFAULT_STATS = {
+    'level': 1, 'gold': 100, 'gems': 10, 'special_coins': 0,
+    'xp': 0, 'xp_needed': 100, 'char_class': 'Adventurer',
+    'battles_won': 0, 'prestige_level': 0, 'guild': '—',
+}
+EDITABLE_STAT_FIELDS = {
+    'level': int, 'gold': int, 'gems': int, 'special_coins': int,
+    'xp': int, 'xp_needed': int, 'char_class': str,
+    'battles_won': int, 'prestige_level': int, 'guild': str, 'name': str,
+}
 
-DISCORD_BOT_TOKEN = os.getenv('DISCORD_BOT_TOKEN', '')
-DISCORD_GUILD_ID = '1466740140163731488'
-DISCORD_BID_CHANNEL = 1466835513074778383
-BOT_API_URL = os.getenv('BOT_API_URL', 'http://bot.rpghost.qzz.io:25509')
+def _stats_key(auth_type, uid):
+    # Separate namespaces so a Discord id can never collide with an auth_id.
+    return f"{auth_type}:{uid}"
 
-async def _call_bot(method: str, path: str, json_body: dict = None):
-    """Call the bot's own HTTP API directly (two-way comms)."""
-    import aiohttp
-    headers = {"Authorization": f"Bearer {BOT_LINK_SECRET}"}
-    async with aiohttp.ClientSession() as session:
-        async with session.request(
-            method, f"{BOT_API_URL}{path}", json=json_body, headers=headers,
-            timeout=aiohttp.ClientTimeout(total=10),
-        ) as res:
-            return res.status, await res.json()
+def get_stats(auth_type, uid):
+    """Return stats for an account, creating a default row if needed."""
+    key = _stats_key(auth_type, uid)
+    conn = _db()
+    try:
+        row = conn.execute("SELECT data FROM player_stats WHERE account_key=?", (key,)).fetchone()
+        if row:
+            try:
+                return {**DEFAULT_STATS, **json.loads(row['data'])}
+            except Exception:
+                pass
+        conn.execute(
+            "INSERT OR IGNORE INTO player_stats (account_key, data) VALUES (?, ?)",
+            (key, json.dumps(DEFAULT_STATS)),
+        )
+        conn.commit()
+        return dict(DEFAULT_STATS)
+    finally:
+        conn.close()
+
+def save_stats(auth_type, uid, updates):
+    """Merge validated `updates` into stored stats and return the result."""
+    clean = {}
+    for k, v in (updates or {}).items():
+        caster = EDITABLE_STAT_FIELDS.get(k)
+        if not caster:
+            continue
+        try:
+            clean[k] = max(0, caster(v)) if caster is int else str(v)[:60]
+        except (ValueError, TypeError):
+            continue
+    key = _stats_key(auth_type, uid)
+    merged = {**get_stats(auth_type, uid), **clean}
+    conn = _db()
+    try:
+        conn.execute(
+            "INSERT INTO player_stats (account_key, data, last_updated) VALUES (?, ?, CURRENT_TIMESTAMP) "
+            "ON CONFLICT(account_key) DO UPDATE SET data=excluded.data, last_updated=CURRENT_TIMESTAMP",
+            (key, json.dumps(merged)),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return merged
+
+def _apply_live_stats(session_user):
+    """Overlay fresh DB stats on a session user dict (fixes stale profile data)."""
+    stats = get_stats(session_user.get('auth_type', 'email'), session_user['discord_id'])
+    for k in ('level', 'gold', 'gems', 'special_coins', 'xp', 'xp_needed', 'char_class'):
+        session_user[k] = stats.get(k, session_user.get(k))
+    session_user['battles_won'] = stats.get('battles_won', 0)
+    session_user['prestige_level'] = stats.get('prestige_level', 0)
+    session_user['guild'] = stats.get('guild', '—')
+    return session_user
 
 # ── In-memory storage ──────────────────────────────────────────────────
 _link_tokens = {}
@@ -154,7 +199,6 @@ DDOS_BURST_LIMIT = 40
 DDOS_GLOBAL_CAP = 500
 DDOS_BAN_DURATION = 3600
 DDOS_MAX_BODY_BYTES = 65536
-DDOS_SYNC_MAX_BODY_BYTES = 8 * 1024 * 1024  # 8MB — /api/sync carries the bot's full game-data dump
 DDOS_BLOCKED_UA_FRAGS = [
     'sqlmap', 'nikto', 'nmap', 'masscan', 'zgrab',
     'python-requests/2.18', 'curl/7.29', 'dirbuster',
@@ -258,6 +302,21 @@ def init_db():
         if col_name not in existing_cols:
             cur.execute(f"ALTER TABLE auth_users ADD COLUMN {col_name} {col_type}")
             log.info(f"[DB Migration] Added missing column '{col_name}' to auth_users")
+
+    # Standalone per-account game stats (owned by the dashboard)
+    cur.execute("""CREATE TABLE IF NOT EXISTS player_stats (
+        account_key TEXT PRIMARY KEY,
+        data TEXT NOT NULL,
+        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""")
+
+    # Announcements (replaces bot broadcast)
+    cur.execute("""CREATE TABLE IF NOT EXISTS announcements (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        message TEXT NOT NULL,
+        author TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""")
 
     # Auctions
     cur.execute("""CREATE TABLE IF NOT EXISTS auctions (
@@ -457,63 +516,34 @@ def ensure_admin_user():
             conn.close()
 
 # ── Game Data Helpers ────────────────────────────────────────────────────────
-def get_player_game_data(user_id):
-    """Get player game data from database."""
-    conn = None
-    try:
-        conn = _db()
-        row = conn.execute("SELECT data FROM players WHERE user_id=?", (user_id,)).fetchone()
-        if row:
-            return json.loads(row['data'])
-
-        row = conn.execute(
-            "SELECT gold, gems, special_coins, xp, level FROM users WHERE user_id=?", (user_id,)
-        ).fetchone()
-        if row:
-            return {k: row[k] for k in row.keys()}
-    except Exception as e:
-        log.error(f'[DB] get_player_game_data({user_id}) error: {e}')
-    finally:
-        if conn:
-            conn.close()
-    return {}
-
 def load_game_data():
-    """Load game data from database into cache."""
+    """Load leaderboard/dashboard data from the dashboard's own tables."""
     global cached_data, last_updated
     try:
         init_db()
         conn = _db()
-
         players = {}
-        for row in conn.execute("SELECT user_id, data FROM players").fetchall():
+        for row in conn.execute(
+            "SELECT ps.account_key, ps.data, a.nickname, a.avatar "
+            "FROM player_stats ps "
+            "LEFT JOIN auth_users a ON ps.account_key = 'email:' || a.auth_id"
+        ).fetchall():
             try:
-                players[str(row['user_id'])] = json.loads(row['data'])
+                d = json.loads(row['data'])
             except Exception:
-                pass
-
+                continue
+            d.setdefault('name', row['nickname'] or row['account_key'])
+            d['avatar'] = row['avatar']
+            players[row['account_key']] = d
         guilds = {}
-        for row in conn.execute("SELECT name, data FROM guilds").fetchall():
-            try:
-                guilds[row['name']] = json.loads(row['data'])
-            except Exception:
-                pass
-
-        world_state = {}
-        row = conn.execute("SELECT data FROM world_state WHERE id=1").fetchone()
-        if row:
-            try:
-                world_state = json.loads(row['data'])
-            except Exception:
-                pass
-
+        for pd in players.values():
+            g = pd.get('guild')
+            if g and g != '—':
+                guilds.setdefault(g, {'members': []})['members'].append(pd.get('name'))
         conn.close()
-
         with _lock:
-            cached_data = {'players': players, 'guilds': guilds, 'world_state': world_state}
+            cached_data = {'players': players, 'guilds': guilds, 'world_state': cached_data.get('world_state', {})}
             last_updated = datetime.now(timezone.utc)
-
-        log.info(f"[Dashboard] Refreshed — {len(players)} players, {len(guilds)} guilds")
     except Exception as e:
         log.error(f"[Dashboard] load_game_data error: {e}")
 
@@ -561,6 +591,8 @@ app.add_middleware(
 from routes_profile import register_profile_routes
 register_profile_routes(app)
 
+from game_engine import register_game_routes  
+register_game_routes(app, _db)                    
 
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, 'templates'))
 
@@ -625,11 +657,7 @@ async def ddos_guard(request: Request, call_next):
         )
 
     cl = request.headers.get('content-length')
-    # /api/sync carries the bot's full players/guilds/world_state dump, which
-    # easily exceeds the normal per-request cap as the player count grows.
-    # It's already authenticated separately (BOT_LINK_SECRET) inside the route,
-    # so it gets a much higher ceiling instead of the generic DDoS limit.
-    body_limit = DDOS_SYNC_MAX_BODY_BYTES if request.url.path == '/api/sync' else DDOS_MAX_BODY_BYTES
+    body_limit = DDOS_MAX_BODY_BYTES
     if cl and int(cl) > body_limit:
         log.warning(f"[DDoS] Body too large from {ip}: {cl} bytes (limit {body_limit})")
         # Roll back the connection count we already incremented above.
@@ -648,61 +676,6 @@ async def ddos_guard(request: Request, call_next):
     _global_req_count['n'] = max(0, _global_req_count['n'] - 1)
 
     return _add_security_headers(response, req_id=getattr(request.state, 'req_id', None))
-
-# ── Bot → Dashboard Sync ──────────────────────────────────────────────────────
-# The bot and dashboard now run on separate hosts (AxisNodes + Render) and no
-# longer share a filesystem, so the old approach of both processes reading the
-# same local veyra.db file no longer works. Instead, the bot pushes its
-# players/guilds/world_state data here over HTTPS, authenticated with the same
-# BOT_LINK_SECRET already used for account linking. This endpoint writes that
-# data into this dashboard's own local DB and refreshes the in-memory cache.
-@app.post('/api/sync')
-async def api_sync(request: Request):
-    """Receive a full game-data sync push from the bot."""
-    data = await _get_json(request)
-
-    if not hmac.compare_digest(str(data.get('bot_secret', '')), BOT_LINK_SECRET):
-        log.warning("[SYNC] rejected push with invalid bot_secret")
-        return _json({'ok': False, 'error': 'unauthorized'}, 401)
-
-    players = data.get('players', {})
-    guilds = data.get('guilds', {})
-    world_state = data.get('world_state', {})
-
-    if not isinstance(players, dict) or not isinstance(guilds, dict) or not isinstance(world_state, dict):
-        return _json({'ok': False, 'error': 'malformed payload'}, 400)
-
-    conn = None
-    try:
-        conn = _db()
-        for user_id, pdata in players.items():
-            conn.execute(
-                "INSERT INTO players (user_id, data, last_updated) VALUES (?, ?, CURRENT_TIMESTAMP) "
-                "ON CONFLICT(user_id) DO UPDATE SET data=excluded.data, last_updated=CURRENT_TIMESTAMP",
-                (int(user_id), json.dumps(pdata)),
-            )
-        for name, gdata in guilds.items():
-            conn.execute(
-                "INSERT INTO guilds (name, data, last_updated) VALUES (?, ?, CURRENT_TIMESTAMP) "
-                "ON CONFLICT(name) DO UPDATE SET data=excluded.data, last_updated=CURRENT_TIMESTAMP",
-                (name, json.dumps(gdata)),
-            )
-        conn.execute(
-            "INSERT INTO world_state (id, data, last_updated) VALUES (1, ?, CURRENT_TIMESTAMP) "
-            "ON CONFLICT(id) DO UPDATE SET data=excluded.data, last_updated=CURRENT_TIMESTAMP",
-            (json.dumps(world_state),),
-        )
-        conn.commit()
-    except Exception as e:
-        log.error(f"[SYNC] failed to write payload: {e}")
-        return _json({'ok': False, 'error': 'internal error'}, 500)
-    finally:
-        if conn:
-            conn.close()
-
-    load_game_data()  # refresh in-memory cache immediately instead of waiting for the 30s poll
-    log.info(f"[SYNC] received push: {len(players)} players, {len(guilds)} guilds")
-    return _json({'ok': True, 'received': {'players': len(players), 'guilds': len(guilds)}})
 
 # NOTE: unauthenticated /api/admin/give-gold and /api/admin/announce handlers
 # used to live here. They had no session/is_admin check and, because Starlette
@@ -781,7 +754,7 @@ async def discord_callback(request: Request):
         else f"https://cdn.discordapp.com/embed/avatars/{user_id % 5}.png"
     )
 
-    game_data = get_player_game_data(user_id)
+    game_data = get_stats('discord', str(user_id))
 
     request.session['user'] = {
         'discord_id': str(user_id),
@@ -885,6 +858,7 @@ async def api_signup(request: Request):
         _log_activity(auth_id, 'signup', f'email={email}')
         log.info(f"[Signup] New account created: {email} (ID: {auth_id})")
 
+        get_stats('email', auth_id)  # create default stats row
         request.session['user'] = {
             'discord_id': str(auth_id),
             'username': nickname,
@@ -902,6 +876,7 @@ async def api_signup(request: Request):
             'auth_type': 'email',
             'is_admin': False
         }
+        _apply_live_stats(request.session['user'])
 
         sid = str(auth_id)
         _session_log.setdefault(sid, []).append({
@@ -997,6 +972,7 @@ async def api_login(request: Request):
             'auth_type': 'email',
             'is_admin': bool(user['is_admin'])
         }
+        _apply_live_stats(request.session['user'])
 
         sid = str(user['auth_id'])
         _session_log.setdefault(sid, []).append({
@@ -1064,7 +1040,8 @@ async def api_me(request: Request):
         session_user['is_admin'] = is_admin
         request.session['user'] = session_user
 
-    return {'logged_in': True, **user, 'is_admin': is_admin}
+    live = _apply_live_stats(dict(request.session['user']))
+    return {'logged_in': True, **live, 'is_admin': is_admin}
 
 @app.get('/api/check-auth')
 async def api_check_auth(request: Request):
@@ -1072,7 +1049,7 @@ async def api_check_auth(request: Request):
     user = request.session.get('user')
     if not user:
         return {'logged_in': False}
-    return {'logged_in': True, 'user': user}
+    return {'logged_in': True, 'user': _apply_live_stats(dict(user))}
 
 @app.get('/logout')
 async def logout(request: Request):
@@ -1159,8 +1136,7 @@ async def api_delete_account(request: Request):
             conn.execute("DELETE FROM auth_users WHERE auth_id = ?", (int(user_id),))
 
         # Remove any game data tied to this account, regardless of auth type
-        conn.execute("DELETE FROM players WHERE user_id = ?", (int(user_id),))
-        conn.execute("DELETE FROM users WHERE user_id = ?", (int(user_id),))
+        conn.execute("DELETE FROM player_stats WHERE account_key = ?", (_stats_key(auth_type or 'email', user_id),))
         conn.execute("DELETE FROM account_links WHERE discord_id = ?", (str(user_id),))
         conn.commit()
 
@@ -1404,41 +1380,55 @@ async def api_admin_delete_user(user_id: int, request: Request):
             conn.close()
 @app.post('/api/admin/announce')
 async def api_admin_announce(request: Request):
-    """Admin-only: broadcast a message via the bot."""
+    """Admin-only: post an announcement stored in the dashboard's own DB."""
     user = request.session.get('user')
     if not user or not user.get('is_admin'):
-        return JSONResponse({'ok': False, 'error': 'forbidden'}, status_code=403)
-
-    body = await request.json()
-    message = (body.get('message') or '').strip()
+        return _json({'ok': False, 'error': 'forbidden'}, 403)
+    body = await _get_json(request)
+    message = str(body.get('message') or '').strip()[:1000]
     if not message:
-        return JSONResponse({'ok': False, 'error': 'message required'}, status_code=400)
+        return _json({'ok': False, 'error': 'message required'}, 400)
+    conn = _db()
+    try:
+        conn.execute("INSERT INTO announcements (message, author) VALUES (?, ?)",
+                     (message, user.get('username')))
+        conn.commit()
+    finally:
+        conn.close()
+    return {'ok': True}
 
-    status, resp = await _call_bot("POST", "/api/bot/announce", {
-        "channel_id": DISCORD_BID_CHANNEL,
-        "message": message,
-    })
-    return JSONResponse(resp, status_code=status)
-
+@app.get('/api/announcements')
+async def api_announcements():
+    conn = _db()
+    try:
+        rows = conn.execute(
+            "SELECT message, author, created_at FROM announcements ORDER BY id DESC LIMIT 10").fetchall()
+    finally:
+        conn.close()
+    return {'items': [dict(r) for r in rows]}
 
 @app.post('/api/admin/give-gold')
 async def api_admin_give_gold(request: Request):
-    """Admin-only: grant gold to a user via the bot."""
+    """Admin-only: add gold to an account (user_id = account key like 'email:3' or a bare auth id)."""
     user = request.session.get('user')
     if not user or not user.get('is_admin'):
-        return JSONResponse({'ok': False, 'error': 'forbidden'}, status_code=403)
-
-    body = await request.json()
+        return _json({'ok': False, 'error': 'forbidden'}, 403)
+    body = await _get_json(request)
     user_id = body.get('user_id')
     amount = body.get('amount')
     if not user_id or not isinstance(amount, (int, float)):
-        return JSONResponse({'ok': False, 'error': 'user_id and amount required'}, status_code=400)
+        return _json({'ok': False, 'error': 'user_id and amount required'}, 400)
+    atype, uid = _split_account(str(user_id))
+    stats = get_stats(atype, uid)
+    new = save_stats(atype, uid, {'gold': stats['gold'] + int(amount)})
+    load_game_data()
+    return {'ok': True, 'gold': new['gold']}
 
-    status, resp = await _call_bot("POST", "/api/bot/give-gold", {
-        "user_id": user_id,
-        "amount": amount,
-    })
-    return JSONResponse(resp, status_code=status) 
+def _split_account(raw):
+    if ':' in raw:
+        t, u = raw.split(':', 1)
+        return (t if t in ('email', 'discord') else 'email'), u
+    return 'email', raw
 
 @app.post('/api/admin/users/{user_id}/toggle-admin')
 async def api_admin_toggle_admin(user_id: int, request: Request):
@@ -1482,128 +1472,53 @@ async def api_admin_toggle_admin(user_id: int, request: Request):
 
 @app.get('/api/admin/players')
 async def api_admin_players(request: Request):
-    """Get all game players (from the bot's synced data) for the admin panel."""
+    """List all accounts and their stats for the admin panel."""
     user = request.session.get('user')
     if not user or not user.get('is_admin', False):
         return _json({'ok': False, 'error': 'Admin access required'}, 403)
-
+    load_game_data()
     with _lock:
         data = cached_data.copy()
-
     q = (request.query_params.get('q') or '').strip().lower()
-
     players = []
     for pid, pd in data.get('players', {}).items():
-        if not isinstance(pd, dict):
-            continue
         name = pd.get('name', 'Unknown')
-        if q and q not in name.lower() and q not in str(pid):
+        if q and q not in name.lower() and q not in str(pid).lower():
             continue
         players.append({
-            'id': pid,
-            'name': name,
-            'level': pd.get('level', 0),
-            'class': pd.get('char_class', '—'),
-            'gold': pd.get('gold', 0),
-            'gems': pd.get('gems', pd.get('Gems', 0)),
-            'special_coins': pd.get('special_coins', 0),
-            'xp': pd.get('xp', 0),
-            'guild': pd.get('guild', '—'),
+            'id': pid, 'name': name, 'level': pd.get('level', 1),
+            'class': pd.get('char_class', '—'), 'gold': pd.get('gold', 0),
+            'gems': pd.get('gems', 0), 'special_coins': pd.get('special_coins', 0),
+            'xp': pd.get('xp', 0), 'guild': pd.get('guild', '—'),
             'wins': pd.get('battles_won', 0),
         })
-
     players.sort(key=lambda p: (-p['level'], p['name']))
     return {'ok': True, 'players': players, 'total': len(players)}
 
 @app.get('/api/admin/players/{user_id}')
 async def api_admin_player_detail(user_id: str, request: Request):
-    """Get a single player's full game-data blob (admin only), for editing."""
     user = request.session.get('user')
     if not user or not user.get('is_admin', False):
         return _json({'ok': False, 'error': 'Admin access required'}, 403)
-
-    with _lock:
-        data = cached_data.copy()
-
-    pdata = data.get('players', {}).get(str(user_id))
-    if pdata is None:
-        return _json({'ok': False, 'error': 'Player not found'}, 404)
-
-    return {'ok': True, 'player': pdata}
+    atype, uid = _split_account(user_id)
+    return {'ok': True, 'player': get_stats(atype, uid)}
 
 @app.post('/api/admin/players/{user_id}')
 async def api_admin_update_player(user_id: str, request: Request):
-    """Admin-only: update a player's stats/balance. Writes straight to this
-    dashboard's DB (so the change shows immediately here) and also pushes the
-    change live to the running bot, so the player's in-memory state updates
-    without waiting for the bot's next periodic /api/sync push."""
+    """Admin-only: edit an account's stats. Saved to the same store that
+    /api/me, /api/profile and the leaderboard read from, so it shows everywhere."""
     user = request.session.get('user')
     if not user or not user.get('is_admin', False):
         return _json({'ok': False, 'error': 'Admin access required'}, 403)
-
-    try:
-        uid = int(user_id)
-    except (ValueError, TypeError):
-        return _json({'ok': False, 'error': 'Invalid user id'}, 400)
-
     body = await _get_json(request)
     updates = body.get('updates')
     if not isinstance(updates, dict) or not updates:
         return _json({'ok': False, 'error': 'updates object required'}, 400)
-
-    with _lock:
-        current = cached_data.get('players', {}).get(str(uid))
-    if current is None:
-        current = get_player_game_data(uid)
-    if not isinstance(current, dict):
-        current = {}
-
-    merged = {**current, **updates}
-
-    conn = None
-    try:
-        conn = _db()
-        conn.execute(
-            "INSERT INTO players (user_id, data, last_updated) VALUES (?, ?, CURRENT_TIMESTAMP) "
-            "ON CONFLICT(user_id) DO UPDATE SET data=excluded.data, last_updated=CURRENT_TIMESTAMP",
-            (uid, json.dumps(merged)),
-        )
-        conn.commit()
-    except Exception as e:
-        log.error(f"[Admin/players] failed to save player {uid}: {e}")
-        return _json({'ok': False, 'error': 'Failed to save player data'}, 500)
-    finally:
-        if conn:
-            conn.close()
-
-    load_game_data()  # refresh in-memory cache so it shows immediately in the dashboard
-
-    # Push the change to the live bot process so it's reflected in-game right away.
-    # Requires the bot to expose a matching POST /api/bot/update-player route,
-    # the same way it already exposes /api/bot/give-gold and /api/bot/announce.
-    bot_synced = False
-    bot_error = None
-    try:
-        status, resp = await _call_bot("POST", "/api/bot/update-player", {
-            "user_id": uid,
-            "updates": updates,
-        })
-        bot_synced = status == 200 and (resp or {}).get('ok', False)
-        if not bot_synced:
-            bot_error = (resp or {}).get('error', f'bot returned status {status}')
-    except Exception as e:
-        bot_error = str(e)
-        log.warning(f"[Admin/players] could not push live update to bot for {uid}: {e}")
-
+    atype, uid = _split_account(user_id)
+    merged = save_stats(atype, uid, updates)
+    load_game_data()
     _log_activity(uid, "admin_edit_player", f"Admin updated fields: {', '.join(updates.keys())}")
-    log.info(f"[Admin] Player {uid} stats updated by admin (bot_synced={bot_synced})")
-
-    return {
-        'ok': True,
-        'player': merged,
-        'bot_synced': bot_synced,
-        'bot_error': None if bot_synced else bot_error,
-    }
+    return {'ok': True, 'player': merged}
 
 @app.get('/api/admin/stats')
 async def api_admin_stats(request: Request):
@@ -1763,6 +1678,7 @@ async def api_leaderboard():
             'xp_pct': round(xp / xp_needed * 100, 1),
             'wins': pd.get('battles_won', 0),
             'prestige': pd.get('prestige_level', 0),
+            'avatar': pd.get('avatar'),
         })
 
     pl.sort(key=lambda p: (-p['level'], -p['xp'], p['name']))
@@ -1789,12 +1705,8 @@ async def api_activity(user_id: str):
 @app.get('/api/inventory/{user_id}')
 async def api_inventory(user_id: str):
     """Get a player's inventory items."""
-    try:
-        uid = int(user_id)
-    except (ValueError, TypeError):
-        return _json({'items': []}, 400)
-
-    game = get_player_game_data(uid)
+    atype, uid = _split_account(user_id)
+    game = get_stats(atype, uid)
     if not game:
         return _json({'items': []}, 404)
 
@@ -1887,10 +1799,13 @@ async def api_profile(request: Request):
         except Exception as e:
             log.warning(f"[profile] lookup failed: {e}")
 
-    return {'logged_in': True, 'nickname': nickname, 'avatar': avatar, 'bio': bio, 'is_admin': is_admin}
+    stats = get_stats(user.get('auth_type', 'email'), user['discord_id'])
+    return {'logged_in': True, 'nickname': nickname, 'avatar': avatar, 'bio': bio,
+            'is_admin': is_admin, 'stats': stats, **{k: stats.get(k) for k in
+            ('level', 'gold', 'gems', 'special_coins', 'xp', 'xp_needed', 'char_class')}}
 def run_dashboard():
     """Start the dashboard server."""
-    host = "0.0.0.0"
+    host = "127.0.0.1"
     port = int(os.environ.get("PORT", 25507))
 
     try:
@@ -1898,7 +1813,6 @@ def run_dashboard():
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             s.bind((host, port))
     except OSError:
-        # desired port is in use; pick an ephemeral free port
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.bind((host, 0))
