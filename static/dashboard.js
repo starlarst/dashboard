@@ -145,9 +145,13 @@ async function checkAuth() {
     const params = new URLSearchParams(window.location.search);
     const authStatus = params.get('auth');
 
-    if (authStatus) {
-        // Leftover query string from the old Discord login flow - just clean the URL.
+    if (authStatus === 'success') {
         window.history.replaceState({}, document.title, window.location.pathname);
+        showToast('Successfully logged in with Discord!');
+    } else if (authStatus === 'failed') {
+        window.history.replaceState({}, document.title, window.location.pathname);
+        showToast('Discord login failed. Please try again.', true);
+        return;
     }
 
     try {
@@ -402,11 +406,16 @@ function showDashboard(user) {
         setEl('char-guild', user.guild || 'Unguilded');
         setEl('char-reputation', user.reputation || 'Neutral');
         setEl('char-location', user.location || 'Eldoria');
-        initSim(user);
-        renderCharStats();
-        scrubDiscordText();
-        countUpTo('gold-display', simState.gold);
-        countUpTo('gems-display', simState.gems);
+        setEl('char-power', (user.combat_power || 0).toLocaleString());
+
+        setEl('char-atk', user.attack || 0);
+        setEl('char-def', user.defense || 0);
+        setEl('char-mag', user.magic || 0);
+        setEl('char-spd', user.speed || 0);
+        setEl('char-lck', user.luck || 0);
+        setEl('char-crit', (user.critical_chance || 0) + '%');
+
+        initSim(user);   // placeholder only; the real numbers come from /api/game/state
 
         setEl('stat-gold', (user.gold || 0).toLocaleString());
         setEl('stat-gems', (user.gems || 0).toLocaleString());
@@ -446,15 +455,17 @@ function showDashboard(user) {
         }
 
         applySim(true);
+        syncGameState(true);
         spawnCharParticles();
         loadCustomProfile().catch(console.error);
 
         if (!isDashboardInitialized) {
             isDashboardInitialized = true;
-            const uid = myId(user);
-            loadLeaderboard();
-            if (uid !== null) loadInventory(uid);
-            loadAuctions();
+            if (user.discord_id) {
+                loadLeaderboard();
+                loadInventory(user.discord_id);
+                loadAuctions();
+            }
         }
 
         if (user.is_admin) {
@@ -800,77 +811,13 @@ function setupOTPInputs() {
     });
 }
 
-// Discord is no longer part of this site: strip any leftover Discord buttons
-// and the "or continue with" divider that sits next to them.
 function setupDiscordButtons() {
-    document.querySelectorAll('.social-btn.discord, .social-login, .social-buttons, .auth-divider, .divider')
-        .forEach(el => el.remove());
-}
-
-// Standalone identity: never depends on a Discord account.
-function myId(user = currentUser) {
-    return user ? (user.id ?? user.user_id ?? user.discord_id ?? user.username ?? null) : null;
-}
-
-// ── Character stats (computed here so they never show 0) ────────────
-const CLASS_MODS = {
-    warrior: { atk: 1.3, def: 1.3, mag: 0.6, spd: 0.9, lck: 0.9, crit: 1.0 },
-    knight:  { atk: 1.1, def: 1.5, mag: 0.6, spd: 0.8, lck: 0.9, crit: 0.8 },
-    mage:    { atk: 0.6, def: 0.8, mag: 1.6, spd: 1.0, lck: 1.0, crit: 1.1 },
-    rogue:   { atk: 1.2, def: 0.8, mag: 0.7, spd: 1.5, lck: 1.2, crit: 1.6 },
-    archer:  { atk: 1.2, def: 0.8, mag: 0.8, spd: 1.3, lck: 1.1, crit: 1.4 },
-    healer:  { atk: 0.6, def: 1.0, mag: 1.4, spd: 1.0, lck: 1.1, crit: 0.8 },
-    default: { atk: 1.0, def: 1.0, mag: 1.0, spd: 1.0, lck: 1.0, crit: 1.0 }
-};
-
-function computeStats(user, level) {
-    const key = String((user && user.char_class) || '').toLowerCase();
-    const m = CLASS_MODS[key] || CLASS_MODS.default;
-    const L = Math.max(1, Number(level) || 1);
-    const pick = (serverVal, calc) => (Number(serverVal) > 0 ? Number(serverVal) : Math.round(calc));
-    const s = {
-        atk:  pick(user && user.attack,  (8 + L * 3) * m.atk),
-        def:  pick(user && user.defense, (6 + L * 2.5) * m.def),
-        mag:  pick(user && user.magic,   (5 + L * 2.5) * m.mag),
-        spd:  pick(user && user.speed,   (6 + L * 1.5) * m.spd),
-        lck:  pick(user && user.luck,    (3 + L * 1.2) * m.lck),
-        crit: Number(user && user.critical_chance) > 0
-                ? Number(user.critical_chance)
-                : Math.min(50, +(3 + L * 0.4 * m.crit).toFixed(1))
-    };
-    s.power = Number(user && user.combat_power) > 0
-        ? Number(user.combat_power)
-        : Math.round(s.atk * 2 + s.def * 1.5 + s.mag * 2 + s.spd + s.lck + s.crit * 5);
-    return s;
-}
-
-function renderCharStats() {
-    const user  = currentUser || {};
-    const level = simState ? simState.level : user.level;
-    const s = computeStats(user, level);
-    setEl('char-atk', s.atk);
-    setEl('char-def', s.def);
-    setEl('char-mag', s.mag);
-    setEl('char-spd', s.spd);
-    setEl('char-lck', s.lck);
-    setEl('char-crit', s.crit + '%');
-    setEl('char-power', s.power.toLocaleString());
-}
-
-// Replace leftover Discord wording in the static HTML (quests, empty states, etc.)
-function scrubDiscordText() {
-    const walker = document.createTreeWalker(document.getElementById('dashboard-app') || document.body, NodeFilter.SHOW_TEXT);
-    const nodes = [];
-    while (walker.nextNode()) nodes.push(walker.currentNode);
-    nodes.forEach(n => {
-        if (!/discord|\/quest/i.test(n.nodeValue)) return;
-        n.nodeValue = n.nodeValue
-            .replace(/Use\s*$/i, 'Open the Quests tab')
-            .replace(/\s*in Discord to begin your\s*/i, ' to begin your ')
-            .replace(/Discord/gi, 'RPG Ghost');
-    });
-    document.querySelectorAll('#dashboard-app code').forEach(c => {
-        if (/^\/quest/i.test(c.textContent.trim())) c.textContent = 'Quests';
+    document.querySelectorAll('.social-btn.discord').forEach(btn => {
+        btn.addEventListener('click', e => {
+            e.preventDefault();
+            showToast('Redirecting to Discord...');
+            setTimeout(() => { window.location.href = '/login/discord'; }, 500);
+        });
     });
 }
 
@@ -879,7 +826,7 @@ function scrubDiscordText() {
 // ════════════════════════════════════════════════════════════════════
 async function loadLeaderboard() {
     try {
-        const res     = await fetch(`${API_BASE}/api/leaderboard`);
+        const res     = await fetch(`${API_BASE}/api/game/leaderboard`);
         const data    = await res.json();
         const players = data.leaderboard || [];
 
@@ -895,7 +842,7 @@ async function loadLeaderboard() {
         tbody.innerHTML = '';
         players.slice(0, 10).forEach((p, i) => {
             const rankCls = i === 0 ? 'top1' : i === 1 ? 'top2' : i === 2 ? 'top3' : '';
-            const meCls   = currentUser && p.id == myId() ? 'lb-you' : '';
+            const meCls   = currentUser && p.id == currentUser.discord_id ? 'lb-you' : '';
             const safeName  = escapeHTML(p.name);
             const safeClass = escapeHTML(p.class);
             const safeSeed  = encodeURIComponent(p.name || '');
@@ -937,7 +884,7 @@ const tooltipEls = {
 
 async function loadInventory(userId) {
     try {
-        const res   = await fetch(`${API_BASE}/api/inventory/${userId}`);
+        const res   = await fetch(`${API_BASE}/api/game/inventory`, { credentials: 'same-origin' });
         const data  = await res.json();
         const items = data.items || [];
         const cont  = document.getElementById('inventory-container');
@@ -997,12 +944,13 @@ async function loadInventory(userId) {
             cont.appendChild(slot);
         });
 
-        // Dismiss on outside tap (mobile)
-        document.addEventListener('click', e => {
+        // Dismiss on outside tap (mobile) - bound once, loadInventory can now run many times
+        if (!window.__invDismissBound) document.addEventListener('click', e => {
             if (tooltipEls.root && !tooltipEls.root.contains(e.target)) {
                 tooltipEls.root.style.opacity = '0';
             }
         }, { passive: true });
+        window.__invDismissBound = true;
 
     } catch (e) { console.error('Inventory error:', e); }
 }
@@ -1162,7 +1110,7 @@ async function refreshAdminPanel() {
             if (tbody) {
                 tbody.innerHTML = '';
                 usersData.users.forEach(user => {
-                    const isYou = user.id == myId();
+                    const isYou = user.id == currentUser?.discord_id;
                     const tr    = document.createElement('tr');
                     if (isYou) tr.className = 'lb-you';
                     const safeNickname = escapeHTML(user.nickname);
@@ -1473,7 +1421,7 @@ async function launchBotIntro() {
     const descEl   = document.getElementById('botIntroDesc');
     if (!overlay || !descEl) return;
 
-    const defaultDesc = "Hey there, Adventurer. I'm RPG Ghost — a spectral RPG where you can battle monsters, loot rare gear, complete quests, trade in the auction house, and climb the leaderboard. Your journey through the spectral realm starts here.";
+    const defaultDesc = "Hey there, Adventurer. I'm RPG Ghost — your guide through the spectral realm. Hunt monsters, loot rare gear, complete quests, trade in the auction house, and climb the leaderboard. Your journey through the spectral realm starts here.";
 
     overlay.classList.add('visible');
 
@@ -1575,32 +1523,44 @@ document.addEventListener('click', e => {
 // ════════════════════════════════════════════════════════════════════
 // GAME ACTIONS
 // ════════════════════════════════════════════════════════════════════
-let simState = null;
-let simKey   = null;
+let simState = null;     // mirror of the SERVER state (never saved locally)
+let serverView = null;  // full flat view returned by /api/game/*
+let actionBusy = false;
+
+const rand = (min, max) => Math.floor(min + Math.random() * (max - min + 1));
 
 function initSim(user) {
-    simKey = 'rpgGhostSim:' + (myId(user) || 'guest');
-    const fresh = {
-        level:    Number(user.level) || 1,
-        xp:       Number(user.xp) || 0,
-        xpNeeded: Number(user.xp_needed) || 100,
-        hp:       Number(user.hp) > 0 ? Number(user.hp) : (Number(user.max_hp) > 0 ? Number(user.max_hp) : 100 + (Number(user.level) || 1) * 50),
-        maxHp:    Number(user.max_hp) > 0 ? Number(user.max_hp) : 100 + (Number(user.level) || 1) * 50,
-        mp:       Number(user.mp) > 0 ? Number(user.mp) : (Number(user.max_mp) > 0 ? Number(user.max_mp) : 50 + (Number(user.level) || 1) * 20),
-        maxMp:    Number(user.max_mp) > 0 ? Number(user.max_mp) : 50 + (Number(user.level) || 1) * 20,
-        gold:     Number(user.gold) || 0,
-        gems:     Number(user.gems) || 0,
-        wins:     Number(user.battles_won) || 0,
-        losses:   Number(user.battles_lost) || 0,
-        dailyAt:  0
+    // Placeholder shown for a split second until the server answers.
+    simState = {
+        level: Number(user.level) || 1, xp: 0, xpNeeded: 100,
+        hp: 0, maxHp: 1, mp: 0, maxMp: 1,
+        gold: 0, gems: 0, wins: 0, losses: 0, dailyAt: 0
     };
-    let saved = null;
-    try { saved = JSON.parse(localStorage.getItem(simKey) || 'null'); } catch { /* ignore */ }
-    simState = Object.assign(fresh, saved || {});
 }
 
-function saveSim() {
-    try { localStorage.setItem(simKey, JSON.stringify(simState)); } catch { /* storage blocked */ }
+function applyServerState(st, first = false) {
+    if (!st) return;
+    serverView = st;
+    simState = {
+        level: st.level, xp: st.xp, xpNeeded: st.xp_needed,
+        hp: st.hp, maxHp: st.max_hp, mp: st.mp, maxMp: st.max_mp,
+        gold: st.gold, gems: st.gems, wins: st.battles_won, losses: st.battles_lost,
+        dailyAt: st.daily_at
+    };
+    applySim(first);
+    if (first) {
+        countUpTo('gold-display', st.gold);
+        countUpTo('gems-display', st.gems);
+    }
+}
+
+async function syncGameState(first = false) {
+    try {
+        const res = await fetch('/api/game/state', { credentials: 'same-origin' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.ok) applyServerState(data.state, first);
+    } catch (e) { console.error('Game state error:', e); }
 }
 
 function applySim(initial = false) {
@@ -1617,10 +1577,11 @@ function applySim(initial = false) {
     const balance = document.getElementById('auction-balance');
     if (balance) balance.innerHTML = num(s.gold) + ' <span style="font-size:0.7rem;color:#333;">Gold</span>';
 
-    const cls = (currentUser && currentUser.char_class) || 'Explorer';
+    const cls = (serverView && serverView.char_class) || (currentUser && currentUser.char_class) || 'Explorer';
     setEl('dash-level', s.level);
     setEl('dash-level-chip', s.level);
     setEl('dash-class', `Level ${s.level} · ${cls}`);
+    setEl('dash-class-display', cls);
     setEl('sidebar-userrole', `Level ${s.level}`);
     const xpPct = Math.max(0, Math.min(100, (s.xp / s.xpNeeded) * 100));
     const xpBar = document.getElementById('xp-bar');
@@ -1637,89 +1598,70 @@ function applySim(initial = false) {
 
     setEl('stat-wins', num(s.wins));
     setEl('stat-losses', num(s.losses));
-    renderCharStats();
+
+    const v = serverView;
+    if (v) {
+        setEl('stat-rank', '#' + v.rank);
+        setEl('char-power', (v.combat_power || 0).toLocaleString());
+        setEl('char-atk', v.attack);
+        setEl('char-def', v.defense);
+        setEl('char-mag', v.magic);
+        setEl('char-spd', v.speed);
+        setEl('char-lck', v.luck);
+        setEl('char-crit', v.critical_chance + '%');
+    }
 }
 
-function simGain({ xp = 0, gold = 0, gems = 0 } = {}) {
-    const s = simState;
-    if (!s) return false;
-    s.gold += gold;
-    s.gems += gems;
-    s.xp   += xp;
-    let leveled = false;
-    while (s.xp >= s.xpNeeded) {
-        s.xp -= s.xpNeeded;
-        s.level++;
-        s.xpNeeded = Math.floor(s.xpNeeded * 1.25);
-        s.maxHp += 50;
-        s.maxMp += 20;
-        s.hp = s.maxHp;
-        s.mp = s.maxMp;
-        leveled = true;
-    }
-    if (leveled) {
-        showToast(`⭐ Level up! You are now level ${s.level}.`);
-        addNotification('level', 'Level up!', `You reached level ${s.level}.`);
-    }
-    saveSim();
-    applySim();
-    return leveled;
+const EVENT_NOTIF = { level_up: 'level', achievement: 'gift', quest: 'quest' };
+const EVENT_ICON  = { level_up: '⭐', achievement: '🏆', quest: '📜' };
+
+function announceEvents(events) {
+    (events || []).forEach((ev, i) => {
+        addNotification(EVENT_NOTIF[ev.type] || 'level',
+            ev.type === 'level_up' ? 'Level up!' : ev.type === 'quest' ? 'Quest complete' : 'Achievement unlocked',
+            ev.text);
+        // The first toast belongs to the action itself; stagger the extras.
+        setTimeout(() => showToast(`${EVENT_ICON[ev.type] || '✨'} ${ev.text}`), 1400 * (i + 1));
+    });
 }
 
-const rand = (min, max) => Math.floor(min + Math.random() * (max - min + 1));
-const HEAL_COST = 30;
-const DAILY_COOLDOWN_MS = 24 * 60 * 60 * 1000;
-const HUNT_ENEMIES = ['Slime', 'Goblin', 'Skeleton', 'Wraith', 'Dire Wolf', 'Bone Drake'];
+async function performAction(action) {
+    if (actionBusy) return;
+    actionBusy = true;
+    try {
+        const res = await fetch(`/api/game/${action}`, {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const d = await res.json().catch(() => ({}));
+        if (res.status === 401) { showToast('Session expired. Please log in again.', true); return; }
+        if (!d.ok) { showToast(d.error || 'That did not work.', true); return; }
 
-function performAction(action) {
-    const s = simState;
-    if (!s) return;
+        applyServerState(d.state);
 
-    if (action === 'heal') {
-        if (s.hp >= s.maxHp && s.mp >= s.maxMp) { showToast('You are already at full health.'); return; }
-        if (s.gold < HEAL_COST) { showToast(`Healing costs ${HEAL_COST} gold.`, true); return; }
-        s.gold -= HEAL_COST;
-        s.hp = s.maxHp;
-        s.mp = s.maxMp;
-        saveSim(); applySim();
-        showToast(`💚 Healed to full for ${HEAL_COST} gold.`);
-        addNotification('level', 'Healed up', `HP and MP restored for ${HEAL_COST} gold.`);
-        return;
-    }
-
-    if (action === 'hunt') {
-        if (s.hp < Math.ceil(s.maxHp * 0.1)) { showToast('Too wounded to hunt. Heal first!', true); return; }
-        const enemy = HUNT_ENEMIES[rand(0, Math.min(HUNT_ENEMIES.length - 1, 1 + Math.floor(s.level / 2)))];
-        const win   = Math.random() < 0.7;
-        if (win) {
-            const xp = rand(15, 35) + s.level * 2, gold = rand(10, 40);
-            s.hp = Math.max(1, s.hp - rand(5, 15));
-            s.wins++;
-            showToast(`⚔️ Defeated a ${enemy}! +${xp} XP, +${gold} gold.`);
-            addNotification('battle', 'Hunt won', `You defeated a ${enemy}. +${xp} XP, +${gold} gold.`);
-            simGain({ xp, gold });
-        } else {
-            const dmg = rand(15, 30);
-            s.hp = Math.max(1, s.hp - dmg);
-            s.losses++;
-            showToast(`💀 A ${enemy} beat you. -${dmg} HP, +5 XP.`, true);
-            addNotification('battle', 'Hunt lost', `A ${enemy} beat you. -${dmg} HP.`);
-            simGain({ xp: 5 });
+        if (action === 'hunt') {
+            if (d.result === 'win') {
+                showToast(`⚔️ ${d.message}`);
+                addNotification('battle', 'Hunt won', d.message);
+            } else {
+                showToast(`💀 ${d.message}`, true);
+                addNotification('battle', 'Hunt lost', d.message);
+            }
+            if (d.loot && currentUser && currentUser.discord_id) loadInventory(currentUser.discord_id);
+        } else if (action === 'heal') {
+            showToast(`💚 ${d.message}`);
+            addNotification('level', 'Healed up', d.message);
+        } else if (action === 'daily') {
+            showToast(`🎁 ${d.message}`);
+            addNotification('gift', 'Daily reward claimed', d.message);
         }
-        return;
-    }
-
-    if (action === 'daily') {
-        const left = s.dailyAt + DAILY_COOLDOWN_MS - Date.now();
-        if (left > 0) {
-            const h = Math.floor(left / 3600000), m = Math.ceil((left % 3600000) / 60000);
-            showToast(`Daily already claimed. Come back in ${h}h ${m}m.`, true);
-            return;
-        }
-        s.dailyAt = Date.now();
-        showToast('🎁 Daily reward claimed: +100 XP, +50 Gold!');
-        addNotification('gift', 'Daily reward claimed', '+100 XP, +50 Gold added.');
-        simGain({ xp: 100, gold: 50 });
+        announceEvents(d.events);
+        if (currentUser && currentUser.discord_id) loadLeaderboard();
+    } catch (e) {
+        console.error(e);
+        showToast('Could not reach the server. Try again.', true);
+    } finally {
+        actionBusy = false;
     }
 }
 
@@ -1786,6 +1728,8 @@ function spawnSpirit(immediate = false) {
 
 function startSpiritGame() {
     if (spirit.running) return;
+    // The server timestamps the round so the reward can't be claimed without playing it.
+    fetch('/api/game/spirit/start', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
     spirit.running  = true;
     spirit.score    = 0;
     spirit.timeLeft = SPIRIT_SECONDS;
@@ -1822,11 +1766,30 @@ function endSpiritGame() {
     if (startBtn) { startBtn.disabled = false; startBtn.textContent = 'Play again'; }
 
     if (score > 0 && simState) {
-        setEl('mgMsg', `Caught ${score}! +${gold} gold, +${xp} XP.`);
-        showToast(`👻 Spirit Catcher: ${score} caught. +${gold} gold, +${xp} XP.`);
-        simGain({ gold, xp });
+        setEl('mgMsg', `Caught ${score}! Claiming your reward...`);
+        submitSpiritScore(score);
     } else {
         setEl('mgMsg', 'No ghosts caught. Try again!');
+    }
+}
+
+async function submitSpiritScore(score) {
+    try {
+        const res = await fetch('/api/game/spirit', {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ score })
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!d.ok) { setEl('mgMsg', d.error || 'Reward could not be claimed.'); return; }
+        setEl('mgMsg', d.message);
+        showToast(`👻 ${d.message}`);
+        applyServerState(d.state);
+        announceEvents(d.events);
+        if (currentUser && currentUser.discord_id) loadLeaderboard();
+    } catch (e) {
+        console.error(e);
+        setEl('mgMsg', 'Could not reach the server.');
     }
 }
 
