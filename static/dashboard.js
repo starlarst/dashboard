@@ -1,9 +1,5 @@
 const RECAPTCHA_SITE_KEY = "6LdvvT8tAAAAAKDmzCl0RaBvPr8ndJbdmFNQaqk7";
-// NOTE: EmailJS is called from the SERVER (see dashboard_app.py / .env).
-// Sending the OTP from the browser would require exposing the code to the client.
 const API_BASE = window.location.origin;
-
-// ── STATE ────────────────────────────────────────────────────────────
 let currentUser           = null;
 let isDashboardInitialized = false;
 let isShowingDashboard    = false;
