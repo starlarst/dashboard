@@ -1,42 +1,7 @@
-"""
-Guild Hall routes: my-guild, guild browse/create/join/edit/leave, guild chat,
-and bot-info. Mirrors the register_*_routes(app, _db) pattern used by
-community.py and game_engine.py, and reuses the existing `guilds` and
-`player_stats` tables (no changes to those schemas required).
-
-Data model
-----------
-guilds.data (JSON) shape:
-    {
-      "tag": "IV",
-      "description": "...",
-      "motd": "...",
-      "leader_key": "email:3",
-      "leader_name": "Some Nickname",
-      "created_at": "<iso8601>",
-      "max_members": 50,
-      "treasury": 0,
-      "level": 1,
-      "members": {
-        "email:3": {"name": "Some Nickname", "role": "Leader", "joined_at": "<iso8601>"},
-        "discord:123456789012345678": {"name": "Other", "role": "Member", "joined_at": "<iso8601>"}
-      }
-    }
-
-A member's account_key is "<auth_type>:<discord_id>" — the same key used by
-get_stats/save_stats in main.py (_stats_key). Each member's `guild` field in
-player_stats is kept in sync with the guild name so the leaderboard / home
-dashboard (which already derive guild membership from player_stats) continue
-to work unmodified.
-
-New table: guild_messages — guild chat history (not covered by any existing
-table).
-"""
-
 import json
 import logging
 from datetime import datetime, timezone
-
+from dashboard_app import join_guild, leave_guild
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
