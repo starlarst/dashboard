@@ -1,9 +1,5 @@
 const RECAPTCHA_SITE_KEY = "6LdvvT8tAAAAAKDmzCl0RaBvPr8ndJbdmFNQaqk7";
-// NOTE: EmailJS is called from the SERVER (see dashboard_app.py / .env).
-// Sending the OTP from the browser would require exposing the code to the client.
 const API_BASE = window.location.origin;
-
-// ── STATE ────────────────────────────────────────────────────────────
 let currentUser           = null;
 let isDashboardInitialized = false;
 let isShowingDashboard    = false;
@@ -11,8 +7,6 @@ let resetEmail            = "";
 let resetOTP              = "";
 let notifications         = [];
 let cachedInventoryItems  = [];
-
-// ── SECURITY HELPERS ────────────────────────────────────────────────
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
     return String(str).replace(/[&<>"']/g, ch => ({
@@ -31,9 +25,6 @@ const pageConfig = {
     }
 };
 
-// ════════════════════════════════════════════════════════════════════
-// DOMContentLoaded
-// ════════════════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
     // Auth UI wiring runs first and is isolated so a failure elsewhere can't break it.
     try { setupAuthUI(); } catch (e) { console.error('setupAuthUI failed:', e); }
@@ -174,24 +165,37 @@ function setupSidebar() {
     const container   = document.getElementById('dashboard');
 
     const closeDrawer = () => {
+        if (window.RealmNav) { window.RealmNav.close(); return; }
         sidebar?.classList.remove('is-open');
         backdrop?.classList.remove('is-open');
         document.body.classList.remove('drawer-open');
         document.body.style.overflow = '';
+        toggle?.setAttribute('aria-expanded', 'false');
     };
 
-    if (toggle && backdrop && sidebar) {
-        toggle.addEventListener('click', () => {
+    // layout.js already wires the hamburger, backdrop and collapse button.
+    // Binding them a second time made every click run twice (open, then
+    // immediately close), which is why the sidebar looked dead. Only bind a
+    // control if nothing else has claimed it yet.
+    if (toggle && backdrop && sidebar && !toggle.dataset.realmNavBound) {
+        toggle.dataset.realmNavBound = '1';
+        toggle.addEventListener('click', (e) => {
+            e.preventDefault();
             const willOpen = !sidebar.classList.contains('is-open');
             sidebar.classList.toggle('is-open', willOpen);
             backdrop.classList.toggle('is-open', willOpen);
             document.body.classList.toggle('drawer-open', willOpen);
             document.body.style.overflow = willOpen ? 'hidden' : '';
+            toggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
         });
+    }
+    if (backdrop && !backdrop.dataset.realmNavBound) {
+        backdrop.dataset.realmNavBound = '1';
         backdrop.addEventListener('click', closeDrawer);
     }
 
-    if (collapseBtn && sidebar) {
+    if (collapseBtn && sidebar && !collapseBtn.dataset.realmNavBound) {
+        collapseBtn.dataset.realmNavBound = '1';
         collapseBtn.addEventListener('click', () => {
             // Desktop-only control
             if (window.matchMedia('(max-width: 1100px)').matches) return;
@@ -202,14 +206,28 @@ function setupSidebar() {
         });
     }
 
-    const inPagePanels = ['overview', 'admin'];
+    // On the dashboard, these menu items are in-page views, not separate pages.
+    const dashboardPages = ['overview', 'leaderboard', 'auction', 'admin'];
+    const scrollTargets  = { leaderboard: '.leaderboard-panel', auction: '.auction-panel', admin: '#adminPanel' };
+    const onDashboard = document.body.dataset.page === 'overview' || !!document.getElementById('dashboard-app');
 
     document.querySelectorAll('.nav-links a').forEach(link => {
+        if (link.dataset.dashNavBound) return;
+        link.dataset.dashNavBound = '1';
         link.addEventListener('click', (e) => {
             const page = link.dataset.page || 'overview';
-            if (inPagePanels.includes(page)) {
+            if (onDashboard && dashboardPages.includes(page)) {
                 e.preventDefault();
                 navigateTo(page);
+                closeDrawer();
+                const sel = scrollTargets[page];
+                // wait a frame so the drawer's scroll lock is released first
+                requestAnimationFrame(() => requestAnimationFrame(() => {
+                    const el = sel ? document.querySelector(sel) : null;
+                    if (el && el.offsetParent !== null) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    else window.scrollTo({ top: 0, behavior: 'smooth' });
+                }));
+                return;
             }
             closeDrawer();
         });
