@@ -23,47 +23,86 @@ MAX_ACTIVE_QUESTS = 3
 TOWER_FLOORS = 100
 
 ITEMS = {
-    'Rusty Sword':        dict(slot='weapon', rarity='common',    atk=4,  price=40,    desc='A chipped blade. Still sharp enough.'),
-    'Wooden Club':        dict(slot='weapon', rarity='common',    atk=5,  price=45,    desc='Crude, heavy, and surprisingly effective.'),
-    'Iron Sword':         dict(slot='weapon', rarity='rare',      atk=14, price=350,   desc='A reliable soldier\'s blade.'),
-    'Steel Dagger':       dict(slot='weapon', rarity='rare',      atk=12, price=300,   desc='Balanced and quick.'),
-    "Hunter's Bow":       dict(slot='weapon', rarity='rare',      atk=15, price=380,   desc='Strung with sinew from the old forest.'),
-    "Knight's Longsword": dict(slot='weapon', rarity='rare',      atk=24, price=900,   desc='Forged for those who hold the line.'),
-    'Wraith Blade':       dict(slot='weapon', rarity='epic',      atk=30, price=1800,  desc='Cuts through armor like mist.'),
-    'Bone Reaver':        dict(slot='weapon', rarity='epic',      atk=36, price=2200,  desc='Carved from a Bone Knight\'s spine.'),
-    'Berserker Axe':      dict(slot='weapon', rarity='epic',      atk=40, price=2500,  desc='It wants to be swung.'),
-    'Ghostfire Staff':    dict(slot='weapon', rarity='legendary', atk=60, price=6000,  desc='Burns with a cold, spectral flame.'),
-    'Magma Greatsword':   dict(slot='weapon', rarity='legendary', atk=75, price=9000,  desc='Still glowing from the volcano\'s heart.'),
-    # armor
-    'Wooden Shield':      dict(slot='armor',  rarity='common',    df=4,   price=40,    desc='Splinters, but it blocks.'),
-    'Leather Vest':       dict(slot='armor',  rarity='common',    df=5,   price=50,    desc='Light, quiet, better than nothing.'),
-    'Chainmail':          dict(slot='armor',  rarity='rare',      df=12,  price=420,   desc='Rings of iron, worn smooth.'),
-    'Knight Armor':       dict(slot='armor',  rarity='rare',      df=14,  price=480,   desc='Dented in all the right places.'),
-    'Dragonscale Plate':  dict(slot='armor',  rarity='epic',      df=30,  price=1900,  desc='Forged from a Bone Drake hide.'),
-    'Paladin Plate':      dict(slot='armor',  rarity='epic',      df=34,  price=2200,  desc='Blessed steel that hums when you fight.'),
-    'Obsidian Armor':     dict(slot='armor',  rarity='epic',      df=38,  price=2600,  desc='Glass-black and impossibly light.'),
+    # ── Tier 1 weapons (levels 1–7, common/rare) ──────────────────────────────
+    'Rusty Sword':        dict(slot='weapon', rarity='common',    atk=4,   price=40,    desc='A chipped blade. Still sharp enough.'),
+    'Wooden Club':        dict(slot='weapon', rarity='common',    atk=5,   price=45,    desc='Crude, heavy, and surprisingly effective.'),
+    'Iron Sword':         dict(slot='weapon', rarity='rare',      atk=14,  price=350,   desc='A reliable soldier\'s blade.'),
+    'Steel Dagger':       dict(slot='weapon', rarity='rare',      atk=12,  price=300,   desc='Balanced and quick.'),
+    "Hunter's Bow":       dict(slot='weapon', rarity='rare',      atk=15,  price=380,   desc='Strung with sinew from the old forest.'),
+    "Knight's Longsword": dict(slot='weapon', rarity='rare',      atk=24,  price=900,   desc='Forged for those who hold the line.'),
+    # ── Tier 2 weapons (levels 8–19, epic) ────────────────────────────────────
+    'Wraith Blade':       dict(slot='weapon', rarity='epic',      atk=30,  price=1800,  desc='Cuts through armor like mist.'),
+    'Bone Reaver':        dict(slot='weapon', rarity='epic',      atk=36,  price=2200,  desc='Carved from a Bone Knight\'s spine.'),
+    'Berserker Axe':      dict(slot='weapon', rarity='epic',      atk=40,  price=2500,  desc='It wants to be swung.'),
+    # ── Tier 3 weapons (levels 20–39, legendary) ──────────────────────────────
+    'Ghostfire Staff':    dict(slot='weapon', rarity='legendary', atk=60,  price=6000,  desc='Burns with a cold, spectral flame.'),
+    'Magma Greatsword':   dict(slot='weapon', rarity='legendary', atk=75,  price=9000,  desc='Still glowing from the volcano\'s heart.'),
+    # ── Tier 4 weapons (levels 40–59, mythic) ─────────────────────────────────
+    'Voidbringer':        dict(slot='weapon', rarity='mythic',    atk=95,  price=18000, desc='Tears a hole in whatever it strikes.'),
+    'Thornwhip of Ruin':  dict(slot='weapon', rarity='mythic',    atk=100, price=20000, desc='Every crack leaves a scar on the world.'),
+    'Soulrend Scythe':    dict(slot='weapon', rarity='mythic',    atk=110, price=24000, desc='The souls it\'s claimed never truly leave.'),
+    # ── Tier 5 weapons (levels 60–79, mythic) ─────────────────────────────────
+    'Eclipse Blade':      dict(slot='weapon', rarity='mythic',    atk=130, price=40000, desc='Forged during the last total eclipse. Hungers for light.'),
+    'Abyssal Lance':      dict(slot='weapon', rarity='mythic',    atk=145, price=50000, desc='Pulled from the deep by something that should not exist.'),
+    # ── Tier 6 weapons (levels 80–99, mythic) ─────────────────────────────────
+    'Worldbreaker':       dict(slot='weapon', rarity='mythic',    atk=170, price=80000, desc='The cracks in the ground? Yes, that was this.'),
+    'Starfall Halberd':   dict(slot='weapon', rarity='mythic',    atk=190, price=100000,desc='A meteor reshaped into a polearm by a mad smith.'),
+    # ── Tier 7 weapons (level 100+, mythic) ───────────────────────────────────
+    'Eternity\'s Edge':   dict(slot='weapon', rarity='mythic',    atk=220, price=200000,desc='Some weapons end empires. This one ended an age.'),
+
+    # ── Tier 1 armor (levels 1–7) ─────────────────────────────────────────────
+    'Wooden Shield':      dict(slot='armor',  rarity='common',    df=4,    price=40,    desc='Splinters, but it blocks.'),
+    'Leather Vest':       dict(slot='armor',  rarity='common',    df=5,    price=50,    desc='Light, quiet, better than nothing.'),
+    'Chainmail':          dict(slot='armor',  rarity='rare',      df=12,   price=420,   desc='Rings of iron, worn smooth.'),
+    'Knight Armor':       dict(slot='armor',  rarity='rare',      df=14,   price=480,   desc='Dented in all the right places.'),
+    # ── Tier 2 armor (levels 8–19) ────────────────────────────────────────────
+    'Dragonscale Plate':  dict(slot='armor',  rarity='epic',      df=30,   price=1900,  desc='Forged from a Bone Drake hide.'),
+    'Paladin Plate':      dict(slot='armor',  rarity='epic',      df=34,   price=2200,  desc='Blessed steel that hums when you fight.'),
+    'Obsidian Armor':     dict(slot='armor',  rarity='epic',      df=38,   price=2600,  desc='Glass-black and impossibly light.'),
+    # ── Tier 3 armor (levels 20–39) ───────────────────────────────────────────
     'Crown of the Fallen King': dict(slot='armor', rarity='legendary', df=55, price=6000, desc='Heavy is the head.'),
-    'Phoenix Mantle':     dict(slot='armor',  rarity='legendary', df=70,  price=9000,  desc='Warm to the touch. Always.'),
-    # consumables
-    'Healing Potion':         dict(slot='consumable', rarity='common', hp=300, price=25,  desc='Smells awful. Restores 300 HP.'),
-    'Greater Healing Potion': dict(slot='consumable', rarity='rare',   hp=800, price=80,  desc='Restores 800 HP.'),
-    'Mana Elixir':            dict(slot='consumable', rarity='rare',   mp=250, price=60,  desc='Restores 250 MP.'),
-    'Scroll of Insight':      dict(slot='consumable', rarity='rare',   xp=300, price=0,   desc='Read it and learn: +300 XP.'),
-    # misc
-    'Old Scroll':             dict(slot='misc', rarity='common', price=10,  desc='Faded ink and forgotten spells.'),
-    'Spectral Crystal':       dict(slot='misc', rarity='rare',   price=80,  desc='Hums softly in the dark.'),
-    'Adventurer Guild Card':  dict(slot='misc', rarity='common', price=0,   desc='Proof that you belong. Not for sale.'),
+    'Phoenix Mantle':     dict(slot='armor',  rarity='legendary', df=70,   price=9000,  desc='Warm to the touch. Always.'),
+    # ── Tier 4 armor (levels 40–59, mythic) ───────────────────────────────────
+    'Void Carapace':      dict(slot='armor',  rarity='mythic',    df=90,   price=18000, desc='Harvested from a creature that lives between dimensions.'),
+    'Titan\'s Bulwark':   dict(slot='armor',  rarity='mythic',    df=100,  price=22000, desc='So heavy it reshaped the floor it stood on.'),
+    # ── Tier 5 armor (levels 60–79, mythic) ───────────────────────────────────
+    'Celestial Aegis':    dict(slot='armor',  rarity='mythic',    df=125,  price=42000, desc='Light bends around it. Arrows do too.'),
+    'Shadowweave Mantle': dict(slot='armor',  rarity='mythic',    df=140,  price=52000, desc='It watches back.'),
+    # ── Tier 6 armor (levels 80–99, mythic) ───────────────────────────────────
+    'Ironveil of Eternity':dict(slot='armor', rarity='mythic',    df=165,  price=82000, desc='The last armor the old gods made before they stopped making things.'),
+    'Nullplate':          dict(slot='armor',  rarity='mythic',    df=185,  price=105000,desc='Absorbs damage by simply refusing to acknowledge it.'),
+    # ── Tier 7 armor (level 100+, mythic) ─────────────────────────────────────
+    'Mantle of the Abyss':dict(slot='armor',  rarity='mythic',    df=210,  price=200000,desc='Pulled from the core of the world. Cold. Heavy. Perfect.'),
+
+    # ── Consumables ───────────────────────────────────────────────────────────
+    'Healing Potion':         dict(slot='consumable', rarity='common',    hp=300,  price=25,   desc='Smells awful. Restores 300 HP.'),
+    'Greater Healing Potion': dict(slot='consumable', rarity='rare',      hp=800,  price=80,   desc='Restores 800 HP.'),
+    'Superior Healing Potion':dict(slot='consumable', rarity='epic',      hp=2500, price=300,  desc='Restores 2500 HP. Tastes like lightning.'),
+    'Mana Elixir':            dict(slot='consumable', rarity='rare',      mp=250,  price=60,   desc='Restores 250 MP.'),
+    'Grand Mana Elixir':      dict(slot='consumable', rarity='epic',      mp=800,  price=250,  desc='Restores 800 MP. Fizzes violet.'),
+    'Scroll of Insight':      dict(slot='consumable', rarity='rare',      xp=300,  price=0,    desc='Read it and learn: +300 XP.'),
+    'Tome of Knowledge':      dict(slot='consumable', rarity='epic',      xp=1500, price=0,    desc='Dense reading. +1500 XP.'),
+    'Elixir of the Ancients': dict(slot='consumable', rarity='legendary', xp=5000, price=0,    desc='The wisdom of ten dead civilisations. +5000 XP.'),
+    # ── Misc ──────────────────────────────────────────────────────────────────
+    'Old Scroll':             dict(slot='misc', rarity='common',    price=10,   desc='Faded ink and forgotten spells.'),
+    'Spectral Crystal':       dict(slot='misc', rarity='rare',      price=80,   desc='Hums softly in the dark.'),
+    'Void Shard':             dict(slot='misc', rarity='epic',      price=500,  desc='A fragment of somewhere else entirely.'),
+    'Astral Rune':            dict(slot='misc', rarity='legendary', price=2000, desc='Inscribed by a hand that no longer exists.'),
+    'Adventurer Guild Card':  dict(slot='misc', rarity='common',    price=0,    desc='Proof that you belong. Not for sale.'),
 }
 NO_SELL = {'Adventurer Guild Card'}
-RARITY_SELL = {'common': 8, 'rare': 30, 'epic': 120, 'legendary': 500}
+RARITY_SELL = {'common': 8, 'rare': 30, 'epic': 120, 'legendary': 500, 'mythic': 2000}
 
 ZONES = {
+    # ── Zone 1 — levels 1–7 ────────────────────────────────────────────────
     'forest': dict(
         name='Whispering Forest', req=1, power=(20, 60), xp=1.0, gold=1.0, loot=0.20, odds=(0.0, 0.03, 0.25),
         enemies=['Slime', 'Goblin', 'Dire Wolf'],
         blurb='Gentle on the way in, but the wolves are learning.',
         table={'common': ['Rusty Sword', 'Wooden Club', 'Leather Vest', 'Healing Potion', 'Old Scroll'],
-               'rare': ['Steel Dagger', "Hunter's Bow", 'Mana Elixir'], 'epic': ['Wraith Blade'], 'legendary': []}),
+               'rare': ['Steel Dagger', "Hunter's Bow", 'Mana Elixir'],
+               'epic': ['Wraith Blade'], 'legendary': [], 'mythic': []}),
+    # ── Zone 2 — levels 8–19 ───────────────────────────────────────────────
     'crypt': dict(
         name='Sunken Crypt', req=8, power=(90, 170), xp=2.2, gold=2.0, loot=0.28, odds=(0.02, 0.10, 0.35),
         enemies=['Skeleton', 'Wraith', 'Bone Knight'],
@@ -71,7 +110,8 @@ ZONES = {
         table={'common': ['Healing Potion', 'Wooden Shield', 'Old Scroll'],
                'rare': ['Chainmail', 'Greater Healing Potion', 'Spectral Crystal'],
                'epic': ['Wraith Blade', 'Bone Reaver', 'Dragonscale Plate'],
-               'legendary': ['Ghostfire Staff', 'Crown of the Fallen King']}),
+               'legendary': ['Ghostfire Staff', 'Crown of the Fallen King'], 'mythic': []}),
+    # ── Zone 3 — levels 20–39 ──────────────────────────────────────────────
     'volcano': dict(
         name='Ashen Volcano', req=20, power=(210, 380), xp=4.5, gold=4.0, loot=0.35, odds=(0.05, 0.18, 0.40),
         enemies=['Fire Imp', 'Magma Golem', 'Bone Drake'],
@@ -79,28 +119,85 @@ ZONES = {
         table={'common': ['Healing Potion'],
                'rare': ['Greater Healing Potion', 'Chainmail', 'Mana Elixir'],
                'epic': ['Obsidian Armor', 'Dragonscale Plate', 'Bone Reaver'],
-               'legendary': ['Magma Greatsword', 'Phoenix Mantle', 'Ghostfire Staff']}),
+               'legendary': ['Magma Greatsword', 'Phoenix Mantle', 'Ghostfire Staff'],
+               'mythic': []}),
+    # ── Zone 4 — levels 40–59 ──────────────────────────────────────────────
+    'shadowrift': dict(
+        name='Shadow Rift', req=40, power=(500, 850), xp=8.0, gold=7.0, loot=0.40, odds=(0.08, 0.22, 0.42),
+        enemies=['Rift Stalker', 'Void Hound', 'Dusk Revenant', 'Shade Colossus'],
+        blurb='Light bends here. So do the rules.',
+        table={'common': ['Greater Healing Potion', 'Grand Mana Elixir'],
+               'rare': ['Spectral Crystal', 'Mana Elixir'],
+               'epic': ['Paladin Plate', 'Berserker Axe', 'Obsidian Armor'],
+               'legendary': ['Ghostfire Staff', 'Phoenix Mantle'],
+               'mythic': ['Voidbringer', 'Void Carapace']}),
+    # ── Zone 5 — levels 60–79 ──────────────────────────────────────────────
+    'deadlands': dict(
+        name='Ashen Deadlands', req=60, power=(1100, 1800), xp=13.0, gold=11.0, loot=0.45, odds=(0.10, 0.28, 0.44),
+        enemies=['Plague Wraith', 'Bone Titan', 'Cursed Colossus', 'Death Bringer'],
+        blurb='Nothing grows here. Nothing dies either.',
+        table={'common': ['Superior Healing Potion', 'Grand Mana Elixir'],
+               'rare': ['Void Shard', 'Spectral Crystal'],
+               'epic': ['Soulrend Scythe', 'Thornwhip of Ruin', 'Titan\'s Bulwark'],
+               'legendary': ['Magma Greatsword', 'Crown of the Fallen King'],
+               'mythic': ['Eclipse Blade', 'Celestial Aegis', 'Abyssal Lance', 'Shadowweave Mantle']}),
+    # ── Zone 6 — levels 80–99 ──────────────────────────────────────────────
+    'abyssal_gate': dict(
+        name='Abyssal Gate', req=80, power=(2200, 3500), xp=20.0, gold=17.0, loot=0.50, odds=(0.12, 0.32, 0.45),
+        enemies=['Abyss Warden', 'Soul Eater', 'Void Leviathan', 'Oblivion Knight'],
+        blurb='The gate is open. It has always been open.',
+        table={'common': ['Superior Healing Potion'],
+               'rare': ['Astral Rune', 'Void Shard'],
+               'epic': ['Eclipse Blade', 'Abyssal Lance', 'Celestial Aegis'],
+               'legendary': ['Ghostfire Staff', 'Phoenix Mantle'],
+               'mythic': ['Worldbreaker', 'Starfall Halberd', 'Ironveil of Eternity', 'Nullplate']}),
+    # ── Zone 7 — level 100+ ────────────────────────────────────────────────
+    'void_core': dict(
+        name='Void Core', req=100, power=(4500, 7000), xp=32.0, gold=28.0, loot=0.55, odds=(0.15, 0.38, 0.42),
+        enemies=['Void Harbinger', 'Eternal Revenant', 'The Unnamed', 'Oblivion Serpent'],
+        blurb='You should not be here. Keep going.',
+        table={'common': ['Superior Healing Potion'],
+               'rare': ['Astral Rune'],
+               'epic': ['Worldbreaker', 'Starfall Halberd', 'Nullplate'],
+               'legendary': ['Starfall Halberd', 'Ironveil of Eternity'],
+               'mythic': ["Eternity's Edge", 'Mantle of the Abyss']}),
 }
 
 RANKS = [('F', 0), ('E', 100), ('D', 300), ('C', 700), ('B', 1500), ('A', 3000), ('S', 6000)]
 RANK_DISCOUNT = [0, 3, 5, 8, 10, 12, 15]       # shop discount % by rank index
 
 GUILD_QUESTS = [
-    ('m_first_steps', 'First Steps',     'Win 5 hunts.',                         0, 'wins',          5,   80,   60,  0,  20),
-    ('m_potion_run',  'Potion Run',      'Heal yourself 3 times.',               0, 'heals',         3,   60,   40,  0,  15),
-    ('m_forest',      'Forest Patrol',   'Win 15 hunts in the Whispering Forest.', 0, 'zone_forest', 15,  120,  90,  0,  30),
-    ('m_tower_1',     'Into the Tower',  'Clear 3 Tower floors.',                0, 'tower',         3,   120,  100, 0,  30),
-    ('m_gear_up',     'Gear Up',         'Find 5 pieces of loot.',               1, 'loot',          5,   200,  150, 0,  40),
-    ('m_crypt',       'Crypt Raid',      'Win 15 hunts in the Sunken Crypt.',    1, 'zone_crypt',    15,  350,  250, 0,  60),
-    ('m_boss_hits',   'Boss Hunter',     'Strike the world boss 3 times.',       1, 'boss_hits',     3,   300,  200, 2,  50),
-    ('m_tower_10',    'Tower Climber',   'Clear 10 Tower floors.',               2, 'tower',         10,  600,  400, 5,  80),
-    ('m_veteran',     'Veteran Hunter',  'Win 100 hunts.',                       2, 'wins',          100, 700,  500, 0,  100),
-    ('m_volcano',     'Ashen Trial',     'Win 20 hunts in the Ashen Volcano.',   3, 'zone_volcano',  20,  1500, 900, 5,  150),
-    ('m_tower_25',    'Warden\'s Road',  'Clear 25 Tower floors.',               3, 'tower',         25,  2000, 1200, 10, 200),
-    ('m_slayer',      'Giant Slayer',    'Help defeat 3 world bosses.',          4, 'boss',          3,   3000, 2000, 15, 300),
-    ('m_hunter_500',  'Relentless',      'Win 500 hunts.',                       4, 'wins',          500, 3000, 2000, 10, 300),
-    ('m_tower_50',    'Tower Conqueror', 'Clear 50 Tower floors.',               5, 'tower',         50,  6000, 4000, 30, 600),
-    ('m_tower_100',   'Sovereign',       'Clear all 100 Tower floors.',          6, 'tower',         100, 20000, 10000, 100, 1000),
+    # rank 0 (F) ─────────────────────────────────────────────────────────────
+    ('m_first_steps', 'First Steps',       'Win 5 hunts.',                              0, 'wins',               5,    80,    60,   0,   20),
+    ('m_potion_run',  'Potion Run',        'Heal yourself 3 times.',                    0, 'heals',              3,    60,    40,   0,   15),
+    ('m_forest',      'Forest Patrol',     'Win 15 hunts in the Whispering Forest.',    0, 'zone_forest',        15,   120,   90,   0,   30),
+    ('m_tower_1',     'Into the Tower',    'Clear 3 Tower floors.',                     0, 'tower',              3,    120,   100,  0,   30),
+    # rank 1 (E) ─────────────────────────────────────────────────────────────
+    ('m_gear_up',     'Gear Up',           'Find 5 pieces of loot.',                    1, 'loot',               5,    200,   150,  0,   40),
+    ('m_crypt',       'Crypt Raid',        'Win 15 hunts in the Sunken Crypt.',         1, 'zone_crypt',         15,   350,   250,  0,   60),
+    ('m_boss_hits',   'Boss Hunter',       'Strike the world boss 3 times.',            1, 'boss_hits',          3,    300,   200,  2,   50),
+    ('m_tower_10',    'Tower Climber',     'Clear 10 Tower floors.',                    2, 'tower',              10,   600,   400,  5,   80),
+    # rank 2 (D) ─────────────────────────────────────────────────────────────
+    ('m_veteran',     'Veteran Hunter',    'Win 100 hunts.',                            2, 'wins',               100,  700,   500,  0,   100),
+    ('m_volcano',     'Ashen Trial',       'Win 20 hunts in the Ashen Volcano.',        3, 'zone_volcano',       20,   1500,  900,  5,   150),
+    ('m_tower_25',    "Warden's Road",     'Clear 25 Tower floors.',                    3, 'tower',              25,   2000,  1200, 10,  200),
+    # rank 3 (C) ─────────────────────────────────────────────────────────────
+    ('m_slayer',      'Giant Slayer',      'Help defeat 3 world bosses.',               4, 'boss',               3,    3000,  2000, 15,  300),
+    ('m_hunter_500',  'Relentless',        'Win 500 hunts.',                            4, 'wins',               500,  3000,  2000, 10,  300),
+    ('m_rift',        'Into the Rift',     'Win 20 hunts in the Shadow Rift.',          4, 'zone_shadowrift',    20,   4000,  2500, 15,  350),
+    ('m_tower_50',    'Tower Conqueror',   'Clear 50 Tower floors.',                    5, 'tower',              50,   6000,  4000, 30,  600),
+    # rank 4 (B) ─────────────────────────────────────────────────────────────
+    ('m_deadlands',   'March of the Dead', 'Win 25 hunts in the Ashen Deadlands.',     5, 'zone_deadlands',     25,   8000,  5000, 20,  500),
+    ('m_loot_25',     'Treasure Hunter',   'Find 25 pieces of loot.',                  5, 'loot',               25,   5000,  3500, 10,  400),
+    ('m_boss_10',     'Bossbreaker',       'Help defeat 10 world bosses.',             5, 'boss',               10,   10000, 6000, 30,  700),
+    # rank 5 (A) ─────────────────────────────────────────────────────────────
+    ('m_abyss',       'Breach the Gate',   'Win 20 hunts in the Abyssal Gate.',        6, 'zone_abyssal_gate',  20,   15000, 9000, 30,  800),
+    ('m_hunter_2000', 'Undying Legend',    'Win 2000 hunts.',                          6, 'wins',               2000, 15000, 9000, 25,  800),
+    ('m_tower_100',   'Sovereign',         'Clear all 100 Tower floors.',              6, 'tower',              100,  20000, 10000,100, 1000),
+    # rank 6 (S) ─────────────────────────────────────────────────────────────
+    ('m_void',        'Into the Void',     'Win 30 hunts in the Void Core.',           6, 'zone_void_core',     30,   40000, 20000,50,  1500),
+    ('m_hunter_5000', 'The Eternal',       'Win 5000 hunts.',                          6, 'wins',               5000, 50000, 25000,50,  2000),
+    ('m_boss_50',     'God Slayer',        'Help defeat 50 world bosses.',             6, 'boss',               50,   60000, 30000,100, 3000),
 ]
 
 DAILY_QUESTS = [
@@ -113,38 +210,83 @@ DAILY_QUESTS = [
 TOWER_TITLES = {10: 'Tower Challenger', 25: 'Tower Warden', 50: 'Tower Conqueror', 100: 'Tower Sovereign'}
 
 SHOP = [
-    ('s_heal',   'item',  'Healing Potion',         'gold', 25,   1,  'Restores 300 HP.'),
-    ('s_heal2',  'item',  'Greater Healing Potion', 'gold', 80,   10, 'Restores 800 HP.'),
-    ('s_mana',   'item',  'Mana Elixir',            'gold', 60,   1,  'Restores 250 MP.'),
-    ('s_iron',   'item',  'Iron Sword',             'gold', 350,  1,  '+14 attack.'),
-    ('s_knight', 'item',  "Knight's Longsword",     'gold', 900,  10, '+24 attack.'),
-    ('s_axe',    'item',  'Berserker Axe',          'gold', 2500, 18, '+40 attack.'),
-    ('s_armor',  'item',  'Knight Armor',           'gold', 480,  1,  '+14 defense.'),
-    ('s_pal',    'item',  'Paladin Plate',          'gold', 2200, 18, '+34 defense.'),
-    ('s_insight','item',  'Scroll of Insight',      'gems', 8,    1,  '+300 XP when read.'),
-    ('t_slime',  'title', 'Slime Slayer',           'gold', 500,  1,  'A title for the first of many.'),
-    ('t_hoard',  'title', 'Gold Hoarder',           'gold', 5000, 5,  'Shows everyone you can afford it.'),
-    ('t_night',  'title', 'Night Owl',              'gems', 10,   1,  'For those who hunt after dark.'),
-    ('t_baron',  'title', 'Gem Baron',              'gems', 25,   1,  'Rare, shiny, and a little smug.'),
+    # Consumables
+    ("s_heal",    "item",  "Healing Potion",          "gold", 25,     1,   "Restores 300 HP."),
+    ("s_heal2",   "item",  "Greater Healing Potion",  "gold", 80,     10,  "Restores 800 HP."),
+    ("s_heal3",   "item",  "Superior Healing Potion", "gold", 300,    40,  "Restores 2500 HP."),
+    ("s_mana",    "item",  "Mana Elixir",             "gold", 60,     1,   "Restores 250 MP."),
+    ("s_mana2",   "item",  "Grand Mana Elixir",       "gold", 250,    40,  "Restores 800 MP."),
+    # Tier 1 gear
+    ("s_iron",    "item",  "Iron Sword",              "gold", 350,    1,   "+14 attack."),
+    ("s_knight",  "item",  "Knight's Longsword",     "gold", 900,    10,  "+24 attack."),
+    ("s_armor",   "item",  "Knight Armor",            "gold", 480,    1,   "+14 defense."),
+    # Tier 2 gear
+    ("s_axe",     "item",  "Berserker Axe",           "gold", 2500,   18,  "+40 attack."),
+    ("s_pal",     "item",  "Paladin Plate",           "gold", 2200,   18,  "+34 defense."),
+    # Tier 3 gear
+    ("s_ghostfire","item", "Ghostfire Staff",         "gold", 6000,   40,  "+60 attack."),
+    ("s_phoenix",  "item", "Phoenix Mantle",          "gold", 9000,   40,  "+70 defense."),
+    # Tier 4 gear (gems)
+    ("s_void_w",  "item",  "Voidbringer",             "gems", 150,    60,  "+95 attack. Req level 40."),
+    ("s_void_a",  "item",  "Void Carapace",           "gems", 140,    60,  "+90 defense. Req level 40."),
+    # Tier 5 gear (gems)
+    ("s_eclipse", "item",  "Eclipse Blade",           "gems", 300,    80,  "+130 attack. Req level 60."),
+    ("s_celestial","item", "Celestial Aegis",         "gems", 280,    80,  "+125 defense. Req level 60."),
+    # XP scrolls
+    ("s_insight", "item",  "Scroll of Insight",       "gems", 8,      1,   "+300 XP when read."),
+    ("s_tome",    "item",  "Tome of Knowledge",       "gems", 30,     20,  "+1500 XP when read."),
+    ("s_elixir",  "item",  "Elixir of the Ancients",  "gems", 80,     60,  "+5000 XP when read."),
+    # Titles
+    ("t_slime",   "title", "Slime Slayer",            "gold", 500,    1,   "A title for the first of many."),
+    ("t_hoard",   "title", "Gold Hoarder",            "gold", 5000,   5,   "Shows everyone you can afford it."),
+    ("t_night",   "title", "Night Owl",               "gems", 10,     1,   "For those who hunt after dark."),
+    ("t_baron",   "title", "Gem Baron",               "gems", 25,     1,   "Rare, shiny, and a little smug."),
+    ("t_riftborn","title", "Riftborn",                "gems", 60,     40,  "You survived the Shadow Rift."),
+    ("t_void",    "title", "Void Walker",             "gems", 150,    80,  "You have stared into the Void Core."),
 ]
 
 ACHIEVEMENTS = [
-    ('first_blood',  'First Blood',        'Win your first hunt.',           'fa-khanda',        'common',    'Combat',      'battles_won',  1,    '25 Gold',   25),
-    ('hunter_10',    'Seasoned Hunter',    'Win 10 hunts.',                  'fa-crosshairs',    'common',    'Combat',      'battles_won',  10,   '100 Gold',  100),
-    ('hunter_50',    'Relentless',         'Win 50 hunts.',                  'fa-dragon',        'rare',      'Combat',      'battles_won',  50,   '500 Gold',  500),
-    ('hunter_200',   'Legend of the Wild', 'Win 200 hunts.',                 'fa-crown',         'epic',      'Combat',      'battles_won',  200,  '2000 Gold', 2000),
-    ('level_5',      'Rising Star',        'Reach level 5.',                 'fa-star',          'common',    'Progression', 'level',        5,    '50 Gold',   50),
-    ('level_10',     'Veteran',            'Reach level 10.',                'fa-medal',         'rare',      'Progression', 'level',        10,   '250 Gold',  250),
-    ('level_25',     'Champion',           'Reach level 25.',                'fa-trophy',        'epic',      'Progression', 'level',        25,   '1500 Gold', 1500),
-    ('rich_1000',    'Coin Collector',     'Hold 1,000 gold at once.',       'fa-coins',         'common',    'Economy',     'gold',         1000, '100 Gold',  100),
-    ('healer_5',     'Patched Up',         'Heal 5 times.',                  'fa-heart-pulse',   'common',    'Survival',    'heals',        5,    '50 Gold',   50),
-    ('daily_7',      'Dedicated',          'Claim 7 daily rewards.',         'fa-gift',          'rare',      'Progression', 'dailies',      7,    '300 Gold',  300),
-    ('collector_10', 'Hoarder',            'Own 10 different items.',        'fa-boxes-stacked', 'rare',      'Collection',  'unique_items', 10,   '200 Gold',  200),
-    ('legend_find',  'Legendary Find',     'Find a legendary item.',         'fa-gem',           'legendary', 'Collection',  'legendaries',  1,    '1000 Gold', 1000),
-    ('ghost_20',     'Ghost Whisperer',    'Catch 20 spirits in one round.', 'fa-ghost',         'epic',      'Minigames',   'best_spirit',  20,   '500 Gold',  500),
-    ('guild_member', 'Sworn Adventurer',   'Join the Adventurer Guild.',     'fa-id-badge',      'common',    'Guild',       'adv_joined',   1,    '50 Gold',   50),
-    ('boss_1',       'Giant Slayer',       'Help defeat a world boss.',      'fa-skull',         'epic',      'Combat',      'boss_kills',   1,    '500 Gold',  500),
-    ('tower_10',     'Tower Climber',      'Clear floor 10 of the Tower.',   'fa-chess-rook',    'rare',      'Tower',       'tower_floor',  10,   '300 Gold',  300),
+    # Combat ──────────────────────────────────────────────────────────────────
+    ('first_blood',   'First Blood',          'Win your first hunt.',              'fa-khanda',        'common',    'Combat',      'battles_won',  1,     '25 Gold',     25),
+    ('hunter_10',     'Seasoned Hunter',      'Win 10 hunts.',                     'fa-crosshairs',    'common',    'Combat',      'battles_won',  10,    '100 Gold',    100),
+    ('hunter_50',     'Relentless',           'Win 50 hunts.',                     'fa-dragon',        'rare',      'Combat',      'battles_won',  50,    '500 Gold',    500),
+    ('hunter_200',    'Legend of the Wild',   'Win 200 hunts.',                    'fa-crown',         'epic',      'Combat',      'battles_won',  200,   '2000 Gold',   2000),
+    ('hunter_1000',   'Eternal Warrior',      'Win 1,000 hunts.',                  'fa-fire',          'legendary', 'Combat',      'battles_won',  1000,  '10000 Gold',  10000),
+    ('hunter_5000',   'The Undying',          'Win 5,000 hunts.',                  'fa-infinity',      'mythic',    'Combat',      'battles_won',  5000,  '50000 Gold',  50000),
+    # Progression ─────────────────────────────────────────────────────────────
+    ('level_5',       'Rising Star',          'Reach level 5.',                    'fa-star',          'common',    'Progression', 'level',        5,     '50 Gold',     50),
+    ('level_10',      'Veteran',              'Reach level 10.',                   'fa-medal',         'rare',      'Progression', 'level',        10,    '250 Gold',    250),
+    ('level_25',      'Champion',             'Reach level 25.',                   'fa-trophy',        'epic',      'Progression', 'level',        25,    '1500 Gold',   1500),
+    ('level_40',      'Rift Walker',          'Reach level 40.',                   'fa-bolt',          'epic',      'Progression', 'level',        40,    '5000 Gold',   5000),
+    ('level_60',      'Deadlands Survivor',   'Reach level 60.',                   'fa-skull-crossbones','legendary','Progression','level',        60,    '15000 Gold',  15000),
+    ('level_80',      'Gate Breaker',         'Reach level 80.',                   'fa-door-open',     'legendary', 'Progression', 'level',        80,    '40000 Gold',  40000),
+    ('level_100',     'Void-Touched',         'Reach level 100.',                  'fa-meteor',        'mythic',    'Progression', 'level',        100,   '100000 Gold', 100000),
+    # Economy ─────────────────────────────────────────────────────────────────
+    ('rich_1000',     'Coin Collector',       'Hold 1,000 gold at once.',          'fa-coins',         'common',    'Economy',     'gold',         1000,  '100 Gold',    100),
+    ('rich_50000',    'Gold Baron',           'Hold 50,000 gold at once.',         'fa-sack-dollar',   'rare',      'Economy',     'gold',         50000, '2000 Gold',   2000),
+    ('rich_500000',   'Vault Lord',           'Hold 500,000 gold at once.',        'fa-landmark',      'epic',      'Economy',     'gold',         500000,'10000 Gold',  10000),
+    # Survival ────────────────────────────────────────────────────────────────
+    ('healer_5',      'Patched Up',           'Heal 5 times.',                     'fa-heart-pulse',   'common',    'Survival',    'heals',        5,     '50 Gold',     50),
+    ('healer_50',     'Mending Touch',        'Heal 50 times.',                    'fa-kit-medical',   'rare',      'Survival',    'heals',        50,    '500 Gold',    500),
+    # Daily ───────────────────────────────────────────────────────────────────
+    ('daily_7',       'Dedicated',            'Claim 7 daily rewards.',            'fa-gift',          'rare',      'Progression', 'dailies',      7,     '300 Gold',    300),
+    ('daily_30',      'Loyal',                'Claim 30 daily rewards.',           'fa-calendar-check','epic',      'Progression', 'dailies',      30,    '2000 Gold',   2000),
+    # Collection ──────────────────────────────────────────────────────────────
+    ('collector_10',  'Hoarder',              'Own 10 different items.',           'fa-boxes-stacked', 'rare',      'Collection',  'unique_items', 10,    '200 Gold',    200),
+    ('legend_find',   'Legendary Find',       'Find a legendary item.',            'fa-gem',           'legendary', 'Collection',  'legendaries',  1,     '1000 Gold',   1000),
+    ('mythic_find',   'Touched by the Void',  'Find a mythic item.',               'fa-diamond',       'mythic',    'Collection',  'mythics',      1,     '10000 Gold',  10000),
+    # Minigames ───────────────────────────────────────────────────────────────
+    ('ghost_20',      'Ghost Whisperer',      'Catch 20 spirits in one round.',    'fa-ghost',         'epic',      'Minigames',   'best_spirit',  20,    '500 Gold',    500),
+    # Guild ───────────────────────────────────────────────────────────────────
+    ('guild_member',  'Sworn Adventurer',     'Join the Adventurer Guild.',        'fa-id-badge',      'common',    'Guild',       'adv_joined',   1,     '50 Gold',     50),
+    # Boss ────────────────────────────────────────────────────────────────────
+    ('boss_1',        'Giant Slayer',         'Help defeat a world boss.',         'fa-skull',         'epic',      'Combat',      'boss_kills',   1,     '500 Gold',    500),
+    ('boss_10',       'Warlord',              'Help defeat 10 world bosses.',      'fa-dragon',        'legendary', 'Combat',      'boss_kills',   10,    '5000 Gold',   5000),
+    ('boss_50',       'God Slayer',           'Help defeat 50 world bosses.',      'fa-fire-flame-curved','mythic', 'Combat',      'boss_kills',   50,    '50000 Gold',  50000),
+    # Tower ───────────────────────────────────────────────────────────────────
+    ('tower_10',      'Tower Climber',        'Clear floor 10 of the Tower.',      'fa-chess-rook',    'rare',      'Tower',       'tower_floor',  10,    '300 Gold',    300),
+    ('tower_50',      'Tower Conqueror',      'Clear floor 50 of the Tower.',      'fa-castle',        'epic',      'Tower',       'tower_floor',  50,    '5000 Gold',   5000),
+    ('tower_100',     'Tower Sovereign',      'Clear all 100 floors of the Tower.','fa-crown',         'legendary', 'Tower',       'tower_floor',  100,   '20000 Gold',  20000),
 ]
 
 BOSS_NAMES = ['Bone Colossus', 'Crimson Wyrm', 'Morvath the Lich King', 'The Hollow Titan',
@@ -209,7 +351,7 @@ def _default_state(name='Adventurer'):
         'name': name,
         'hp': 1000, 'max_hp': 1000, 'mp': 500, 'max_mp': 500,
         'battles_lost': 0, 'boss_kills': 0, 'pvp_wins': 0, 'pvp_losses': 0,
-        'heals': 0, 'dailies': 0, 'best_spirit': 0, 'legendaries': 0,
+        'heals': 0, 'dailies': 0, 'best_spirit': 0, 'legendaries': 0, 'mythics': 0,
         'daily_at': None, 'streak': 0, 'spirit_started': None,
         'zone': 'forest', 'zone_wins': {}, 'loot_found': 0, 'boss_attacks': 0,
         'titles': [], 'equipped_title': None,
@@ -375,12 +517,26 @@ def _add_item(st, name, qty=1):
                                 'equipped': False, 'description': m.get('desc', '')})
     if m['rarity'] == 'legendary':
         st['legendaries'] += qty
+    if m['rarity'] == 'mythic':
+        st.setdefault('mythics', 0)
+        st['mythics'] += qty
 
 
 def _roll_loot(zone):
     leg, epic, rare = zone['odds']
+    # Mythic is half as likely as legendary in zones that have them.
+    myth = leg * 0.5
     r = random.random()
-    rarity = 'legendary' if r < leg else 'epic' if r < leg + epic else 'rare' if r < leg + epic + rare else 'common'
+    if r < myth and zone['table'].get('mythic'):
+        rarity = 'mythic'
+    elif r < leg and zone['table'].get('legendary'):
+        rarity = 'legendary'
+    elif r < leg + epic:
+        rarity = 'epic'
+    elif r < leg + epic + rare:
+        rarity = 'rare'
+    else:
+        rarity = 'common'
     pool = zone['table'].get(rarity) or zone['table']['common']
     return random.choice(pool)
 
@@ -392,9 +548,12 @@ def _gain(st, events, xp=0, gold=0, gems=0):
     while st['xp'] >= st['xp_needed'] and st['level'] < MAX_LEVEL:
         st['xp'] -= st['xp_needed']
         st['level'] += 1
-        st['xp_needed'] = int(st['xp_needed'] * 1.25)
-        st['max_hp'] += 50
-        st['max_mp'] += 20
+        # 1.40x curve: level 1→2 costs 100 XP, level 9→10 costs ~1,600 XP,
+        # level 19→20 costs ~29,000 XP, level 49→50 costs ~3.5M XP.
+        # This makes each zone feel like a proper chapter rather than a pit stop.
+        st['xp_needed'] = int(st['xp_needed'] * 1.40)
+        st['max_hp'] += 60
+        st['max_mp'] += 25
         st['hp'], st['mp'] = st['max_hp'], st['max_mp']
         events.append(('level_up', f"Level up! You reached level {st['level']}."))
 
@@ -722,10 +881,16 @@ def register_game_routes(app, db_factory):
             enemy = zone['enemies'][idx]
             chance = _clamp(0.45 + 0.30 * (power / enemy_power), 0.2, 0.95)
             dmg_scale = (1 + enemy_power / 40) * _clamp(enemy_power / power, 0.5, 2.0)
-            penalty = max(0.25, 1 - 0.04 * max(0, st['level'] - zone['req'] - 10))
+            # Penalty kicks in 5 levels above zone req and drops quickly.
+            # At +5 over req: 0.80x. At +15: 0.40x. At +30: floors at 0.08x.
+            # This strongly nudges players into the next zone rather than farming.
+            penalty = max(0.08, 1 - 0.06 * max(0, st['level'] - zone['req'] - 5))
             events = []
             if random.random() < chance:
-                xp = int((random.randint(15, 35) + st['level'] * 2) * zone['xp'] * penalty)
+                # Base XP reduced: zone multiplier now matters a lot more.
+                # Overlevelling penalty is sharper — kicks in 5 levels above req
+                # and floors at 0.08 so stale zones are barely worth it.
+                xp = int((random.randint(10, 22) + st['level']) * zone['xp'] * penalty)
                 gold = int(random.randint(10, 40) * zone['gold'])
                 st['hp'] = max(1, st['hp'] - int(random.randint(5, 15) * dmg_scale))
                 st['battles_won'] += 1
