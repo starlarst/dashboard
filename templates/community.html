@@ -219,17 +219,60 @@
         .cm-hrow > span:last-child { flex: none; color: var(--dash-text-dim); }
         .cm-rep { display: grid; gap: 6px; padding: 10px; border: 1px solid var(--dash-border); border-radius: 10px; font-size: .84rem; overflow-wrap: anywhere; }
         .cm-rep .row { flex-wrap: wrap; justify-content: flex-start; }
+        .cm-head-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .cm-head-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
         @media (max-width: 900px) {
-            .cm-shell { grid-template-columns: minmax(0, 1fr); height: calc(100vh - 170px); }
+            .page-header { margin-bottom: .9rem; gap: .5rem; }
+            .page-header .user-greeting p { display: none; }   /* the long blurb ate a third of the screen */
+            .cm-shell {
+                grid-template-columns: minmax(0, 1fr); gap: 0;
+                height: calc(100vh - 170px);
+                height: calc(100dvh - var(--topbar-h) - env(safe-area-inset-top, 0px) - 108px);
+                min-height: 380px;
+            }
             .cm-side { display: none; }
             .cm-shell.show-side .cm-side { display: flex; }
             .cm-shell.show-side .cm-chat { display: none; }
-            .cm-iconbtn.cm-mobile-only { display: inline-block; }
+            .cm-iconbtn.cm-mobile-only { display: inline-flex; align-items: center; justify-content: center; height: 38px; }
             .cm-emojis { grid-template-columns: repeat(7, 1fr); }
+
+            /* header: title gets the room, buttons wrap instead of crushing it */
+            .cm-head { flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
+            #headMain { flex: 1 1 150px; min-width: 0; }
+            .cm-head-actions { gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+            .cm-head-actions .cm-iconbtn { height: 38px; min-width: 38px; }
+
+            .cm-msgs { padding: 10px 8px; }
+            .cm-msg { grid-template-columns: 32px minmax(0, 1fr); gap: 8px; padding: 3px 4px; }
+            .cm-msg-av img { width: 32px; height: 32px; }
+            .cm-msg-body img.cm-media, .cm-msg-body video.cm-media { max-width: 100%; }
+            .cm-newpill { bottom: 150px; }
+
+            /* composer: message box on its own full-width row, tools underneath */
+            .cm-composer { flex-wrap: wrap; gap: 6px; padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px)); }
+            .cm-composer textarea { order: -1; flex: 1 1 100%; min-height: 44px; }
+            .cm-composer .cm-iconbtn { width: 40px; height: 40px; }
+            .cm-send { margin-left: auto; }
+            .cm-count { right: 14px; top: -16px; }
+            .cm-pop { left: 8px; right: 8px; width: auto; bottom: calc(100% + 6px); max-height: min(420px, 58dvh); }
+
+            .cm-row { padding: 10px 8px; }
+            .cm-gl { width: 40px; height: 40px; }
+            .cm-toast { left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); max-width: none; }
+        }
+        @media (max-width: 600px) {
+            .cm-modalbg { align-items: flex-end; padding: 0; }
+            .cm-modal { width: 100% !important; max-height: 88dvh; border-radius: 18px 18px 0 0; padding: 18px 18px calc(18px + env(safe-area-inset-bottom, 0px)); }
         }
         @media (hover: none) {
-            .cm-acts { display: flex; position: static; box-shadow: none; border: 0; background: transparent; padding: 2px 0 0; justify-content: flex-start; flex-wrap: wrap; grid-column: 2; }
-            .cm-rpick { position: static; grid-column: 2; }
+            /* message actions appear when you tap a message, not on every message at once */
+            .cm-acts { display: none; position: static; box-shadow: none; border: 0; background: transparent; padding: 4px 0 0; justify-content: flex-start; flex-wrap: wrap; grid-column: 2; }
+            .cm-msg.tapped, .cm-msg.picking { background: var(--dash-glass-soft); }
+            .cm-msg.tapped .cm-acts, .cm-msg.picking .cm-acts { display: flex; }
+            .cm-acts button { padding: 7px 11px; font-size: .8rem; background: var(--dash-glass); }
+            .cm-rpick { position: static; grid-column: 2; flex-wrap: wrap; }
+            .cm-rpick button { padding: 6px 8px; }
         }
         @media (prefers-reduced-motion: reduce) {
             * { scroll-behavior: auto !important; }
@@ -347,7 +390,7 @@
         let busyMsgs = false, busyList = false, query = '';
         let lastFocusEl = null, hasMore = false, otherSig = '', soundOn = false;
         let reactionSet = ['👍', '❤️', '😂', '😮', '😢', '🔥', '🎉', '⚔️'];
-        let replyTo = null, editingId = null, editDraft = '', pickerFor = null, lastTypingSent = 0;
+        let replyTo = null, editingId = null, editDraft = '', pickerFor = null, lastTypingSent = 0, tappedId = null;
         let customEmojis = [], emojiMap = {}, emojiSig = null, emojiLimit = 20, emojiMaxKb = 256;
         let pendingUpload = null, uploadXhr = null, uploadBlobUrl = null, deferredPaint = false;
 
@@ -857,7 +900,7 @@
             const picker = pickerFor === m.id ? `<div class="cm-rpick open" role="menu" aria-label="Pick a reaction">${reactionSet.map(e =>
                 `<button type="button" data-act="react" data-id="${m.id}" data-emoji="${esc(e)}" aria-label="React ${esc(e)}">${esc(e)}</button>`).join('')}</div>` : '';
             return `
-            <div class="cm-msg ${cont ? 'cont' : 'first'} ${m.mine ? 'mine' : ''}${pickerFor === m.id ? ' picking' : ''}" data-id="${m.id}">
+            <div class="cm-msg ${cont ? 'cont' : 'first'} ${m.mine ? 'mine' : ''}${pickerFor === m.id ? ' picking' : ''}${tappedId === m.id ? ' tapped' : ''}" data-id="${m.id}">
                 <div class="cm-msg-av"><button type="button" class="cm-avbtn" data-act="profile" data-id="${esc(m.sender)}" aria-label="View ${esc(m.name)}'s profile"><img src="${esc(avatarFor(m.name, m.avatar))}" alt="" loading="lazy"></button></div>
                 <div>
                     ${cont ? '' : `<div class="cm-msg-meta"><span class="cm-msg-name">${esc(m.name)}</span><span class="cm-msg-time">${esc(timeOf(m.ts))}</span>${m.pinned ? '<i class="fa-solid fa-thumbtack cm-pin-ic" title="Pinned" aria-label="Pinned"></i>' : ''}</div>`}
@@ -904,10 +947,20 @@
             const lb = e.target.closest('a.cm-lb');
             if (lb) { e.preventDefault(); openLightbox(lb.href); return; }
             const b = e.target.closest('[data-act]');
-            if (!b) return;
+            if (!b) {
+                // touch screens: tap a message to show its actions, tap again to hide them
+                if (window.matchMedia('(hover: none)').matches && !e.target.closest('a, video, button, textarea, .cm-gift, .cm-editbox')) {
+                    const row = e.target.closest('.cm-msg');
+                    const id = row ? Number(row.dataset.id) : null;
+                    const next = (id && tappedId !== id) ? id : null;
+                    if (next !== tappedId) { tappedId = next; pickerFor = null; paint(false, true, true); }
+                }
+                return;
+            }
             e.stopPropagation();
             closePopovers();
             const act = b.dataset.act;
+            if (act !== 'picker' && act !== 'profile' && act !== 'jump') tappedId = null;
             if (act === 'profile') { openProfile(b.dataset.id); return; }
             const id = Number(b.dataset.id);
             if (act === 'picker') { pickerFor = pickerFor === id ? null : id; paint(false, true, true); }
@@ -1003,7 +1056,7 @@
 
         async function openChannel(ch) {
             channel = ch; lastId = 0; lastReadId = 0; rendered = []; otherInfo = null; hasMore = false; otherSig = '';
-            replyTo = null; editingId = null; editDraft = ''; pickerFor = null;
+            replyTo = null; editingId = null; editDraft = ''; pickerFor = null; tappedId = null;
             clearUpload();
             renderReply(); renderTyping([]);
             $('shell').classList.remove('show-side');
