@@ -1839,7 +1839,7 @@ async def api_profile(request: Request):
             ('level', 'gold', 'gems', 'special_coins', 'xp', 'xp_needed', 'char_class')}}
 
 def run_dashboard():
-    host = "127.0.0.1"
+    host = "0.0.0.0"
     port = int(os.environ.get("PORT", 25507))
 
     try:
