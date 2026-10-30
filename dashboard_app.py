@@ -27,6 +27,7 @@ log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(name)s — %(message)s")
 
 
+
 EMAILJS_SERVICE_ID  = os.getenv("EMAILJS_SERVICE_ID",  "service_miabeqg")
 EMAILJS_TEMPLATE_ID = os.getenv("EMAILJS_TEMPLATE_ID", "template_tntozpq")
 EMAILJS_PUBLIC_KEY  = os.getenv("EMAILJS_PUBLIC_KEY",  "eMQUadu5q-_pONmwc")
@@ -56,7 +57,7 @@ def send_reset_email(email: str, otp: str):
         "service_id": EMAILJS_SERVICE_ID,
         "template_id": EMAILJS_TEMPLATE_ID,
         "user_id": EMAILJS_PUBLIC_KEY,
-        "accessToken": EMAILJS_PRIVATE_KEY,   # must be the PRIVATE key, not the public key
+        "accessToken": EMAILJS_PRIVATE_KEY,
         "template_params": {
             "to_email": email,
             "otp_code": otp,
@@ -69,7 +70,6 @@ def send_reset_email(email: str, otp: str):
         data=json.dumps(payload).encode("utf-8"),
         headers={
             "Content-Type": "application/json",
-            # The default Python-urllib User-Agent is often rejected.
             "User-Agent": "Mozilla/5.0 (compatible; RPGGhostDashboard/1.0)",
             "Origin": "http://localhost",
         },
@@ -111,12 +111,16 @@ if not RECAPTCHA_SECRET:
     log.warning("[reCAPTCHA] RECAPTCHA_SECRET not set — reCAPTCHA verification is disabled.")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, 'veyra.db')
+
+# ── FIX: Use a persistent data directory so the DB survives Render restarts.
+# On Render, mount a Disk at /data and set DATA_DIR=/data in env vars.
+# Locally it falls back to BASE_DIR so nothing changes for dev.
+DATA_DIR = os.getenv('DATA_DIR', BASE_DIR)
+os.makedirs(DATA_DIR, exist_ok=True)
+DB_PATH = os.path.join(DATA_DIR, 'veyra.db')
+log.info(f"[DB] Using database at: {DB_PATH}")
 
 # ── Standalone stats store ─────────────────────────────────────────────────────
-# The dashboard owns its player stats (table `player_stats`, keyed by the
-# account id used in the session: auth_id for email accounts, Discord id for
-# Discord logins). Nothing here talks to the Discord bot.
 DEFAULT_STATS = {
     'level': 1, 'gold': 100, 'gems': 10, 'special_coins': 0,
     'xp': 0, 'xp_needed': 100, 'char_class': 'Adventurer',
@@ -129,7 +133,6 @@ EDITABLE_STAT_FIELDS = {
 }
 
 def _stats_key(auth_type, uid):
-    # Separate namespaces so a Discord id can never collide with an auth_id.
     return f"{auth_type}:{uid}"
 
 def get_stats(auth_type, uid):
@@ -187,7 +190,7 @@ def _apply_live_stats(session_user):
     session_user['guild'] = stats.get('guild', '—')
     return session_user
 
-# ── In-memory storage ──────────────────────────────────────────────────
+# ── In-memory storage (ephemeral by design — rate limits, bans, sessions) ─────
 _link_tokens = {}
 _rate_limits = {}
 _session_log = {}
@@ -196,14 +199,71 @@ _ip_banned = {}
 _global_req_count = {'n': 0}
 _req_id_counter = 0
 
+# ── FIX: Persist password reset tokens in the DB so they survive restarts ─────
+# (In-memory _reset_tokens is kept as a fast cache; DB is the source of truth)
+_reset_tokens = {}
+
+def _store_reset_token(email: str, otp: str, expires_at: datetime):
+    """Persist a reset token to the DB."""
+    conn = _db()
+    try:
+        conn.execute(
+            "INSERT INTO password_reset_tokens (email, otp, expires_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(email) DO UPDATE SET otp=excluded.otp, expires_at=excluded.expires_at",
+            (email, otp, expires_at.isoformat())
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+def _load_reset_token(email: str):
+    """Load a reset token from the DB."""
+    conn = _db()
+    try:
+        row = conn.execute(
+            "SELECT otp, expires_at FROM password_reset_tokens WHERE email=?", (email,)
+        ).fetchone()
+        if row:
+            return {
+                'otp': row['otp'],
+                'expires_at': datetime.fromisoformat(row['expires_at'])
+            }
+        return None
+    finally:
+        conn.close()
+
+def _delete_reset_token(email: str):
+    """Remove a used/expired reset token from the DB."""
+    conn = _db()
+    try:
+        conn.execute("DELETE FROM password_reset_tokens WHERE email=?", (email,))
+        conn.commit()
+    finally:
+        conn.close()
+
+def _purge_reset_tokens():
+    """Remove expired password-reset tokens from DB and memory cache."""
+    now = datetime.now(timezone.utc)
+    # Purge memory cache
+    expired_mem = [k for k, v in _reset_tokens.items() if now > v['expires_at']]
+    for k in expired_mem:
+        del _reset_tokens[k]
+    # Purge DB
+    conn = _db()
+    try:
+        conn.execute("DELETE FROM password_reset_tokens WHERE expires_at < ?", (now.isoformat(),))
+        conn.commit()
+    finally:
+        conn.close()
+
 # ── DDoS Protection Settings ──────────────────────────────────────────────────
 DDOS_BURST_LIMIT = 40
 DDOS_GLOBAL_CAP = 500
 DDOS_BAN_DURATION = 3600
 DDOS_MAX_BODY_BYTES = 65536
 DDOS_BODY_LIMITS = {
-    '/api/community/upload': 55 * 1024 * 1024,  
-    '/api/community/emojis': 400 * 1024,        
+    '/api/community/upload': 55 * 1024 * 1024,
+    '/api/community/emojis': 400 * 1024,
 }
 DDOS_BLOCKED_UA_FRAGS = [
     'sqlmap', 'nikto', 'nmap', 'masscan', 'zgrab',
@@ -226,7 +286,6 @@ def init_db():
 
     cur = conn.cursor()
 
-    # User game data
     cur.execute("""CREATE TABLE IF NOT EXISTS users (
         user_id INTEGER PRIMARY KEY,
         gold INTEGER DEFAULT 0,
@@ -242,35 +301,30 @@ def init_db():
         unlocked_weapons TEXT DEFAULT '[]'
     )""")
 
-    # Player data (JSON blob)
     cur.execute("""CREATE TABLE IF NOT EXISTS players (
         user_id INTEGER PRIMARY KEY,
         data TEXT,
         last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )""")
 
-    # Guild data
     cur.execute("""CREATE TABLE IF NOT EXISTS guilds (
         name TEXT PRIMARY KEY,
         data TEXT,
         last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )""")
 
-    # World state
     cur.execute("""CREATE TABLE IF NOT EXISTS world_state (
         id INTEGER PRIMARY KEY CHECK (id = 1),
         data TEXT,
         last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )""")
 
-    # Account links
     cur.execute("""CREATE TABLE IF NOT EXISTS account_links (
         discord_id TEXT PRIMARY KEY,
         linked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         last_login TIMESTAMP
     )""")
 
-    # Activity log
     cur.execute("""CREATE TABLE IF NOT EXISTS activity_log (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id TEXT,
@@ -279,7 +333,6 @@ def init_db():
         ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )""")
 
-    # Email/password authentication with admin column
     cur.execute("""CREATE TABLE IF NOT EXISTS auth_users (
         auth_id INTEGER PRIMARY KEY AUTOINCREMENT,
         email TEXT UNIQUE NOT NULL,
@@ -292,9 +345,7 @@ def init_db():
         last_login TIMESTAMP
     )""")
 
-    # Migrate older auth_users tables that predate newer columns.
-    # CREATE TABLE IF NOT EXISTS does not alter an existing table, so if this
-    # table was created before a column existed, it has to be added here.
+    # Migrate older auth_users tables
     existing_cols = {row[1] for row in cur.execute("PRAGMA table_info(auth_users)").fetchall()}
     required_cols = {
         'nickname': "TEXT",
@@ -309,14 +360,12 @@ def init_db():
             cur.execute(f"ALTER TABLE auth_users ADD COLUMN {col_name} {col_type}")
             log.info(f"[DB Migration] Added missing column '{col_name}' to auth_users")
 
-    # Standalone per-account game stats (owned by the dashboard)
     cur.execute("""CREATE TABLE IF NOT EXISTS player_stats (
         account_key TEXT PRIMARY KEY,
         data TEXT NOT NULL,
         last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )""")
 
-    # Announcements (replaces bot broadcast)
     cur.execute("""CREATE TABLE IF NOT EXISTS announcements (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         message TEXT NOT NULL,
@@ -324,7 +373,6 @@ def init_db():
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )""")
 
-    # Auctions
     cur.execute("""CREATE TABLE IF NOT EXISTS auctions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         item_name TEXT NOT NULL,
@@ -334,6 +382,24 @@ def init_db():
         status TEXT NOT NULL DEFAULT 'active',
         end_time TIMESTAMP NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""")
+
+    # ── FIX: Persist password reset tokens so they survive restarts ────────────
+    cur.execute("""CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        email TEXT PRIMARY KEY,
+        otp TEXT NOT NULL,
+        expires_at TIMESTAMP NOT NULL
+    )""")
+
+    # ── FIX: Persist guild memberships explicitly ──────────────────────────────
+    # Guild membership is the source of truth here; player_stats.guild is
+    # kept in sync on every join/leave via save_stats so load_game_data()
+    # always rebuilds correctly after a restart.
+    cur.execute("""CREATE TABLE IF NOT EXISTS guild_members (
+        account_key TEXT NOT NULL,
+        guild_name TEXT NOT NULL,
+        joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (account_key)
     )""")
 
     conn.commit()
@@ -346,7 +412,10 @@ def _get_or_create_secret_key():
     if env_secret:
         return env_secret
 
-    secret_file = os.path.join(BASE_DIR, '.flask_secret_key')
+    # ── FIX: Store secret key in DATA_DIR so it persists across restarts.
+    # If the key changes every restart, all existing sessions are invalidated
+    # and logged-out users have to sign in again unnecessarily.
+    secret_file = os.path.join(DATA_DIR, '.flask_secret_key')
     try:
         if os.path.exists(secret_file):
             with open(secret_file, 'r') as f:
@@ -374,7 +443,6 @@ _lock = threading.Lock()
 
 # ── Password Helpers ──────────────────────────────────────────────────────────
 def _hash_password(password, salt=None):
-    """PBKDF2-HMAC-SHA256 password hashing."""
     if salt is None:
         salt = secrets.token_hex(16)
     iterations = 260_000
@@ -382,7 +450,6 @@ def _hash_password(password, salt=None):
     return f"pbkdf2${iterations}${salt}${derived.hex()}"
 
 def _verify_password(password, stored):
-    """Verify a password against a stored hash."""
     try:
         if stored.startswith('pbkdf2$'):
             _, iterations, salt, hex_digest = stored.split('$', 3)
@@ -399,14 +466,12 @@ def _verify_password(password, stored):
         return False
 
 def _db():
-    """Get a database connection."""
     c = sqlite3.connect(DB_PATH, check_same_thread=False)
     c.execute("PRAGMA journal_mode=WAL;")
     c.row_factory = sqlite3.Row
     return c
 
 def _log_activity(user_id, action, detail=""):
-    """Log user activity."""
     try:
         conn = _db()
         conn.execute(
@@ -419,15 +484,6 @@ def _log_activity(user_id, action, detail=""):
         log.warning(f"[activity_log] write failed: {e}")
 
 def _get_real_ip(request: Request):
-    """Get the real client IP.
-
-    SECURITY: X-Forwarded-For is attacker-controlled input — a direct client
-    can set it to anything. Behind a single trusted reverse proxy (Render),
-    the proxy appends the actual client IP as the *last* hop, so we read the
-    last entry (what our proxy observed) rather than the first (whatever the
-    client claimed), which a client cannot forge away. If the header is
-    missing entirely we fall back to the raw socket peer address.
-    """
     xff = request.headers.get('X-Forwarded-For', '')
     if xff:
         parts = [p.strip() for p in xff.split(',') if p.strip()]
@@ -436,7 +492,6 @@ def _get_real_ip(request: Request):
     return request.client.host if request.client else '0.0.0.0'
 
 def _is_banned(ip):
-    """Check if an IP is currently banned."""
     expires = _ip_banned.get(ip)
     if expires is None:
         return False
@@ -446,14 +501,10 @@ def _is_banned(ip):
     return True
 
 def _ban_ip(ip, reason='', duration=DDOS_BAN_DURATION):
-    """Ban an IP address."""
     _ip_banned[ip] = time.time() + duration
     log.warning(f"[DDoS] BANNED {ip} for {duration}s — {reason}")
 
 def _strict_rate_limit(ip, max_calls=3, window=60, scope='default'):
-    """Strict rate limiter for sensitive endpoints.
-    `scope` keeps each endpoint's counter separate, so logins/signups
-    don't use up the password-reset allowance (and vice versa)."""
     now = time.time()
     key = f'strict:{scope}:{ip}'
     hits = [t for t in _rate_limits.get(key, []) if now - t < window]
@@ -466,11 +517,9 @@ def _strict_rate_limit(ip, max_calls=3, window=60, scope='default'):
     return False
 
 def _json(content: dict, status_code: int = 200):
-    """Helper mirroring Flask's `jsonify(...), status_code` pattern."""
     return JSONResponse(content=content, status_code=status_code)
 
 async def _get_json(request: Request) -> dict:
-    """Helper mirroring Flask's `request.get_json(silent=True) or {}`."""
     try:
         return await request.json()
     except Exception:
@@ -486,8 +535,6 @@ ADMIN_PASSWORD = _ADMIN_PASSWORD_ENV
 ADMIN_PASSWORD_HASH = _hash_password(ADMIN_PASSWORD) if ADMIN_EMAIL else None
 
 def ensure_admin_user():
-    """Create the admin user if it doesn't exist yet. No-op if ADMIN_EMAIL
-    is not configured, since there is no hardcoded fallback account anymore."""
     if not ADMIN_EMAIL:
         log.warning("[Admin] ADMIN_EMAIL not set — skipping admin account bootstrap.")
         return
@@ -541,11 +588,52 @@ def load_game_data():
             d.setdefault('name', row['nickname'] or row['account_key'])
             d['avatar'] = row['avatar']
             players[row['account_key']] = d
+
+        # ── FIX: Rebuild guild membership from guild_members table, not just
+        # from the player stats blob. This ensures guilds survive restarts even
+        # if a guild route forgot to call save_stats with the updated guild field.
         guilds = {}
-        for pd in players.values():
+        for gm_row in conn.execute(
+            "SELECT gm.account_key, gm.guild_name, ps.data "
+            "FROM guild_members gm "
+            "LEFT JOIN player_stats ps ON gm.account_key = ps.account_key"
+        ).fetchall():
+            guild_name = gm_row['guild_name']
+            if not guild_name or guild_name == '—':
+                continue
+            try:
+                pd = json.loads(gm_row['data']) if gm_row['data'] else {}
+            except Exception:
+                pd = {}
+            member_name = pd.get('name', gm_row['account_key'])
+            guilds.setdefault(guild_name, {'members': []})['members'].append(member_name)
+
+            # Keep player_stats in sync — if the guild field drifted, fix it
+            if pd.get('guild') != guild_name:
+                atype, uid = _split_account(gm_row['account_key'])
+                save_stats(atype, uid, {'guild': guild_name})
+                if gm_row['account_key'] in players:
+                    players[gm_row['account_key']]['guild'] = guild_name
+
+        # Also pick up guilds from player_stats for players not in guild_members
+        # (backwards-compat: data created before the guild_members table existed)
+        for pid, pd in players.items():
             g = pd.get('guild')
             if g and g != '—':
-                guilds.setdefault(g, {'members': []})['members'].append(pd.get('name'))
+                guilds.setdefault(g, {'members': []})
+                member_name = pd.get('name', pid)
+                if member_name not in guilds[g]['members']:
+                    guilds[g]['members'].append(member_name)
+                    # Back-fill guild_members so future restarts are covered
+                    try:
+                        conn.execute(
+                            "INSERT OR IGNORE INTO guild_members (account_key, guild_name) VALUES (?, ?)",
+                            (pid, g)
+                        )
+                    except Exception:
+                        pass
+
+        conn.commit()
         conn.close()
         with _lock:
             cached_data = {'players': players, 'guilds': guilds, 'world_state': cached_data.get('world_state', {})}
@@ -554,37 +642,54 @@ def load_game_data():
         log.error(f"[Dashboard] load_game_data error: {e}")
 
 def _bg_updater():
-    """Background thread to refresh game data."""
     while True:
         load_game_data()
         time.sleep(UPDATE_INTERVAL)
 
-# ── Password Reset (in-memory) ────────────────────────────────────────────
-_reset_tokens = {}
+def _split_account(raw):
+    if ':' in raw:
+        t, u = raw.split(':', 1)
+        return (t if t in ('email', 'discord') else 'email'), u
+    return 'email', raw
 
-def _purge_reset_tokens():
-    """Remove expired password-reset tokens."""
-    now = datetime.now(timezone.utc)
-    expired = [k for k, v in _reset_tokens.items() if now > v['expires_at']]
-    for k in expired:
-        del _reset_tokens[k]
+# ── Guild helpers — call these from guild_routes.py ──────────────────────────
+def join_guild(auth_type: str, uid: str, guild_name: str):
+    """Add a player to a guild, persisting to both player_stats and guild_members."""
+    key = _stats_key(auth_type, uid)
+    save_stats(auth_type, uid, {'guild': guild_name})
+    conn = _db()
+    try:
+        conn.execute(
+            "INSERT INTO guild_members (account_key, guild_name) VALUES (?, ?) "
+            "ON CONFLICT(account_key) DO UPDATE SET guild_name=excluded.guild_name, joined_at=CURRENT_TIMESTAMP",
+            (key, guild_name)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+def leave_guild(auth_type: str, uid: str):
+    """Remove a player from their guild."""
+    key = _stats_key(auth_type, uid)
+    save_stats(auth_type, uid, {'guild': '—'})
+    conn = _db()
+    try:
+        conn.execute("DELETE FROM guild_members WHERE account_key=?", (key,))
+        conn.commit()
+    finally:
+        conn.close()
 
 # ── FastAPI App Setup ─────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup/shutdown lifecycle, replacing Flask's imperative run_dashboard() setup."""
     init_db()
     ensure_admin_user()
     load_game_data()
     threading.Thread(target=_bg_updater, daemon=True).start()
     yield
-    # (no shutdown cleanup needed)
 
 app = FastAPI(lifespan=lifespan)
 
-# SECURITY: default to HTTPS-only session cookies so the signed session (which
-# carries login state) can't be sniffed over plain HTTP. Opt out explicitly via
-# SESSION_HTTPS_ONLY=false only for local non-TLS development.
 SESSION_HTTPS_ONLY = os.getenv('SESSION_HTTPS_ONLY', 'true').strip().lower() not in ('false', '0', 'no')
 app.add_middleware(
     SessionMiddleware,
@@ -599,7 +704,6 @@ register_profile_routes(app)
 
 from game_engine import register_game_routes
 register_game_routes(app, _db)
-
 
 from community import register_community_routes
 register_community_routes(app, _db)
@@ -619,8 +723,6 @@ app.mount('/static', StaticFiles(directory=STATIC_DIR), name='static')
 
 # ── DDoS Protection Middleware ──────────────────────────────────────────────
 def _add_security_headers(response, req_id=None):
-    """Shared header injection, applied on every exit path (mirrors Flask's
-    after_request, which runs even when before_request short-circuits)."""
     if req_id:
         response.headers['X-Request-ID'] = req_id
     response.headers['X-Content-Type-Options'] = 'nosniff'
@@ -631,7 +733,6 @@ def _add_security_headers(response, req_id=None):
 
 @app.middleware("http")
 async def ddos_guard(request: Request, call_next):
-    """Protect the app from DDoS and abuse (replaces before_request/after_request)."""
     global _req_id_counter
     ip = _get_real_ip(request)
 
@@ -639,10 +740,6 @@ async def ddos_guard(request: Request, call_next):
         log.info(f"[DDoS] Blocked banned IP: {ip}")
         return _add_security_headers(PlainTextResponse("Forbidden", status_code=403))
 
-    # Render's own health checker (and most uptime monitors) sends HEAD requests
-    # with generic HTTP-library user-agents. Those would otherwise get caught by
-    # DDOS_BLOCKED_UA_FRAGS below and get Render's health check IP banned,
-    # which stops the app from ever passing Render's port/startup check.
     is_health_check = request.method == 'HEAD'
 
     ua = (request.headers.get('user-agent', '') or '').lower()
@@ -672,12 +769,13 @@ async def ddos_guard(request: Request, call_next):
     body_limit = DDOS_BODY_LIMITS.get(request.url.path, DDOS_MAX_BODY_BYTES)
     try:
         too_big = bool(cl) and int(cl) > body_limit
-    except Exception as e:
+    except Exception:
         too_big = True
     if too_big:
         log.warning(f"[DDoS] Body too large from {ip}: {cl} bytes (limit {body_limit})")
         _ip_connections[ip] = max(0, -_ip_connections.get(ip, 1) - 1)
-        return _add_security_headers(PlainTextResponse("request too big" , status_code=413)) 
+        return _add_security_headers(PlainTextResponse("request too big", status_code=413))
+
     _global_req_count['n'] += 1
     _req_id_counter += 1
     request.state.req_id = f"{_req_id_counter:08x}"
@@ -691,18 +789,9 @@ async def ddos_guard(request: Request, call_next):
 
     return _add_security_headers(response, req_id=getattr(request.state, 'req_id', None))
 
-# NOTE: unauthenticated /api/admin/give-gold and /api/admin/announce handlers
-# used to live here. They had no session/is_admin check and, because Starlette
-# matches routes in registration order, they silently shadowed the properly
-# admin-protected handlers of the same name defined later in this file —
-# giving *any* anonymous caller the ability to grant gold or broadcast bot
-# announcements. They have been removed; see api_admin_give_gold and
-# api_admin_announce below for the real, auth-checked implementations.
-
 # ── Discord OAuth ─────────────────────────────────────────────────────────────
 @app.get('/login/discord')
 async def discord_login(request: Request):
-    """Redirect user to Discord for OAuth."""
     state = secrets.token_urlsafe(32)
     request.session['oauth_state'] = state
     params = {
@@ -717,7 +806,6 @@ async def discord_login(request: Request):
 
 @app.get('/callback')
 async def discord_callback(request: Request):
-    """Handle Discord OAuth callback."""
     ip = _get_real_ip(request)
     code = request.query_params.get('code')
     error = request.query_params.get('error')
@@ -816,20 +904,15 @@ async def discord_callback(request: Request):
 # ── Auth Routes ──────────────────────────────────────────────────────────────
 @app.post('/api/signup')
 async def api_signup(request: Request):
-    """Register a new email/password account."""
     ip = _get_real_ip(request)
 
     if _strict_rate_limit(ip, max_calls=8, window=600, scope='signup'):
-        return _json({
-            'ok': False,
-            'error': 'Too many signup attempts. Please wait a few minutes.'
-        }, 429)
+        return _json({'ok': False, 'error': 'Too many signup attempts. Please wait a few minutes.'}, 429)
 
     data = await _get_json(request)
     email = str(data.get('email', '')).strip().lower()
     password = str(data.get('password', '')).strip()
     nickname = str(data.get('nickname', '')).strip() or email.split('@')[0]
-    recaptcha_token = data.get('recaptcha_token')
 
     if not email or '@' not in email:
         return _json({'ok': False, 'error': 'Please enter a valid email address.'}, 400)
@@ -853,10 +936,7 @@ async def api_signup(request: Request):
         ).fetchone()
 
         if existing:
-            return _json({
-                'ok': False,
-                'error': 'This email is already registered.'
-            }, 400)
+            return _json({'ok': False, 'error': 'This email is already registered.'}, 400)
 
         password_hash = _hash_password(password)
         avatar_url = f"https://ui-avatars.com/api/?name={nickname}&background=5865F2&color=fff&size=64"
@@ -872,7 +952,7 @@ async def api_signup(request: Request):
         _log_activity(auth_id, 'signup', f'email={email}')
         log.info(f"[Signup] New account created: {email} (ID: {auth_id})")
 
-        get_stats('email', auth_id)  # create default stats row
+        get_stats('email', auth_id)
         request.session['user'] = {
             'discord_id': str(auth_id),
             'username': nickname,
@@ -910,29 +990,22 @@ async def api_signup(request: Request):
 
     except Exception as e:
         log.error(f"[Signup] Database error: {e}")
-        return _json({
-            'ok': False,
-            'error': 'Something went wrong. Please try again.'
-        }, 500)
+        return _json({'ok': False, 'error': 'Something went wrong. Please try again.'}, 500)
     finally:
         if conn:
             conn.close()
 
 @app.post('/api/login')
 async def api_login(request: Request):
-    """Log in with email and password."""
     ip = _get_real_ip(request)
 
     if _strict_rate_limit(ip, max_calls=10, window=300, scope='login'):
-        return _json({
-            'ok': False,
-            'error': 'Too many login attempts. Please wait a moment.'
-        }, 429)
+        return _json({'ok': False, 'error': 'Too many login attempts. Please wait a moment.'}, 429)
 
     data = await _get_json(request)
-    email = str(data.get('email', '')).strip().lower()   # signup stores lowercase emails
+    email = str(data.get('email', '')).strip().lower()
     password = str(data.get('password', '')).strip()
-    keep_signed_in = bool(data.get('keep_signed_in', False))  # noqa: F841 (see session note above)
+    keep_signed_in = bool(data.get('keep_signed_in', False))  # noqa: F841
 
     if not email or not password:
         return _json({'ok': False, 'error': 'Please fill in all fields.'}, 400)
@@ -947,18 +1020,11 @@ async def api_login(request: Request):
         ).fetchone()
 
         if not user:
-            return _json({
-                'ok': False,
-                'error': 'Invalid email or password.'
-            }, 401)
+            return _json({'ok': False, 'error': 'Invalid email or password.'}, 401)
 
         if not _verify_password(password, user['password_hash']):
-            return _json({
-                'ok': False,
-                'error': 'Invalid email or password.'
-            }, 401)
+            return _json({'ok': False, 'error': 'Invalid email or password.'}, 401)
 
-        # Update last login
         conn.execute(
             "UPDATE auth_users SET last_login = ? WHERE auth_id = ?",
             (datetime.now(UTC).isoformat(), user['auth_id'])
@@ -1009,31 +1075,21 @@ async def api_login(request: Request):
 
     except Exception as e:
         log.error(f"[Login] Error: {e}")
-        return _json({
-            'ok': False,
-            'error': 'Something went wrong. Please try again.'
-        }, 500)
+        return _json({'ok': False, 'error': 'Something went wrong. Please try again.'}, 500)
     finally:
         if conn:
             conn.close()
 
 @app.post('/api/register')
 async def api_register_alias(request: Request):
-    """Alias for /api/signup."""
     return await api_signup(request)
 
 @app.get('/api/me')
 async def api_me(request: Request):
-    """Get current user info."""
     user = request.session.get('user')
     if not user:
         return {'logged_in': False}
 
-    # The session's 'is_admin' flag is only set at login time, so an old
-    # session cookie (or one created via Discord OAuth, which always logs in
-    # as a non-admin) could report stale/incorrect admin status forever.
-    # Re-check the database here so admin access always reflects reality,
-    # the same way /api/profile already does.
     is_admin = bool(user.get('is_admin', False))
     if user.get('auth_type') == 'email':
         try:
@@ -1049,7 +1105,6 @@ async def api_me(request: Request):
             log.warning(f"[api/me] is_admin re-check failed: {e}")
 
     if is_admin != user.get('is_admin', False):
-        # Keep the session in sync so subsequent requests see the same value.
         session_user = dict(request.session['user'])
         session_user['is_admin'] = is_admin
         request.session['user'] = session_user
@@ -1059,7 +1114,6 @@ async def api_me(request: Request):
 
 @app.get('/api/check-auth')
 async def api_check_auth(request: Request):
-    """Check if user is logged in."""
     user = request.session.get('user')
     if not user:
         return {'logged_in': False}
@@ -1067,7 +1121,6 @@ async def api_check_auth(request: Request):
 
 @app.get('/logout')
 async def logout(request: Request):
-    """Log out the current user."""
     u = request.session.pop('user', None)
     if u:
         _log_activity(u.get('discord_id', ''), "logout")
@@ -1076,7 +1129,6 @@ async def logout(request: Request):
 
 @app.post('/api/profile')
 async def api_update_profile(request: Request):
-    """Update the logged-in user's nickname/bio."""
     user = request.session.get('user')
     if not user:
         return _json({'ok': False, 'error': 'Not logged in'}, 401)
@@ -1095,7 +1147,6 @@ async def api_update_profile(request: Request):
             )
             conn.commit()
 
-        # Keep the session in sync so the sidebar/UI reflect the change immediately
         session_user = dict(request.session['user'])
         session_user['username'] = nickname or user.get('username')
         session_user['bio'] = bio
@@ -1112,17 +1163,13 @@ async def api_update_profile(request: Request):
 
 @app.delete('/api/delete-account')
 async def api_delete_account(request: Request):
-    """Allow a logged-in user to permanently delete their own account."""
     ip = _get_real_ip(request)
     user = request.session.get('user')
     if not user:
         return _json({'ok': False, 'error': 'Not logged in'}, 401)
 
     if user.get('is_admin', False):
-        return _json({
-            'ok': False,
-            'error': 'Admin accounts cannot self-delete. Ask another admin to revoke your admin status first.'
-        }, 403)
+        return _json({'ok': False, 'error': 'Admin accounts cannot self-delete.'}, 403)
 
     if _strict_rate_limit(ip, max_calls=5, window=300, scope='delete'):
         return _json({'ok': False, 'error': 'Too many attempts. Please wait a moment.'}, 429)
@@ -1149,8 +1196,9 @@ async def api_delete_account(request: Request):
                 return _json({'ok': False, 'error': 'Incorrect password.'}, 401)
             conn.execute("DELETE FROM auth_users WHERE auth_id = ?", (int(user_id),))
 
-        # Remove any game data tied to this account, regardless of auth type
-        conn.execute("DELETE FROM player_stats WHERE account_key = ?", (_stats_key(auth_type or 'email', user_id),))
+        account_key = _stats_key(auth_type or 'email', user_id)
+        conn.execute("DELETE FROM player_stats WHERE account_key = ?", (account_key,))
+        conn.execute("DELETE FROM guild_members WHERE account_key = ?", (account_key,))
         conn.execute("DELETE FROM account_links WHERE discord_id = ?", (str(user_id),))
         conn.commit()
 
@@ -1171,46 +1219,32 @@ async def api_delete_account(request: Request):
 
 @app.post('/api/password/request-reset')
 async def api_password_request_reset(request: Request):
-    """Request a password reset code and send it through EmailJS."""
     ip = _get_real_ip(request)
 
     if _strict_rate_limit(ip, max_calls=5, window=600, scope='reset-request'):
-        return _json({
-            'ok': False,
-            'error': 'Too many requests. Please wait a few minutes.'
-        }, 429)
+        return _json({'ok': False, 'error': 'Too many requests. Please wait a few minutes.'}, 429)
 
     data = await _get_json(request)
     email = str(data.get('email', '')).strip().lower()
 
     if not email or '@' not in email:
-        return _json({
-            'ok': False,
-            'error': 'Please enter a valid email address.'
-        }, 400)
+        return _json({'ok': False, 'error': 'Please enter a valid email address.'}, 400)
 
     _purge_reset_tokens()
 
-    # Check whether this email belongs to an account.
     conn = None
     try:
         conn = _db()
         account = conn.execute(
-            "SELECT auth_id FROM auth_users WHERE lower(email) = ?",
-            (email,)
+            "SELECT auth_id FROM auth_users WHERE lower(email) = ?", (email,)
         ).fetchone()
     except Exception:
         log.exception("[Password Reset] Database lookup failed")
-        return _json({
-            'ok': False,
-            'error': 'Unable to process the request right now.'
-        }, 500)
+        return _json({'ok': False, 'error': 'Unable to process the request right now.'}, 500)
     finally:
         if conn:
             conn.close()
 
-    # Use a generic response so the endpoint doesn't reveal
-    # whether an account exists.
     generic_response = {
         'ok': True,
         'message': 'If that email is registered, you will receive a reset code.'
@@ -1219,34 +1253,24 @@ async def api_password_request_reset(request: Request):
     if not account:
         return generic_response
 
-    # Generate a six-digit OTP.
     otp = str(secrets.randbelow(900000) + 100000)
 
-    # Send the OTP through EmailJS before storing it.
     try:
         await asyncio.to_thread(send_reset_email, email, otp)
     except Exception:
-        log.exception(
-            "[Password Reset] EmailJS delivery failed"
-        )
-        return _json({
-            'ok': False,
-            'error': 'Unable to send the reset email. Please try again later.'
-        }, 500)
+        log.exception("[Password Reset] EmailJS delivery failed")
+        return _json({'ok': False, 'error': 'Unable to send the reset email. Please try again later.'}, 500)
 
-    # Store the OTP only after EmailJS accepts the email.
-    _reset_tokens[email] = {
-        'otp': otp,
-        'expires_at': datetime.now(UTC) + timedelta(minutes=5)
-    }
+    # ── FIX: Persist OTP to DB (not just memory) so it survives a restart
+    expires_at = datetime.now(UTC) + timedelta(minutes=5)
+    _reset_tokens[email] = {'otp': otp, 'expires_at': expires_at}
+    _store_reset_token(email, otp, expires_at)
 
     log.info("[Password Reset] Reset email accepted by EmailJS")
-
     return generic_response
 
 @app.post('/api/password/verify-reset')
 async def api_password_reset(request: Request):
-    """Reset password using OTP."""
     ip = _get_real_ip(request)
 
     if _strict_rate_limit(ip, max_calls=8, window=300, scope='reset-verify'):
@@ -1259,20 +1283,21 @@ async def api_password_reset(request: Request):
 
     if not email:
         return _json({'ok': False, 'error': 'Email address is required.'}, 400)
-
     if not otp or len(otp) != 6:
         return _json({'ok': False, 'error': 'Please enter the 6-digit code.'}, 400)
-
     if len(new_password) < 6:
         return _json({'ok': False, 'error': 'Password must be at least 6 characters.'}, 400)
 
     _purge_reset_tokens()
-    record = _reset_tokens.get(email)
+
+    # ── FIX: Check memory cache first, fall back to DB ────────────────────────
+    record = _reset_tokens.get(email) or _load_reset_token(email)
     if not record:
         return _json({'ok': False, 'error': 'No reset request found.'}, 400)
 
     if datetime.now(UTC) > record['expires_at']:
         _reset_tokens.pop(email, None)
+        _delete_reset_token(email)
         return _json({'ok': False, 'error': 'The code has expired.'}, 400)
 
     if not hmac.compare_digest(record['otp'], otp):
@@ -1290,6 +1315,7 @@ async def api_password_reset(request: Request):
         conn.commit()
 
         _reset_tokens.pop(email, None)
+        _delete_reset_token(email)
         _log_activity(existing['auth_id'], 'password_reset')
 
         return {'ok': True, 'message': 'Password updated successfully!'}
@@ -1304,11 +1330,9 @@ async def api_password_reset(request: Request):
 # ── Admin Routes ─────────────────────────────────────────────────────────────
 @app.get('/api/admin/users')
 async def api_admin_users(request: Request):
-    """Get all users for admin panel."""
     user = request.session.get('user')
     if not user:
         return _json({'ok': False, 'error': 'Not logged in'}, 401)
-
     if not user.get('is_admin', False):
         return _json({'ok': False, 'error': 'Admin access required'}, 403)
 
@@ -1318,8 +1342,7 @@ async def api_admin_users(request: Request):
         users = conn.execute(
             """SELECT auth_id, email, nickname, avatar, bio, is_admin,
                       created_at, last_login
-               FROM auth_users
-               ORDER BY auth_id DESC"""
+               FROM auth_users ORDER BY auth_id DESC"""
         ).fetchall()
 
         user_list = []
@@ -1336,16 +1359,12 @@ async def api_admin_users(request: Request):
                 'is_online': str(u['auth_id']) in _session_log and bool(_session_log.get(str(u['auth_id'])))
             })
 
-        total_users = len(user_list)
-        online_users = sum(1 for u in user_list if u.get('is_online'))
-
-        conn.close()
         return {
             'ok': True,
             'users': user_list,
             'stats': {
-                'total': total_users,
-                'online': online_users,
+                'total': len(user_list),
+                'online': sum(1 for u in user_list if u.get('is_online')),
                 'admins': sum(1 for u in user_list if u['is_admin'])
             }
         }
@@ -1359,7 +1378,6 @@ async def api_admin_users(request: Request):
 
 @app.delete('/api/admin/users/{user_id}')
 async def api_admin_delete_user(user_id: int, request: Request):
-    """Delete a user (admin only)."""
     user = request.session.get('user')
     if not user or not user.get('is_admin', False):
         return _json({'ok': False, 'error': 'Admin access required'}, 403)
@@ -1376,11 +1394,12 @@ async def api_admin_delete_user(user_id: int, request: Request):
 
         if not existing:
             return _json({'ok': False, 'error': 'User not found'}, 404)
-
         if existing['is_admin']:
             return _json({'ok': False, 'error': 'Cannot delete admin accounts'}, 403)
 
         conn.execute("DELETE FROM auth_users WHERE auth_id = ?", (user_id,))
+        # ── FIX: Also clean up guild membership on admin delete ────────────────
+        conn.execute("DELETE FROM guild_members WHERE account_key LIKE ?", (f'email:{user_id}',))
         conn.commit()
 
         log.info(f"[Admin] User {user_id} deleted by admin")
@@ -1392,9 +1411,9 @@ async def api_admin_delete_user(user_id: int, request: Request):
     finally:
         if conn:
             conn.close()
+
 @app.post('/api/admin/announce')
 async def api_admin_announce(request: Request):
-    """Admin-only: post an announcement stored in the dashboard's own DB."""
     user = request.session.get('user')
     if not user or not user.get('is_admin'):
         return _json({'ok': False, 'error': 'forbidden'}, 403)
@@ -1416,14 +1435,14 @@ async def api_announcements():
     conn = _db()
     try:
         rows = conn.execute(
-            "SELECT message, author, created_at FROM announcements ORDER BY id DESC LIMIT 10").fetchall()
+            "SELECT message, author, created_at FROM announcements ORDER BY id DESC LIMIT 10"
+        ).fetchall()
     finally:
         conn.close()
     return {'items': [dict(r) for r in rows]}
 
 @app.post('/api/admin/give-gold')
 async def api_admin_give_gold(request: Request):
-    """Admin-only: add gold to an account (user_id = account key like 'email:3' or a bare auth id)."""
     user = request.session.get('user')
     if not user or not user.get('is_admin'):
         return _json({'ok': False, 'error': 'forbidden'}, 403)
@@ -1438,15 +1457,8 @@ async def api_admin_give_gold(request: Request):
     load_game_data()
     return {'ok': True, 'gold': new['gold']}
 
-def _split_account(raw):
-    if ':' in raw:
-        t, u = raw.split(':', 1)
-        return (t if t in ('email', 'discord') else 'email'), u
-    return 'email', raw
-
 @app.post('/api/admin/users/{user_id}/toggle-admin')
 async def api_admin_toggle_admin(user_id: int, request: Request):
-    """Toggle admin status for a user."""
     user = request.session.get('user')
     if not user or not user.get('is_admin', False):
         return _json({'ok': False, 'error': 'Admin access required'}, 403)
@@ -1465,10 +1477,7 @@ async def api_admin_toggle_admin(user_id: int, request: Request):
             return _json({'ok': False, 'error': 'User not found'}, 404)
 
         new_status = 0 if existing['is_admin'] else 1
-        conn.execute(
-            "UPDATE auth_users SET is_admin = ? WHERE auth_id = ?",
-            (new_status, user_id)
-        )
+        conn.execute("UPDATE auth_users SET is_admin = ? WHERE auth_id = ?", (new_status, user_id))
         conn.commit()
 
         return {
@@ -1486,7 +1495,6 @@ async def api_admin_toggle_admin(user_id: int, request: Request):
 
 @app.get('/api/admin/players')
 async def api_admin_players(request: Request):
-    """List all accounts and their stats for the admin panel."""
     user = request.session.get('user')
     if not user or not user.get('is_admin', False):
         return _json({'ok': False, 'error': 'Admin access required'}, 403)
@@ -1519,8 +1527,6 @@ async def api_admin_player_detail(user_id: str, request: Request):
 
 @app.post('/api/admin/players/{user_id}')
 async def api_admin_update_player(user_id: str, request: Request):
-    """Admin-only: edit an account's stats. Saved to the same store that
-    /api/me, /api/profile and the leaderboard read from, so it shows everywhere."""
     user = request.session.get('user')
     if not user or not user.get('is_admin', False):
         return _json({'ok': False, 'error': 'Admin access required'}, 403)
@@ -1529,6 +1535,15 @@ async def api_admin_update_player(user_id: str, request: Request):
     if not isinstance(updates, dict) or not updates:
         return _json({'ok': False, 'error': 'updates object required'}, 400)
     atype, uid = _split_account(user_id)
+
+    # ── FIX: If admin changes guild via the player editor, sync guild_members too
+    if 'guild' in updates:
+        new_guild = str(updates['guild']).strip()
+        if new_guild and new_guild != '—':
+            join_guild(atype, uid, new_guild)
+        else:
+            leave_guild(atype, uid)
+
     merged = save_stats(atype, uid, updates)
     load_game_data()
     _log_activity(uid, "admin_edit_player", f"Admin updated fields: {', '.join(updates.keys())}")
@@ -1536,7 +1551,6 @@ async def api_admin_update_player(user_id: str, request: Request):
 
 @app.get('/api/admin/stats')
 async def api_admin_stats(request: Request):
-    """Get admin statistics."""
     user = request.session.get('user')
     if not user or not user.get('is_admin', False):
         return _json({'ok': False, 'error': 'Admin access required'}, 403)
@@ -1549,7 +1563,6 @@ async def api_admin_stats(request: Request):
         recent_activity = conn.execute(
             "SELECT action, detail, ts FROM activity_log ORDER BY ts DESC LIMIT 20"
         ).fetchall()
-
         conn.close()
 
         return {
@@ -1573,7 +1586,6 @@ async def api_admin_stats(request: Request):
 @app.get('/')
 @app.get('/dashboard')
 async def index(request: Request):
-    """Main dashboard page."""
     with _lock:
         data = cached_data.copy()
         updated = last_updated
@@ -1669,7 +1681,6 @@ async def community_page(request: Request):
 # ── API Routes ──────────────────────────────────────────────────────────────
 @app.get('/api/stats')
 async def api_stats():
-    """Get server stats."""
     with _lock:
         data = cached_data.copy()
         updated = last_updated
@@ -1687,7 +1698,6 @@ async def api_stats():
 
 @app.get('/api/leaderboard')
 async def api_leaderboard():
-    """Get full leaderboard."""
     with _lock:
         data = cached_data.copy()
 
@@ -1716,7 +1726,6 @@ async def api_leaderboard():
 
 @app.get('/api/activity/{user_id}')
 async def api_activity(user_id: str):
-    """Get user activity log."""
     try:
         conn = _db()
         rows = conn.execute(
@@ -1725,16 +1734,13 @@ async def api_activity(user_id: str):
             (str(user_id),),
         ).fetchall()
         conn.close()
-        return {
-            'items': [{'action': r['action'], 'detail': r['detail'], 'ts': r['ts']} for r in rows]
-        }
+        return {'items': [{'action': r['action'], 'detail': r['detail'], 'ts': r['ts']} for r in rows]}
     except Exception as e:
         log.error(f"[api/activity] error: {e}")
         return _json({'items': []}, 500)
 
 @app.get('/api/inventory/{user_id}')
 async def api_inventory(user_id: str):
-    """Get a player's inventory items."""
     atype, uid = _split_account(user_id)
     game = get_stats(atype, uid)
     if not game:
@@ -1768,7 +1774,6 @@ async def api_inventory(user_id: str):
 
 @app.get('/api/auctions')
 async def api_auctions():
-    """Get active auctions."""
     try:
         conn = _db()
         rows = conn.execute(
@@ -1803,7 +1808,6 @@ async def api_auctions():
 
 @app.get('/api/profile')
 async def api_profile(request: Request):
-    """Get logged-in user's profile."""
     user = request.session.get('user')
     if not user:
         return {'logged_in': False}
@@ -1833,9 +1837,9 @@ async def api_profile(request: Request):
     return {'logged_in': True, 'nickname': nickname, 'avatar': avatar, 'bio': bio,
             'is_admin': is_admin, 'stats': stats, **{k: stats.get(k) for k in
             ('level', 'gold', 'gems', 'special_coins', 'xp', 'xp_needed', 'char_class')}}
+
 def run_dashboard():
-    """Start the dashboard server."""
-    host = "0.0.0.0"
+    host = "127.0.0.1"
     port = int(os.environ.get("PORT", 25507))
 
     try:
@@ -1843,7 +1847,6 @@ def run_dashboard():
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             s.bind((host, port))
     except OSError:
-        # desired port is in use; pick an ephemeral free port
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.bind((host, 0))
