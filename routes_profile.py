@@ -1,4 +1,6 @@
 from fastapi import Request
+from fastapi.responses import JSONResponse
+
 
 def _coerce_int(value, default=0):
     if value is None:
@@ -14,10 +16,7 @@ def _coerce_int(value, default=0):
 
 
 def _iter_inventory(game):
-    """Yield (name, item_dict) whether inventory is a dict or a list.
-    The current DEFAULT_STATS doesn't include 'inventory', so this normally
-    yields nothing — that's fine, the showcase just stays empty until
-    something writes inventory into the player's stats blob."""
+    """Yield (name, item_dict) whether inventory is a dict or a list."""
     inv = game.get('inventory') or {}
     if isinstance(inv, dict):
         for name, item in inv.items():
@@ -62,34 +61,22 @@ def register_profile_routes(app):
             "guild": { "id": str, "name": str } | null,
             "global_rank": int | null,
             "joined_at": "ISO-8601" | null,
-            "stats": {
-                "play_time_hours": int | null,
-                "commands_used": int,
-                "win_rate": int | null,
-                "damage_dealt": int,
-                "healing_done": int,
-                "boss_kills": int,
-                "dungeons_completed": int,
-                "battles_won": int
-            },
-            "showcase": {
-                "favorite_weapon": { "name": str, "rarity": str } | null,
-                "favorite_pet": { "name": str, "level": int } | null
-            },
-            "pinned_achievements": [ { "name": str, "icon": str, "rarity": str } ],
-            "activity_timeline": [ { "title": str, "description": str, "timestamp": str } ],
-            "recent_rewards": [ { "name": str, "icon": str, "amount": int, "timestamp": str } ]
+            "stats": { ... },
+            "showcase": { "favorite_weapon": ..., "favorite_pet": ... },
+            "pinned_achievements": [ ... ],
+            "activity_timeline": [ ... ],
+            "recent_rewards": [ ... ]
         }
         """
         session_user = request.session.get('user')
         if not session_user:
-            return {"error": "unauthorized"}, 403
+            return JSONResponse({"error": "unauthorized"}, status_code=403)
 
         # session['user']['discord_id'] holds auth_id for email accounts and
         # the Discord snowflake for OAuth. The path param is the same value;
         # compare as strings to cover both.
         if str(session_user.get('discord_id')) != str(discord_id):
-            return {"error": "unauthorized"}, 403
+            return JSONResponse({"error": "unauthorized"}, status_code=403)
 
         auth_type = session_user.get('auth_type', 'email')
         uid = discord_id  # keep as string; get_stats accepts either
@@ -98,6 +85,21 @@ def register_profile_routes(app):
             game = get_stats(auth_type, uid) or {}
         except Exception:
             game = {}
+
+        # ── Game engine overlay ────────────────────────────────────
+        # game_engine.py keeps its data in the same player_stats row, so
+        # inventory, battles_lost, boss_kills, pinned_achievements and
+        # equipped_title are already in `game`. The overlay adds the values
+        # the engine derives (lifetime XP, achievement list, equipped weapon,
+        # global rank).
+        engine_rank = None
+        try:
+            from game_engine import profile_overlay
+            ov = profile_overlay(auth_type, uid)
+            engine_rank = ov.get('_global_rank')
+            game = {**game, **{k: v for k, v in ov.items() if not k.startswith('_') and v is not None}}
+        except Exception:
+            pass
 
         # ── Prestige / title ───────────────────────────────────────
         prestige = _coerce_int(game.get('prestige_level', game.get('prestige', 0)))
@@ -115,21 +117,18 @@ def register_profile_routes(app):
             else:
                 guild = {"id": str(guild_name), "name": str(guild_name)}
 
-        # ── Combat numbers — only fields the backend actually writes ──
+        # ── Combat numbers ─────────────────────────────────────────
         battles_won = _coerce_int(game.get('battles_won', 0))
         battles_lost_raw = game.get('battles_lost', game.get('losses'))
         battles_lost = _coerce_int(battles_lost_raw) if battles_lost_raw is not None else None
 
-        # win_rate: only computable if the backend has a "losses" field.
-        # It doesn't in DEFAULT_STATS, so return None and let the UI hide it
-        # rather than showing a misleading 0%.
+        # win_rate: only computable if we know the losses; otherwise None and
+        # the UI hides it rather than showing a misleading 0%.
         if battles_lost is not None and (battles_won + battles_lost) > 0:
             win_rate = int(round((battles_won / (battles_won + battles_lost)) * 100))
         else:
             win_rate = None
 
-        # play_time_hours: DEFAULT_STATS has no playtime field. Only report
-        # it if the blob actually contains one; otherwise None (UI hides it).
         if 'play_time_hours' in game:
             play_time_hours = _coerce_int(game.get('play_time_hours'))
         elif 'play_time_seconds' in game:
@@ -137,23 +136,23 @@ def register_profile_routes(app):
         else:
             play_time_hours = None
 
-        # ── Global rank by XP ─────────────────────────────────────
-        # cached_data['players'] is keyed by account_key ("email:3"), so skip
-        # our own account_key — not the bare uid — when counting who's above.
-        my_xp = _coerce_int(game.get('xp', 0))
-        my_key = _stats_key(auth_type, uid)
-        with _lock:
-            players = dict(cached_data.get('players', {}))
-
-        higher = 0
-        for pid, pd in players.items():
-            if str(pid) == my_key:
-                continue
-            if not isinstance(pd, dict):
-                continue
-            if _coerce_int(pd.get('xp', 0)) > my_xp:
-                higher += 1
-        global_rank = (higher + 1) if players else None
+        # ── Global rank by lifetime XP ────────────────────────────
+        if engine_rank is not None:
+            global_rank = engine_rank
+        else:
+            my_xp = _coerce_int(game.get('xp', 0))
+            my_key = _stats_key(auth_type, uid)
+            with _lock:
+                players = dict(cached_data.get('players', {}))
+            higher = 0
+            for pid, pd in players.items():
+                if str(pid) == my_key:
+                    continue
+                if not isinstance(pd, dict):
+                    continue
+                if _coerce_int(pd.get('xp', 0)) > my_xp:
+                    higher += 1
+            global_rank = (higher + 1) if players else None
 
         # ── Stats block ───────────────────────────────────────────
         stats = {
@@ -189,10 +188,7 @@ def register_profile_routes(app):
                     break
 
         # ── Pinned achievements ──────────────────────────────────
-        # Nothing in DEFAULT_STATS populates these, so this is normally empty;
-        # the check tolerates either the dict-list or id-list shape if some
-        # future writer adds them.
-        pinned_raw = game.get('pinned_achievements') or []
+        pinned_raw = game.get('pinned_achievements') or game.get('pinned') or []
         pinned_ids = {str(p) for p in pinned_raw} if isinstance(pinned_raw, list) else set()
 
         pinned_achievements = []
@@ -211,14 +207,14 @@ def register_profile_routes(app):
                     "rarity": a.get('rarity', 'common'),
                 })
 
-        # ── Activity timeline — same table /api/activity/{user_id} reads ─
+        # ── Activity timeline — same table /api/game/activity reads ─
         activity_timeline = []
         conn = None
         try:
             conn = _db()
             rows = conn.execute(
                 "SELECT action, detail, ts FROM activity_log "
-                "WHERE user_id=? ORDER BY ts DESC LIMIT 8",
+                "WHERE user_id=? ORDER BY id DESC LIMIT 8",
                 (str(uid),),
             ).fetchall()
             activity_timeline = [
@@ -231,9 +227,7 @@ def register_profile_routes(app):
             if conn is not None:
                 conn.close()
 
-        # ── Recent rewards — derived from activity_log; there is no reward
-        # table in this backend yet. Filter matches what actually shows up
-        # for hunt / daily / claim actions logged via _log_activity.
+        # ── Recent rewards — derived from activity_log ────────────
         recent_rewards = []
         conn = None
         try:
@@ -243,7 +237,7 @@ def register_profile_routes(app):
                 "WHERE user_id=? AND ("
                 "  action LIKE '%reward%' OR action LIKE '%claim%' "
                 "  OR action LIKE '%daily%' OR action LIKE '%hunt%'"
-                ") ORDER BY ts DESC LIMIT 6",
+                ") ORDER BY id DESC LIMIT 6",
                 (str(uid),),
             ).fetchall()
             recent_rewards = [
@@ -257,8 +251,6 @@ def register_profile_routes(app):
                 conn.close()
 
         # ── Joined date ─────────────────────────────────────────
-        # Discord OAuth writes account_links.linked_at; email accounts do not.
-        # Fall back to auth_users.created_at for the email case.
         joined_at = None
         if auth_type == 'email':
             conn = None
