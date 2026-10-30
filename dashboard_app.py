@@ -22,14 +22,15 @@ import uvicorn
 
 load_dotenv()
 
+# Setup logging
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(name)s — %(message)s")
+
 
 EMAILJS_SERVICE_ID  = os.getenv("EMAILJS_SERVICE_ID",  "service_miabeqg")
 EMAILJS_TEMPLATE_ID = os.getenv("EMAILJS_TEMPLATE_ID", "template_tntozpq")
 EMAILJS_PUBLIC_KEY  = os.getenv("EMAILJS_PUBLIC_KEY",  "eMQUadu5q-_pONmwc")
 EMAILJS_PRIVATE_KEY = os.getenv("EMAILJS_PRIVATE_KEY", "4buatakEvr4OCHJz37e4g")
-
 
 def _emailjs_configured() -> bool:
     return not any(
@@ -55,7 +56,7 @@ def send_reset_email(email: str, otp: str):
         "service_id": EMAILJS_SERVICE_ID,
         "template_id": EMAILJS_TEMPLATE_ID,
         "user_id": EMAILJS_PUBLIC_KEY,
-        "accessToken": EMAILJS_PRIVATE_KEY,
+        "accessToken": EMAILJS_PRIVATE_KEY,   # must be the PRIVATE key, not the public key
         "template_params": {
             "to_email": email,
             "otp_code": otp,
@@ -68,6 +69,7 @@ def send_reset_email(email: str, otp: str):
         data=json.dumps(payload).encode("utf-8"),
         headers={
             "Content-Type": "application/json",
+            # The default Python-urllib User-Agent is often rejected.
             "User-Agent": "Mozilla/5.0 (compatible; RPGGhostDashboard/1.0)",
             "Origin": "http://localhost",
         },
@@ -199,6 +201,10 @@ DDOS_BURST_LIMIT = 40
 DDOS_GLOBAL_CAP = 500
 DDOS_BAN_DURATION = 3600
 DDOS_MAX_BODY_BYTES = 65536
+DDOS_BODY_LIMITS = {
+    '/api/community/upload': 55 * 1024 * 1024,  
+    '/api/community/emojis': 400 * 1024,        
+}
 DDOS_BLOCKED_UA_FRAGS = [
     'sqlmap', 'nikto', 'nmap', 'masscan', 'zgrab',
     'python-requests/2.18', 'curl/7.29', 'dirbuster',
@@ -591,9 +597,15 @@ app.add_middleware(
 from routes_profile import register_profile_routes
 register_profile_routes(app)
 
-from game_engine import register_game_routes  
-register_game_routes(app, _db)                    
+from game_engine import register_game_routes
+register_game_routes(app, _db)
 
+
+from community import register_community_routes
+register_community_routes(app, _db)
+
+from guild_routes import register_guild_routes
+register_guild_routes(app, _db)
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, 'templates'))
 
 STATIC_DIR = os.path.join(BASE_DIR, 'static')
@@ -657,13 +669,15 @@ async def ddos_guard(request: Request, call_next):
         )
 
     cl = request.headers.get('content-length')
-    body_limit = DDOS_MAX_BODY_BYTES
-    if cl and int(cl) > body_limit:
+    body_limit = DDOS_BODY_LIMITS.get(request.url.path, DDOS_MAX_BODY_BYTES)
+    try:
+        too_big = bool(cl) and int(cl) > body_limit
+    except Exception as e:
+        too_big = True
+    if too_big:
         log.warning(f"[DDoS] Body too large from {ip}: {cl} bytes (limit {body_limit})")
-        # Roll back the connection count we already incremented above.
-        _ip_connections[ip] = max(0, _ip_connections.get(ip, 1) - 1)
-        return _add_security_headers(PlainTextResponse("Request Too Large", status_code=413))
-
+        _ip_connections[ip] = max(0, -_ip_connections.get(ip, 1) - 1)
+        return _add_security_headers(PlainTextResponse("request too big" , status_code=413)) 
     _global_req_count['n'] += 1
     _req_id_counter += 1
     request.state.req_id = f"{_req_id_counter:08x}"
@@ -1636,6 +1650,22 @@ async def guild_hall(request: Request):
 async def settings(request: Request):
     return templates.TemplateResponse(request, 'settings.html', {})
 
+@app.get('/hunting-grounds')
+async def hunting_grounds(request: Request):
+    return templates.TemplateResponse(request, 'hunting-grounds.html', {})
+
+@app.get('/tower')
+async def tower_page(request: Request):
+    return templates.TemplateResponse(request, 'tower.html', {})
+
+@app.get('/shop')
+async def shop_page(request: Request):
+    return templates.TemplateResponse(request, 'shop.html', {})
+
+@app.get('/community')
+async def community_page(request: Request):
+    return templates.TemplateResponse(request, 'community.html', {})
+
 # ── API Routes ──────────────────────────────────────────────────────────────
 @app.get('/api/stats')
 async def api_stats():
@@ -1805,7 +1835,7 @@ async def api_profile(request: Request):
             ('level', 'gold', 'gems', 'special_coins', 'xp', 'xp_needed', 'char_class')}}
 def run_dashboard():
     """Start the dashboard server."""
-    host = "0.0.0.0"
+    host = "127.0.0.1"
     port = int(os.environ.get("PORT", 25507))
 
     try:
@@ -1813,6 +1843,7 @@ def run_dashboard():
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             s.bind((host, port))
     except OSError:
+        # desired port is in use; pick an ephemeral free port
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.bind((host, 0))
