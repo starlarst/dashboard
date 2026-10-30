@@ -135,6 +135,22 @@
         });
     }
 
+    // Close button inside the drawer (the hamburger is covered while it is open).
+    if (sidebar && !document.getElementById('sidebarCloseBtn')) {
+        const head = sidebar.querySelector('.sidebar-head');
+        if (head) {
+            const c = document.createElement('button');
+            c.type = 'button';
+            c.id = 'sidebarCloseBtn';
+            c.className = 'sidebar-close-btn';
+            c.setAttribute('aria-label', 'Close navigation');
+            c.innerHTML = '<i class="fas fa-xmark"></i>';
+            c.addEventListener('click', closeDrawer);
+            head.appendChild(c);
+        }
+    }
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); });
+
     // Reset on rotation / resize to desktop.
     const onViewportChange = () => { if (mqlDesktop.matches) closeDrawer(); };
     mqlDesktop.addEventListener('change', onViewportChange);
