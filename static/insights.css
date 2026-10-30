@@ -1,0 +1,283 @@
+/* ══════════════════════════════════════════════════════════════════
+   REALM INSIGHTS — contextual side panel / bottom sheet
+   Loaded on demand by /static/insights.js. Everything is namespaced
+   with .rgi- so it cannot collide with dashboard.css.
+   ══════════════════════════════════════════════════════════════════ */
+:root {
+    --rgi-w: 372px;
+    --rgi-bg-1: rgba(14, 23, 46, 0.94);
+    --rgi-bg-2: rgba(8, 12, 27, 0.96);
+    --rgi-border: rgba(110, 150, 255, 0.2);
+    --rgi-border-soft: rgba(255, 255, 255, 0.08);
+    --rgi-blue: #5b8cff;
+    --rgi-text: var(--dash-text, #f4f4f5);
+    --rgi-dim: var(--dash-text-dim, #a1a1aa);
+    --rgi-cat-overview: var(--dash-teal, #2dd9e8);
+    --rgi-cat-details: #7aa2ff;
+    --rgi-cat-tips: var(--gold, #fbbf24);
+    --rgi-cat-warn: var(--dash-red, #f87171);
+    --rgi-cat-actions: var(--dash-emerald, #34d399);
+    --rgi-cat-nav: var(--dash-purple, #a855f7);
+    --rgi-bottom: 88px;           /* clears the Spirit Catcher button */
+}
+
+/* ── Floating trigger ─────────────────────────────────────────── */
+.rgi-fab {
+    position: fixed; right: 20px; bottom: var(--rgi-bottom); z-index: 880;
+    width: 48px; height: 48px; border-radius: 50%; cursor: pointer;
+    display: grid; place-items: center; font-size: 1.1rem;
+    color: #cfe0ff;
+    background: linear-gradient(145deg, rgba(34, 56, 112, 0.92), rgba(14, 23, 46, 0.96));
+    border: 1px solid var(--rgi-border);
+    box-shadow: 0 8px 26px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(91, 140, 255, 0.08) inset;
+    backdrop-filter: blur(10px);
+    opacity: 0; visibility: hidden; transform: translateY(8px) scale(0.9);
+    transition: opacity 220ms var(--ease, ease), transform 220ms var(--ease, ease),
+                visibility 0s linear 220ms, box-shadow 180ms;
+}
+.rgi-fab.is-shown {
+    opacity: 1; visibility: visible; transform: none;
+    transition-delay: 0s;
+}
+.rgi-fab:hover { box-shadow: 0 10px 30px rgba(91, 140, 255, 0.28); transform: translateY(-2px); }
+.rgi-fab:focus-visible, .rgi-btn:focus-visible, .rgi-sec-h:focus-visible,
+.rgi-act:focus-visible, .rgi-navbtn:focus-visible, .rgi-x:focus-visible,
+.rgi-link:focus-visible { outline: 2px solid var(--dash-teal, #2dd9e8); outline-offset: 2px; }
+.rgi-badge {
+    position: absolute; top: -3px; right: -3px; min-width: 18px; height: 18px; padding: 0 5px;
+    border-radius: 99px; background: var(--rgi-cat-warn); color: #1b0b0b;
+    font: 700 0.7rem/18px 'Inter', sans-serif; text-align: center;
+    border: 2px solid #0a0f20;
+}
+.rgi-badge[hidden] { display: none; }
+
+/* ── Panel shell ──────────────────────────────────────────────── */
+.rgi-panel {
+    position: fixed; z-index: 890;
+    top: 16px; right: 16px; bottom: var(--rgi-bottom);
+    width: var(--rgi-w); max-width: calc(100vw - 32px);
+    display: flex; flex-direction: column; min-height: 0;
+    color: var(--rgi-text);
+    font-family: 'Inter', 'Sora', sans-serif; font-size: 0.875rem; line-height: 1.5;
+    background: linear-gradient(165deg, var(--rgi-bg-1), var(--rgi-bg-2));
+    border: 1px solid var(--rgi-border);
+    border-radius: 20px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.03) inset,
+                0 0 40px rgba(91, 140, 255, 0.08);
+    backdrop-filter: blur(22px) saturate(1.25);
+    -webkit-backdrop-filter: blur(22px) saturate(1.25);
+    overflow: hidden;
+    opacity: 0; visibility: hidden; pointer-events: none;
+    transform: translateX(calc(100% + 32px));
+    transition: transform 380ms var(--ease, cubic-bezier(0.22, 1, 0.36, 1)),
+                opacity 260ms ease, visibility 0s linear 380ms;
+}
+.rgi-panel::before {          /* soft top glow */
+    content: ''; position: absolute; inset: 0 0 auto 0; height: 120px; pointer-events: none;
+    background: radial-gradient(ellipse at 20% 0%, rgba(91, 140, 255, 0.18), transparent 70%);
+}
+.rgi-panel.is-open, .rgi-panel.is-min {
+    opacity: 1; visibility: visible; pointer-events: auto; transform: none;
+    transition-delay: 0s;
+}
+.rgi-panel.is-min { top: auto; height: auto; width: 320px; }
+.rgi-panel.is-min .rgi-body, .rgi-panel.is-min .rgi-handle { display: none; }
+.rgi-panel.rgi-drag { transition: none; }
+.rgi-panel:focus { outline: none; }
+
+/* header */
+.rgi-handle { display: none; }
+.rgi-head {
+    position: relative; display: flex; align-items: center; gap: 10px;
+    padding: 14px 14px 12px 16px; flex: none;
+    border-bottom: 1px solid var(--rgi-border-soft);
+}
+.rgi-logo {
+    flex: none; width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center;
+    color: #bcd2ff; font-size: 1rem;
+    background: linear-gradient(145deg, rgba(91, 140, 255, 0.28), rgba(45, 217, 232, 0.12));
+    border: 1px solid var(--rgi-border);
+}
+.rgi-titles { min-width: 0; flex: 1; }
+.rgi-title { font: 800 0.95rem/1.2 'Sora', sans-serif; letter-spacing: 0.2px; }
+.rgi-sub {
+    font-size: 0.78rem; color: var(--rgi-dim);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rgi-btn {
+    flex: none; width: 32px; height: 32px; border-radius: 9px; cursor: pointer;
+    display: grid; place-items: center; font-size: 0.8rem;
+    color: var(--rgi-dim); background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--rgi-border-soft); transition: all 160ms;
+}
+.rgi-btn:hover { color: #fff; border-color: var(--rgi-border); background: rgba(91, 140, 255, 0.14); }
+.rgi-btn[hidden] { display: none; }
+
+/* body */
+.rgi-body {
+    position: relative; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+    padding: 12px 12px 16px; display: flex; flex-direction: column; gap: 10px;
+    scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+    -webkit-overflow-scrolling: touch;
+}
+.rgi-loading { display: grid; gap: 10px; }
+.rgi-skel {
+    height: 74px; border-radius: 14px;
+    background: linear-gradient(100deg, rgba(255,255,255,0.03) 30%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.03) 70%);
+    background-size: 200% 100%; animation: rgiShimmer 1.4s linear infinite;
+}
+@keyframes rgiShimmer { to { background-position: -200% 0; } }
+
+/* sections */
+.rgi-sec {
+    border: 1px solid var(--rgi-border-soft); border-radius: 14px;
+    background: rgba(255, 255, 255, 0.03);
+    animation: rgiRise 420ms var(--ease, ease) both; animation-delay: calc(var(--i, 0) * 55ms);
+    --cat: var(--rgi-cat-overview);
+}
+.rgi-noanim .rgi-sec, .rgi-noanim .rgi-tip, .rgi-noanim .rgi-warn { animation: none; }
+@keyframes rgiRise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.rgi-sec[data-cat="details"] { --cat: var(--rgi-cat-details); }
+.rgi-sec[data-cat="tips"] { --cat: var(--rgi-cat-tips); }
+.rgi-sec[data-cat="warnings"] { --cat: var(--rgi-cat-warn); border-color: rgba(248, 113, 113, 0.28); background: rgba(248, 113, 113, 0.05); }
+.rgi-sec[data-cat="actions"] { --cat: var(--rgi-cat-actions); }
+.rgi-sec[data-cat="nav"] { --cat: var(--rgi-cat-nav); }
+
+.rgi-sec-h {
+    width: 100%; display: flex; align-items: center; gap: 10px; cursor: pointer;
+    padding: 11px 12px; background: none; border: 0; color: inherit; font: inherit; text-align: left;
+    border-radius: 14px;
+}
+.rgi-sec-ic {
+    flex: none; width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center;
+    font-size: 0.75rem; color: var(--cat);
+    background: color-mix(in srgb, var(--cat) 15%, transparent);
+}
+.rgi-sec-t { flex: 1; font: 700 0.78rem/1.2 'Sora', sans-serif; letter-spacing: 0.7px; text-transform: uppercase; color: #dbe6ff; }
+.rgi-count {
+    font-size: 0.72rem; font-weight: 700; padding: 1px 8px; border-radius: 99px;
+    color: var(--cat); background: color-mix(in srgb, var(--cat) 14%, transparent);
+}
+.rgi-chev { flex: none; font-size: 0.7rem; color: var(--rgi-dim); transition: transform 220ms var(--ease, ease); }
+.rgi-sec.is-collapsed .rgi-chev { transform: rotate(-90deg); }
+.rgi-sec-c { padding: 0 12px 12px; display: grid; gap: 8px; }
+.rgi-sec.is-collapsed .rgi-sec-c { display: none; }
+
+/* content bits */
+.rgi-p { color: #d5def5; font-size: 0.875rem; }
+.rgi-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.rgi-chip {
+    padding: 4px 10px; border-radius: 99px; font-size: 0.78rem; color: #cfe0ff;
+    background: rgba(91, 140, 255, 0.12); border: 1px solid rgba(91, 140, 255, 0.22);
+}
+.rgi-chip b { color: #fff; font-weight: 700; margin-left: 4px; }
+.rgi-rows { display: grid; }
+.rgi-row {
+    display: flex; justify-content: space-between; gap: 12px; padding: 7px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05); font-size: 0.85rem;
+}
+.rgi-row:last-child { border-bottom: 0; }
+.rgi-row span { color: var(--rgi-dim); }
+.rgi-row b { color: #fff; font-weight: 600; text-align: right; overflow-wrap: anywhere; }
+.rgi-bar { height: 6px; border-radius: 99px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.rgi-bar i { display: block; height: 100%; width: 0; border-radius: inherit;
+    background: linear-gradient(90deg, var(--dash-teal, #2dd9e8), var(--rgi-blue)); transition: width 600ms var(--ease, ease); }
+.rgi-note {
+    display: flex; gap: 8px; align-items: flex-start; font-size: 0.82rem; color: var(--rgi-dim);
+    padding: 8px 10px; border-radius: 10px; background: rgba(255, 255, 255, 0.03);
+    border: 1px dashed rgba(255, 255, 255, 0.12);
+}
+.rgi-note i { margin-top: 3px; color: var(--rgi-cat-details); }
+
+.rgi-tip, .rgi-warn {
+    display: flex; gap: 10px; align-items: flex-start; padding: 9px 10px; border-radius: 11px;
+    animation: rgiRise 380ms var(--ease, ease) both; animation-delay: calc(var(--i, 0) * 50ms + 120ms);
+}
+.rgi-tip { background: rgba(251, 191, 36, 0.06); border: 1px solid rgba(251, 191, 36, 0.14); }
+.rgi-warn { background: rgba(248, 113, 113, 0.08); border: 1px solid rgba(248, 113, 113, 0.25); }
+.rgi-tip > i { color: var(--rgi-cat-tips); margin-top: 3px; font-size: 0.8rem; }
+.rgi-warn > i { color: var(--rgi-cat-warn); margin-top: 3px; font-size: 0.8rem; }
+.rgi-tip p, .rgi-warn p { flex: 1; font-size: 0.85rem; color: #e4ebff; overflow-wrap: anywhere; }
+.rgi-x {
+    flex: none; width: 26px; height: 26px; border-radius: 8px; cursor: pointer; border: 0;
+    background: transparent; color: var(--rgi-dim); font-size: 0.8rem;
+}
+.rgi-x:hover { color: #fff; background: rgba(255, 255, 255, 0.08); }
+.rgi-link {
+    justify-self: start; background: none; border: 0; color: var(--dash-teal, #2dd9e8);
+    font: inherit; font-size: 0.8rem; cursor: pointer; padding: 2px 0; text-decoration: underline;
+}
+
+.rgi-acts { display: grid; gap: 8px; }
+.rgi-act, .rgi-navbtn {
+    display: flex; align-items: center; gap: 10px; width: 100%; cursor: pointer; text-align: left;
+    padding: 10px 12px; border-radius: 12px; font: inherit; font-size: 0.85rem; color: #eaf1ff;
+    background: rgba(255, 255, 255, 0.04); border: 1px solid var(--rgi-border-soft);
+    transition: transform 160ms, border-color 160ms, background 160ms;
+}
+.rgi-act:hover, .rgi-navbtn:hover { transform: translateX(2px); background: rgba(91, 140, 255, 0.12); border-color: var(--rgi-border); }
+.rgi-act i { color: var(--rgi-cat-actions); width: 18px; text-align: center; }
+.rgi-act.is-primary { background: linear-gradient(90deg, rgba(52, 211, 153, 0.18), rgba(45, 217, 232, 0.1)); border-color: rgba(52, 211, 153, 0.35); }
+.rgi-act small { display: block; color: var(--rgi-dim); font-size: 0.76rem; }
+.rgi-act-t { flex: 1; min-width: 0; }
+.rgi-navs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.rgi-navbtn { padding: 9px 10px; }
+.rgi-navbtn i { color: var(--rgi-cat-nav); width: 16px; text-align: center; flex: none; }
+.rgi-navbtn span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.rgi-foot { text-align: center; font-size: 0.72rem; color: var(--rgi-dim); opacity: 0.8; padding-top: 2px; }
+.rgi-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* scrim only exists on small screens */
+.rgi-scrim { display: none; }
+
+/* ── Docked layout: wide desktops push content instead of covering it ── */
+@media (min-width: 1360px) {
+    body.rgi-docked .main-content {
+        margin-right: calc(var(--rgi-w) + 32px) !important;
+        width: auto !important;
+    }
+}
+
+/* Hide while the mobile nav drawer is open, and on the auth screen */
+body.drawer-open .rgi-fab, body.drawer-open .rgi-panel, body.drawer-open .rgi-scrim { display: none !important; }
+
+/* ── Mobile: bottom sheet ─────────────────────────────────────── */
+@media (max-width: 768px) {
+    :root { --rgi-bottom: 0px; }
+    .rgi-fab { right: 16px; bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+    .rgi-panel {
+        top: auto; left: 0; right: 0; bottom: 0; width: auto; max-width: none;
+        max-height: min(74vh, calc(100vh - var(--topbar-h, 62px) - 16px));
+        max-height: min(74dvh, calc(100dvh - var(--topbar-h, 62px) - 16px));
+        border-radius: 22px 22px 0 0; border-bottom: 0;
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+        transform: translateY(105%);
+    }
+    .rgi-panel { z-index: 910; }                       /* above the Spirit Catcher button (900) */
+    .rgi-panel.is-min {                                /* slim bar that leaves the ghost button reachable */
+        width: auto; left: 12px; right: 84px; bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+        border-radius: 16px; border-bottom: 1px solid var(--rgi-border); padding-bottom: 0;
+    }
+    .rgi-panel.is-min .rgi-handle { display: none; }
+    .rgi-handle {
+        display: block; flex: none; width: 42px; height: 5px; border-radius: 99px; margin: 8px auto 0;
+        background: rgba(255, 255, 255, 0.22); touch-action: none;
+    }
+    .rgi-head { touch-action: none; }
+    .rgi-navs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .rgi-scrim {
+        display: block; position: fixed; inset: 0; z-index: 905; background: rgba(3, 6, 16, 0.55);
+        opacity: 0; visibility: hidden; transition: opacity 240ms ease, visibility 0s linear 240ms;
+    }
+    .rgi-scrim.is-shown { opacity: 1; visibility: visible; transition-delay: 0s; }
+    .rgi-btn { width: 38px; height: 38px; }
+    .rgi-x { width: 34px; height: 34px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .rgi-panel, .rgi-fab, .rgi-sec, .rgi-tip, .rgi-warn, .rgi-skel, .rgi-bar i, .rgi-chev {
+        animation: none !important; transition-duration: 0.001ms !important;
+    }
+}
+@media print { .rgi-panel, .rgi-fab, .rgi-scrim { display: none !important; } }
