@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RPG Ghost | Guild Hall</title>
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700&family=Inter:wght@400;500;600;700" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/dashboard.css">
+    <style>:root {
+            --void-black:#0a0a0f;
+            --spectral-teal:#00f3ff;
+            --dash-teal:#2dd9e8;
+            --dash-teal-dim:rgba(45,217,232,0.13);
+            --soul-purple:#bc13fe;
+            --dash-purple:   #a855f7;
+            --dash-purple-dim:rgba(168,85,247,0.12);
+            --bone-white:#f4f4f5;
+            --dash-text-dim:#a1a1aa;
+            --dash-text-faint:#71717a;
+            --glass-bg:rgba(255,255,255,0.04);
+            --glass-border:rgba(255,255,255,0.1);
+            --gold:#fbbf24;
+            --emerald:       #34d399;
+            --red:           #f87171;
+            --sidebar-w:     248px;
+            --ease:          cubic-bezier(0.22,1,0.36,1);
+            --ease-snap:     cubic-bezier(0.4,0,0.2,1);
+            --radius-sm:     10px;
+            --radius-md:16px;
+            --radius-lg:20px;
+        }
+
+        @media(prefers-reduced-motion:reduce){*, *::before, *::after {animation-duration:0.001ms!important;transition-duration:0.001ms!important;} }* { margin:0; padding:0; box-sizing:border-box; }body {
+            font-family:'Sora','Plus Jakarta Sans','Inter',sans-serif; background:var(--void-black); color:var(--bone-white);
+            min-height:100vh;  overflow-x:hidden;
+        }body::before {
+            content:''; position:fixed; inset:0;
+            background:radial-gradient(ellipse at 15% 40%,rgba(45,217,232,0.04) 0%,transparent 55%),
+                        radial-gradient(ellipse at 85% 60%,rgba(188,19,254,0.03) 0%,transparent 55%);
+            pointer-events:none; z-index:0;
+        }
+        @keyframes ghostFloat{ 0%,100%{transform:translateY(0)} 50%{transform:translateY(-5px)} }.page-hero { margin-bottom:2rem; padding-bottom:1.75rem; border-bottom:1px solid var(--glass-border); }.page-hero-eyebrow {
+            font-size:0.72rem; font-weight:700; letter-spacing:2px; text-transform:uppercase;
+            color:var(--dash-teal); margin-bottom:0.5rem; display:flex; align-items:center; gap:8px;
+        }.page-hero-eyebrow::before { content:''; display:inline-block; width:20px; height:1px; background:var(--dash-teal); opacity:0.6; }.page-hero h1 {
+            font-family:'Sora',sans-serif; font-size:2rem; font-weight:800; letter-spacing:-0.5px;
+            background:linear-gradient(135deg,#fff 0%,var(--gold) 100%);
+            -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+        }.page-hero-sub { font-size:0.9rem; color:var(--dash-text-dim); margin-top:0.4rem; }.guild-banner {
+            background:var(--glass-bg); border:1px solid rgba(251,191,36,0.15);
+            border-radius:var(--radius-lg); padding:2rem 2.5rem;
+            display:flex; align-items:center; gap:2rem;
+            position:relative; overflow:hidden; margin-bottom:1.5rem;
+        }.guild-banner::before {
+            content:''; position:absolute; inset:0;
+            background:radial-gradient(ellipse at 0% 50%, rgba(251,191,36,0.05) 0%, transparent 60%);
+            pointer-events:none;
+        }.guild-banner::after {
+            content:''; position:absolute; top:0; left:0; right:0; height:2px;
+            background:linear-gradient(90deg,var(--gold),var(--soul-purple),transparent);
+        }.guild-emblem {
+            width:80px; height:80px; flex-shrink:0;
+            background:rgba(251,191,36,0.08); border:2px solid rgba(251,191,36,0.3);
+            border-radius:var(--radius-md);
+            display:flex; align-items:center; justify-content:center;
+            font-size:2rem; color:var(--gold);
+            box-shadow:0 0 30px rgba(251,191,36,0.1);
+        }.guild-info { flex:1; min-width:0; }.guild-name {
+            font-family:'Sora',sans-serif; font-size:1.75rem; font-weight:800;
+            color:var(--bone-white); margin-bottom:0.5rem; letter-spacing:-0.5px;
+        }.guild-meta {
+            display:flex; gap:1.5rem; flex-wrap:wrap;
+        }.guild-meta-item {
+            display:flex; align-items:center; gap:6px;
+            font-size:0.82rem; color:var(--dash-text-dim);
+        }.guild-meta-item i { color:var(--dash-teal); font-size:0.78rem; }.guild-meta-item.gold-item i { color:var(--gold); }.guild-layout {
+            display:grid; grid-template-columns:1fr 340px; gap:1.5rem;
+        }
+
+        @media(max-width:1100px){.guild-layout { grid-template-columns:1fr; } }.panel {
+            background:var(--glass-bg); border:1px solid var(--glass-border);
+            border-radius:var(--radius-lg); overflow:hidden;
+            box-shadow:0 4px 24px rgba(0,0,0,0.3);
+        }.panel-header {
+            display:flex; align-items:center; justify-content:space-between;
+            padding:1.125rem 1.5rem; border-bottom:1px solid var(--glass-border);
+            background:rgba(0,0,0,0.2);
+        }.panel-title {
+            font-family:'Sora',sans-serif; font-size:0.78rem; font-weight:700;
+            letter-spacing:1px; text-transform:uppercase; color:var(--dash-text-dim);
+        }.panel-badge {
+            background:rgba(45,217,232,0.1); color:var(--dash-teal);
+            border:1px solid rgba(45,217,232,0.2);
+            font-size:0.7rem; font-weight:700; padding:3px 9px; border-radius:20px;
+        }.member-list { padding:0.5rem 0; max-height:400px; overflow-y:auto; }.member-list::-webkit-scrollbar { width:4px; }.member-list::-webkit-scrollbar-track { background:transparent; }.member-list::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.08); border-radius:4px; }.member-row {
+            display:flex; align-items:center; justify-content:space-between;
+            padding:0.75rem 1.5rem; border-bottom:1px solid rgba(255,255,255,0.04);
+            transition:background 160ms; gap:1rem;
+            animation:rowRise 0.4s var(--ease) both;
+        }
+        @keyframes rowRise{ from{opacity:0;transform:translateX(-8px)} to{opacity:1;transform:translateX(0)} }.member-row:last-child { border-bottom:none; }.member-row:hover { background:rgba(255,255,255,0.02); }.member-left { display:flex; align-items:center; gap:10px; min-width:0; }.member-avatar-placeholder {
+            width:34px; height:34px; border-radius:50%;
+            background:rgba(45,217,232,0.08); border:1px solid rgba(45,217,232,0.15);
+            display:flex; align-items:center; justify-content:center;
+            font-size:0.85rem; color:var(--dash-text-dim); flex-shrink:0;
+        }.member-name {
+            font-size:0.88rem; font-weight:600; color:var(--bone-white);
+            white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+        }.member-level { font-size:0.72rem; color:var(--dash-text-faint); margin-top:1px; }.member-role {
+            font-size:0.7rem; font-weight:700; letter-spacing:0.5px; text-transform:uppercase;
+            padding:3px 9px; border-radius:20px; flex-shrink:0;
+        }.role-leader { background:rgba(251,191,36,0.12); color:var(--gold);       border:1px solid rgba(251,191,36,0.2); }.role-officer { background:rgba(168,85,247,0.12); color:var(--dash-purple); border:1px solid rgba(168,85,247,0.2); }.role-member { background:rgba(255,255,255,0.05); color:var(--dash-text-dim); border:1px solid var(--glass-border); }.chat-panel {
+            background:var(--glass-bg); border:1px solid var(--glass-border);
+            border-radius:var(--radius-lg); display:flex; flex-direction:column;
+            height:100%; min-height:500px; overflow:hidden;
+        }.chat-messages {
+            flex:1; overflow-y:auto; padding:1rem;
+            display:flex; flex-direction:column; gap:0.625rem;
+            scrollbar-width:thin; scrollbar-color:rgba(255,255,255,0.08) transparent;
+        }.chat-msg { animation:msgRise 0.3s var(--ease) both; }
+        @keyframes msgRise{ from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }.chat-msg-header {
+            display:flex; align-items:center; gap:6px; margin-bottom:2px;
+        }.chat-msg-author {
+            font-size:0.8rem; font-weight:700; color:var(--dash-teal);
+        }.chat-msg-time {
+            font-size:0.68rem; color:var(--dash-text-faint);
+        }.chat-msg-text {
+            font-size:0.85rem; color:var(--bone-white); line-height:1.5;
+            word-break:break-word;
+        }.chat-input-area {
+            padding:0.875rem; border-top:1px solid var(--glass-border);
+            display:flex; gap:0.625rem;
+        }.chat-input {
+            flex:1; background:rgba(0,0,0,0.35); border:1px solid var(--glass-border);
+            border-radius:var(--radius-sm); padding:10px 14px; color:var(--bone-white);
+            font-family:'Sora','Plus Jakarta Sans','Inter',sans-serif; font-size:0.88rem; outline:none;
+            transition:border-color 160ms;
+        }.chat-input:focus { border-color:rgba(45,217,232,0.3); }.chat-input::placeholder { color:var(--dash-text-faint); }.chat-send {
+            width:42px; height:42px; background:var(--dash-teal-dim);
+            border:1px solid rgba(45,217,232,0.2); border-radius:var(--radius-sm);
+            color:var(--dash-teal); cursor:pointer; display:flex; align-items:center;
+            justify-content:center; font-size:0.9rem; transition:all 160ms; flex-shrink:0;
+        }.chat-send:hover { background:rgba(45,217,232,0.2); border-color:rgba(45,217,232,0.4); }.party-panel {
+            background:var(--glass-bg); border:1px solid var(--glass-border);
+            border-radius:var(--radius-lg); overflow:hidden;
+            box-shadow:0 4px 24px rgba(0,0,0,0.3); margin-bottom:1.5rem;
+        }.party-slots {
+            display:flex; gap:0.75rem; padding:1.25rem 1.5rem; flex-wrap:wrap;
+        }.party-slot {
+            width:64px; height:64px; border-radius:var(--radius-md);
+            border:1.5px dashed rgba(255,255,255,0.12);
+            display:flex; align-items:center; justify-content:center;
+            font-size:1.1rem; color:var(--dash-text-faint);
+            position:relative; flex-shrink:0;
+        }.party-slot.filled {
+            border-style:solid; border-color:rgba(45,217,232,0.3);
+            background:rgba(45,217,232,0.06); color:var(--dash-teal);
+            flex-direction:column; gap:2px; font-size:0.62rem; font-weight:700; text-align:center; padding:4px;
+        }.party-slot.filled .party-slot-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:56px; }.party-slot-remove {
+            position:absolute; top:-6px; right:-6px; width:18px; height:18px;
+            border-radius:50%; background:var(--red); color:#fff; font-size:0.6rem;
+            display:flex; align-items:center; justify-content:center; cursor:pointer;
+            border:2px solid var(--void-black);
+        }.party-actions {
+            display:flex; align-items:center; justify-content:space-between; gap:1rem;
+            padding:0 1.5rem 1.25rem; flex-wrap:wrap;
+        }.party-status { font-size:0.78rem; color:var(--dash-text-dim); }.party-btn {
+            padding:10px 20px; border-radius:var(--radius-sm); font-size:0.78rem; font-weight:700;
+            cursor:pointer; border:none; letter-spacing:0.3px;
+            background:linear-gradient(90deg,var(--dash-teal),var(--dash-purple)); color:#04101a;
+            display:inline-flex; align-items:center; gap:7px; transition:all 180ms;
+        }.party-btn:hover { transform:translateY(-1px); box-shadow:0 6px 20px rgba(45,217,232,0.25); }.party-btn:disabled { opacity:0.4; cursor:not-allowed; transform:none; box-shadow:none; }.member-invite-btn {
+            width:26px; height:26px; border-radius:7px; border:1px solid var(--glass-border);
+            background:transparent; color:var(--dash-text-faint); cursor:pointer;
+            display:flex; align-items:center; justify-content:center; font-size:0.7rem;
+            flex-shrink:0; transition:all 160ms;
+        }.member-invite-btn:hover { border-color:var(--dash-teal); color:var(--dash-teal); }.member-invite-btn.added { border-color:var(--emerald); color:var(--emerald); }.no-guild-state {
+            display:flex; flex-direction:column; align-items:center; justify-content:center;
+            padding:5rem 2rem; text-align:center; gap:1.25rem;
+            background:var(--glass-bg); border:1px dashed rgba(255,255,255,0.07);
+            border-radius:var(--radius-lg);
+        }.no-guild-icon {
+            width:80px; height:80px; border-radius:20px;
+            background:rgba(45,217,232,0.05); border:1px solid rgba(45,217,232,0.1);
+            display:flex; align-items:center; justify-content:center;
+            font-size:2rem; color:var(--dash-text-faint);
+        }.no-guild-title {
+            font-family:'Sora',sans-serif; font-size:1.1rem; font-weight:700;
+            color:var(--dash-text-dim);
+        }.no-guild-sub { font-size:0.88rem; color:var(--dash-text-faint); max-width:320px; line-height:1.6; }.no-guild-cmd {
+            display:inline-flex; align-items:center; gap:6px;
+            background:rgba(45,217,232,0.08); border:1px solid rgba(45,217,232,0.15);
+            color:var(--dash-teal); padding:8px 18px; border-radius:20px;
+            font-size:0.82rem; font-weight:600; letter-spacing:0.5px;
+        }.bot-intro-overlay {
+            position:fixed; inset:0; background:rgba(5,5,10,0.85); backdrop-filter:blur(6px);
+            z-index:9000; display:none; align-items:center; justify-content:center;
+            padding:20px; opacity:0; transition:opacity .35s ease;
+        }.bot-intro-overlay.show { display:flex; opacity:1; }.bot-intro-card {
+            width:100%; max-width:480px; background:var(--glass-bg);
+            border:1px solid var(--glass-border); border-radius:20px; padding:2rem;
+            position:relative; box-shadow:0 0 60px rgba(45,217,232,0.12),0 20px 50px rgba(0,0,0,0.5);
+            transform:translateY(24px) scale(0.96); opacity:0;
+            transition:transform .45s cubic-bezier(.34,1.56,.64,1),opacity .4s ease;
+        }.bot-intro-overlay.show .bot-intro-card { transform:translateY(0) scale(1); opacity:1; }.bot-intro-avatar {
+            width:72px; height:72px; border-radius:18px; background:rgba(0,0,0,0.35);
+            border:2px solid var(--spectral-teal); display:flex; align-items:center; justify-content:center;
+            font-size:2rem; color:var(--spectral-teal); margin:0 auto 1rem;
+            box-shadow:0 0 25px rgba(45,217,232,0.35); animation:ghostFloat 3s ease-in-out infinite;
+        }.bot-intro-name { font-family:'Sora',sans-serif; font-size:1.5rem; font-weight:700; text-align:center; color:var(--bone-white); margin-bottom:0.3rem; }.bot-intro-owner { text-align:center; font-size:0.85rem; color:#8888a0; margin-bottom:1.25rem; }.bot-intro-owner span { color:var(--dash-purple); font-weight:600; }.bot-intro-text { min-height:4.5em; font-size:0.95rem; line-height:1.6; color:#cfcfe0; text-align:center; }.bot-intro-text .cursor {
+            display:inline-block; width:2px; height:1em; background:var(--spectral-teal);
+            margin-left:2px; vertical-align:-2px; animation:blink 0.9s step-end infinite;
+        }
+        @keyframes blink{ 0%,50%{opacity:1} 50.01%,100%{opacity:0} }.bot-intro-close {
+            margin:1.5rem auto 0; display:block;
+            background:linear-gradient(90deg,var(--spectral-teal),var(--soul-purple));
+            border:none; color:white; font-family:'Sora',sans-serif; font-weight:700;
+            font-size:0.95rem; padding:10px 28px; border-radius:50px; cursor:pointer;
+            transition:transform .2s,box-shadow .2s; opacity:0;
+        }.bot-intro-close.ready { opacity:1; }.bot-intro-close:hover { transform:translateY(-2px); box-shadow:0 5px 15px rgba(45,217,232,0.3); }.bot-intro-skip { position:absolute; top:14px; right:16px; background:none; border:none; color:#666; font-size:0.85rem; cursor:pointer; transition:color .2s; }.bot-intro-skip:hover { color:var(--bone-white); }.animate-rise { opacity:0; animation:panelRise 0.55s var(--ease) forwards; }
+        @keyframes panelRise{ from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }.delay-1 {animation-delay:0.05s}.delay-2 {animation-delay:0.1s}.delay-3 {animation-delay:0.15s}
+
+        @media(max-width:900px){.guild-banner {flex-direction:column; text-align:center;}.guild-meta {justify-content:center;}
+        }
+                @media (max-width: 1100px) {
+            .chat-panel { min-height: 420px; height: auto; }
+            .chat-messages { max-height: 50vh; }
+            .guild-layout { gap: 1rem; }
+        }
+        @media (max-width: 600px) {
+            .guild-banner { padding: 1.25rem 1rem; }
+            .guild-emblem { width: 60px; height: 60px; font-size: 1.5rem; }
+            .guild-name { font-size: 1.35rem; }
+            .party-slot { width: 56px; height: 56px; }
+        }
+    </style>
+</head>
+<body data-page="guild-hall">
+    <div id="layout-slot"></div>
+    <script src="/static/layout.js"></script>
+        
+
+    <!-- Bot Intro Overlay -->
+    <div class="bot-intro-overlay" id="botIntroOverlay">
+        <div class="bot-intro-card">
+            <button class="bot-intro-skip" id="botIntroSkip">Skip <i class="fa-solid fa-xmark"></i></button>
+            <div class="bot-intro-avatar"><i class="fa-solid fa-ghost"></i></div>
+            <div class="bot-intro-name" id="botIntroName">RPG Ghost</div>
+            <div class="bot-intro-owner">Maintained by <span id="botIntroOwner">the bot owner</span></div>
+            <div class="bot-intro-text" id="botIntroText"><span class="cursor"></span></div>
+            <button class="bot-intro-close" id="botIntroClose">Enter the Realm <i class="fa-solid fa-arrow-right"></i></button>
+        </div>
+    </div>
+
+    
+    <main class="main-content" id="main-container">
+        <div class="page-hero animate-rise">
+            <div class="page-hero-eyebrow"><i class="fa-solid fa-shield"></i> Brotherhood & Alliance</div>
+            <h1>Guild Hall</h1>
+            <p class="page-hero-sub">Coordinate with your guild, review your roster, and command the battlefield together.</p>
+        </div>
+        <div style="text-align:center;padding:4rem;color:var(--dash-text-faint)">
+            <i class="fa-solid fa-spinner fa-spin" style="font-size:2rem;margin-bottom:1rem;display:block;"></i>
+            Entering the Guild Hall...
+        </div>
+    </main>
+
+<script>
+
+
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let GUILD = null, IS_LEADER = false, IS_OFFICER = false, MY_ID = null;
+const memberId = m => m.user_id != null ? m.user_id : m.id;
+
+// Small POST helper used by every leader/officer action
+async function guildPost(path, body) {
+    try {
+        const res = await fetch(path, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body || {}) });
+        const data = await res.json().catch(() => ({}));
+        return { ok: res.ok && data.error === undefined, data };
+    } catch (e) { return { ok:false, data:{ error:'Request failed.' } }; }
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+    const container = document.getElementById('main-container');
+
+    fetch('/api/me').then(r => r.json()).then(me => {
+        if (me.logged_in) {
+            if (me.username) document.getElementById('sidebar-username').textContent = me.username;
+            if (me.avatar)   document.getElementById('sidebar-avatar').src = me.avatar;
+            maybeShowBotIntro(me);
+        }
+    }).catch(() => {});
+
+    try {
+        const res = await fetch('/api/my-guild');
+        const data = await res.json();
+
+        if (!data.guild) {
+            container.innerHTML = `
+                <div class="page-hero animate-rise">
+                    <div class="page-hero-eyebrow"><i class="fa-solid fa-shield"></i> Brotherhood & Alliance</div>
+                    <h1>Guild Hall</h1>
+                    <p class="page-hero-sub">Coordinate with your guild, review your roster, and command the battlefield together.</p>
+                </div>
+                <div class="no-guild-state animate-rise delay-1">
+                    <div class="no-guild-icon"><i class="fa-solid fa-door-closed"></i></div>
+                    <div class="no-guild-title">You Walk Alone</div>
+                    <div class="no-guild-sub">You haven't joined a guild yet. Find an existing guild or forge your own — strength lies in numbers.</div>
+                    <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:0.5rem;">
+                        <button class="party-btn" onclick="openCreateGuildModal()"><i class="fa-solid fa-plus"></i> Create Guild</button>
+                        <button class="party-btn" style="background:linear-gradient(90deg,rgba(45,217,232,0.15),rgba(168,85,247,0.15));color:var(--bone-white);border:1px solid var(--glass-border);" onclick="openJoinGuildModal()"><i class="fa-solid fa-right-to-bracket"></i> Browse &amp; Join</button>
+                    </div>
+                </div>
+                <!-- Browse Guilds List -->
+                <div id="guild-browse-section" style="display:none;margin-top:1.5rem;">
+                    <div class="panel">
+                        <div class="panel-header">
+                            <span class="panel-title">Available Guilds</span>
+                            <input id="guild-search-input" class="chat-input" style="max-width:220px;padding:6px 12px;font-size:0.82rem;" placeholder="Search guilds..." oninput="filterGuilds()">
+                        </div>
+                        <div id="guild-browse-list" style="padding:0.5rem 0;max-height:420px;overflow-y:auto;"></div>
+                    </div>
+                </div>`;
+            loadGuildBrowse();
+            return;
+        }
+
+        const g = data.guild;
+        GUILD = g;
+        IS_LEADER = !!g.is_leader || g.my_role === 'Leader';
+        IS_OFFICER = !IS_LEADER && (!!g.is_officer || g.my_role === 'Officer');
+        MY_ID = g.my_id != null ? g.my_id : null;
+
+        container.innerHTML = `
+            <div class="page-hero animate-rise">
+                <div class="page-hero-eyebrow"><i class="fa-solid fa-shield"></i> Brotherhood & Alliance</div>
+                <h1>Guild Hall</h1>
+                <p class="page-hero-sub">Coordinate with your guild, review your roster, and command the battlefield together.</p>
+            </div>
+
+            <div class="guild-banner animate-rise delay-1">
+                <div class="guild-emblem" id="guild-emblem-icon"><i class="fa-solid fa-shield-halved"></i></div>
+                <div class="guild-info">
+                    <div class="guild-name" id="guild-display-name">${esc(g.name)}</div>
+                    <div class="guild-meta">
+                        <span class="guild-meta-item gold-item"><i class="fa-solid fa-crown"></i> <span id="guild-display-leader">${esc(g.leader_name || 'Unknown')}</span></span>
+                        <span class="guild-meta-item"><i class="fa-solid fa-layer-group"></i> Level <span id="guild-display-level">${g.level}</span></span>
+                        <span class="guild-meta-item"><i class="fa-solid fa-users"></i> <span id="guild-display-members">${g.member_count}/${g.max_members}</span> Members</span>
+                        <span class="guild-meta-item gold-item"><i class="fa-solid fa-coins"></i> <span id="guild-display-treasury">${(g.treasury || 0).toLocaleString()}</span> Gold</span>
+                    </div>
+                    ${g.description ? `<div style="margin-top:0.75rem;font-size:0.82rem;color:var(--dash-text-dim);max-width:480px;" id="guild-display-desc">${esc(g.description)}</div>` : ''}
+                    <div id="guild-motd" style="${g.motd ? '' : 'display:none;'}margin-top:0.75rem;padding:8px 12px;border-left:3px solid var(--gold);background:rgba(251,191,36,0.07);border-radius:6px;font-size:0.82rem;color:var(--bone-white);max-width:480px;">
+                        <i class="fa-solid fa-bullhorn" style="color:var(--gold);margin-right:6px;"></i><span id="guild-motd-text">${esc(g.motd || '')}</span>
+                    </div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:8px;flex-shrink:0;" id="guild-action-btns">
+                    ${IS_LEADER ? `<button class="party-btn" style="font-size:0.75rem;padding:8px 16px;" onclick="openEditGuildModal()"><i class="fa-solid fa-pen"></i> Edit Guild</button>` : ''}
+                    ${(IS_LEADER || IS_OFFICER) ? `<button class="party-btn" style="font-size:0.75rem;padding:8px 16px;" onclick="openRequestsModal()"><i class="fa-solid fa-user-plus"></i> Join Requests</button>` : ''}
+                    <button class="party-btn" style="font-size:0.75rem;padding:8px 16px;" onclick="openTreasuryModal()"><i class="fa-solid fa-coins"></i> Treasury</button>
+                    ${IS_LEADER ? `<button class="party-btn" style="background:linear-gradient(90deg,rgba(248,113,113,0.3),rgba(248,113,113,0.12));color:#fff;border:1px solid rgba(248,113,113,0.4);font-size:0.75rem;padding:8px 16px;" onclick="confirmDisbandGuild()"><i class="fa-solid fa-skull"></i> Disband Guild</button>` : `<button class="party-btn" style="background:linear-gradient(90deg,rgba(248,113,113,0.18),rgba(248,113,113,0.08));color:#f87171;border:1px solid rgba(248,113,113,0.25);font-size:0.75rem;padding:8px 16px;" onclick="confirmLeaveGuild()"><i class="fa-solid fa-right-from-bracket"></i> Leave Guild</button>`}
+                </div>
+            </div>
+
+            <div class="guild-layout animate-rise delay-2">
+                <div class="panel">
+                    <div class="panel-header">
+                        <span class="panel-title">Guild Roster</span>
+                        <span class="panel-badge">${g.member_count} members</span>
+                    </div>
+                    <div class="member-list" id="roster"></div>
+                </div>
+
+                <div class="chat-panel">
+                    <div class="panel-header">
+                        <span class="panel-title">Guild Chat</span>
+                        <span style="font-size:0.7rem;color:var(--emerald);display:flex;align-items:center;gap:4px;">
+                            <span style="width:6px;height:6px;border-radius:50%;background:var(--emerald);"></span>Live
+                        </span>
+                    </div>
+                    <div class="chat-messages" id="chat-feed"></div>
+                    <div class="chat-input-area">
+                        <input class="chat-input" type="text" id="msg-input" placeholder="Message your guild..." maxlength="200">
+                        <button class="chat-send" onclick="sendMsg()" title="Send"><i class="fa-solid fa-paper-plane"></i></button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Roster
+        const roster = document.getElementById('roster');
+        (g.members || []).forEach((m, idx) => {
+            const roleClass = m.role === 'Leader' ? 'role-leader' : m.role === 'Officer' ? 'role-officer' : 'role-member';
+            const initial = (m.name || '?')[0].toUpperCase();
+            const div = document.createElement('div');
+            div.className = 'member-row';
+            div.style.animationDelay = `${0.15 + idx * 0.035}s`;
+            const mid = memberId(m);
+            const isSelf = MY_ID != null && String(mid) === String(MY_ID);
+            const targetIsLeader = m.role === 'Leader';
+            const targetIsOfficer = m.role === 'Officer';
+            // Leader can act on anyone but themself; officers can only kick plain members
+            const canKick = !isSelf && !targetIsLeader && (IS_LEADER || (IS_OFFICER && !targetIsOfficer && m.role !== 'Leader'));
+            const canRank = IS_LEADER && !isSelf && !targetIsLeader;
+            const btn = (title, icon, fn, color) => `<button class="member-invite-btn" title="${title}" aria-label="${title}" style="${color ? `color:${color};` : ''}" onclick="${fn}"><i class="fa-solid fa-${icon}"></i></button>`;
+            const nameArg = esc(String(m.name).replace(/'/g, "\\'"));
+            const tools = [
+                canRank ? (targetIsOfficer
+                    ? btn('Demote to Member', 'arrow-down', `setMemberRole('${mid}','Member','${nameArg}')`)
+                    : btn('Promote to Officer', 'arrow-up', `setMemberRole('${mid}','Officer','${nameArg}')`, 'var(--dash-purple)')) : '',
+                canRank ? btn('Transfer leadership', 'crown', `transferLeadership('${mid}','${nameArg}')`, 'var(--gold)') : '',
+                canKick ? btn('Kick from guild', 'user-xmark', `kickMember('${mid}','${nameArg}')`, 'var(--red)') : ''
+            ].join('');
+            div.innerHTML = `
+                <div class="member-left">
+                    <div class="member-avatar-placeholder">${esc(initial)}</div>
+                    <div>
+                        <div class="member-name">${esc(m.name)}${isSelf ? ' (you)' : ''}</div>
+                        <div class="member-level">Level ${esc(m.level)}</div>
+                    </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+                    ${tools}
+                    <span class="member-role ${roleClass}">${esc(m.role)}</span>
+                </div>
+            `;
+            roster.appendChild(div);
+        });
+
+        loadChat();
+
+    } catch (e) {
+        console.error(e);
+        container.innerHTML = `<div style="text-align:center;padding:4rem;color:var(--dash-text-faint)">Failed to load guild data.</div>`;
+    }
+});
+
+async function loadChat() {
+    try {
+        const res = await fetch('/api/chat/messages');
+        const data = await res.json();
+        const feed = document.getElementById('chat-feed');
+        if (!feed) return;
+        feed.innerHTML = '';
+
+        if (!data.messages || data.messages.length === 0) {
+            feed.innerHTML = `<div style="text-align:center;color:var(--dash-text-faint);padding:2rem;font-size:0.82rem;">
+                No messages yet. Be the first to speak.
+            </div>`;
+            return;
+        }
+
+        data.messages.forEach(m => {
+            const div = document.createElement('div');
+            div.className = 'chat-msg';
+            const timeStr = m.ts ? new Date(m.ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) : '';
+            const canDel = (IS_LEADER || IS_OFFICER) && m.id != null;
+            div.innerHTML = `
+                <div class="chat-msg-header">
+                    <span class="chat-msg-author">${esc(m.username || 'Unknown')}</span>
+                    <span class="chat-msg-time">${esc(timeStr)}</span>
+                    ${canDel ? `<button title="Delete message" aria-label="Delete message" onclick="deleteChatMsg('${m.id}')" style="margin-left:auto;background:none;border:none;color:var(--dash-text-faint);cursor:pointer;font-size:0.7rem;"><i class="fa-solid fa-trash"></i></button>` : ''}
+                </div>
+                <div class="chat-msg-text">${esc(m.text)}</div>
+            `;
+            feed.appendChild(div);
+        });
+        feed.scrollTop = feed.scrollHeight;
+    } catch(e) { console.error(e); }
+}
+
+async function sendMsg() {
+    const input = document.getElementById('msg-input');
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    try {
+        await fetch('/api/chat/send', {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({text})
+        });
+        loadChat();
+    } catch(e) { alert('Failed to send message'); }
+}
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        const input = document.getElementById('msg-input');
+        if (input && document.activeElement === input) sendMsg();
+    }
+});
+
+setInterval(loadChat, 5000);
+
+// ─── GUILD BROWSE ────────────────────────────────────────
+let _allGuilds = [];
+async function loadGuildBrowse() {
+    try {
+        const res = await fetch('/api/guilds');
+        const data = await res.json();
+        _allGuilds = data.guilds || [];
+        renderGuildBrowse(_allGuilds);
+    } catch(e) { console.error(e); }
+}
+
+function filterGuilds() {
+    const q = document.getElementById('guild-search-input')?.value.toLowerCase() || '';
+    renderGuildBrowse(q ? _allGuilds.filter(g => g.name.toLowerCase().includes(q)) : _allGuilds);
+}
+
+function renderGuildBrowse(guilds) {
+    const list = document.getElementById('guild-browse-list');
+    if (!list) return;
+    if (!guilds.length) {
+        list.innerHTML = `<div style="text-align:center;padding:2rem;color:var(--dash-text-faint);font-size:0.85rem;">No guilds found.</div>`;
+        return;
+    }
+    list.innerHTML = guilds.map(g => `
+        <div class="member-row" style="justify-content:space-between;">
+            <div class="member-left">
+                <div class="member-avatar-placeholder" style="border-radius:10px;"><i class="fa-solid fa-shield-halved"></i></div>
+                <div>
+                    <div class="member-name">${esc(g.name)}</div>
+                    <div class="member-level">Level ${esc(g.level)} · ${esc(g.member_count)}/${esc(g.max_members)} members · Led by ${esc(g.leader_name || '?')}</div>
+                </div>
+            </div>
+            <button class="party-btn" style="font-size:0.72rem;padding:7px 14px;" onclick="joinGuild('${g.id}','${g.name.replace(/'/g,"\\'")}')">
+                <i class="fa-solid fa-right-to-bracket"></i> Join
+            </button>
+        </div>`).join('');
+}
+
+function openJoinGuildModal() {
+    const sec = document.getElementById('guild-browse-section');
+    if (!sec) return;
+    const showing = sec.style.display !== 'none';
+    sec.style.display = showing ? 'none' : 'block';
+    if (!showing) sec.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+async function joinGuild(id, name) {
+    if (!confirm(`Join "${name}"?`)) return;
+    try {
+        const res = await fetch('/api/guild/join', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({guild_id: id})
+        });
+        const data = await res.json();
+        if (res.ok && (data.success || data.message)) {
+            showGuildToast(`Joined ${name}!`, 'success');
+            setTimeout(() => location.reload(), 1200);
+        } else {
+            showGuildToast(data.error || 'Could not join guild.', 'error');
+        }
+    } catch(e) { showGuildToast('Request failed.', 'error'); }
+}
+
+// ─── CREATE GUILD ────────────────────────────────────────
+function openCreateGuildModal() {
+    document.getElementById('create-guild-modal').style.display = 'flex';
+}
+function closeCreateGuildModal() {
+    document.getElementById('create-guild-modal').style.display = 'none';
+    document.getElementById('create-guild-form').reset();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('create-guild-form')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const name = document.getElementById('cg-name').value.trim();
+        const description = document.getElementById('cg-desc').value.trim();
+        const tag = document.getElementById('cg-tag').value.trim();
+        if (!name) return;
+        try {
+            const res = await fetch('/api/guild/create', {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({name, description, tag})
+            });
+            const data = await res.json();
+            if (res.ok && (data.success || data.guild)) {
+                showGuildToast('Guild created!', 'success');
+                setTimeout(() => location.reload(), 1200);
+            } else {
+                showGuildToast(data.error || 'Could not create guild.', 'error');
+            }
+        } catch(e) { showGuildToast('Request failed.', 'error'); }
+    });
+});
+
+// ─── EDIT GUILD ────────────────────────────────────────
+function openEditGuildModal() {
+    const nameEl = document.getElementById('guild-display-name');
+    const descEl = document.getElementById('guild-display-desc');
+    document.getElementById('eg-name').value = nameEl ? nameEl.textContent : '';
+    document.getElementById('eg-desc').value = descEl ? descEl.textContent : '';
+    const motdEl = document.getElementById('guild-motd-text');
+    document.getElementById('eg-motd').value = motdEl ? motdEl.textContent : '';
+    document.getElementById('edit-guild-modal').style.display = 'flex';
+}
+function closeEditGuildModal() {
+    document.getElementById('edit-guild-modal').style.display = 'none';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('edit-guild-form')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const name = document.getElementById('eg-name').value.trim();
+        const description = document.getElementById('eg-desc').value.trim();
+        const motd = document.getElementById('eg-motd').value.trim();
+        try {
+            const res = await fetch('/api/guild/edit', {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({name, description, motd})
+            });
+            const data = await res.json();
+            if (res.ok && (data.success || data.guild)) {
+                showGuildToast('Guild updated!', 'success');
+                closeEditGuildModal();
+                const nameEl = document.getElementById('guild-display-name');
+                if (nameEl) nameEl.textContent = name;
+                const descEl = document.getElementById('guild-display-desc');
+                if (descEl) descEl.textContent = description;
+                const motdBox = document.getElementById('guild-motd');
+                if (motdBox) { document.getElementById('guild-motd-text').textContent = motd; motdBox.style.display = motd ? '' : 'none'; }
+            } else {
+                showGuildToast(data.error || 'Could not update guild.', 'error');
+            }
+        } catch(e) { showGuildToast('Request failed.', 'error'); }
+    });
+});
+
+// ─── LEAVE GUILD ────────────────────────────────────────
+async function confirmLeaveGuild() {
+    if (!confirm('Are you sure you want to leave your guild? This cannot be undone.')) return;
+    try {
+        const res = await fetch('/api/guild/leave', {
+            method: 'POST', headers: {'Content-Type':'application/json'}
+        });
+        const data = await res.json();
+        if (res.ok && (data.success || data.message)) {
+            showGuildToast('You have left the guild.', 'success');
+            setTimeout(() => location.reload(), 1200);
+        } else {
+            showGuildToast(data.error || 'Could not leave guild.', 'error');
+        }
+    } catch(e) { showGuildToast('Request failed.', 'error'); }
+}
+
+// ─── LEADER / OFFICER POWERS ─────────────────────────────
+// NOTE: these call new backend endpoints (see list in the reply). Each must re-check
+// the caller's role on the server; the buttons here are only convenience.
+async function kickMember(id, name) {
+    if (!confirm(`Kick ${name} from the guild?`)) return;
+    const r = await guildPost('/api/guild/kick', { user_id: id });
+    if (r.ok) { showGuildToast(`${name} was removed.`, 'success'); setTimeout(() => location.reload(), 900); }
+    else showGuildToast(r.data.error || 'Could not kick member.', 'error');
+}
+
+async function setMemberRole(id, role, name) {
+    const r = await guildPost('/api/guild/role', { user_id: id, role });
+    if (r.ok) { showGuildToast(`${name} is now ${role === 'Officer' ? 'an Officer' : 'a Member'}.`, 'success'); setTimeout(() => location.reload(), 900); }
+    else showGuildToast(r.data.error || 'Could not change role.', 'error');
+}
+
+async function transferLeadership(id, name) {
+    if (!confirm(`Hand leadership of the guild to ${name}? You will become an Officer and cannot undo this yourself.`)) return;
+    const typed = prompt(`Type ${name}'s name to confirm:`);
+    if (typed === null || typed.trim().toLowerCase() !== String(name).toLowerCase()) { showGuildToast('Transfer cancelled.', 'error'); return; }
+    const r = await guildPost('/api/guild/transfer', { user_id: id });
+    if (r.ok) { showGuildToast(`${name} is the new leader.`, 'success'); setTimeout(() => location.reload(), 1000); }
+    else showGuildToast(r.data.error || 'Could not transfer leadership.', 'error');
+}
+
+async function confirmDisbandGuild() {
+    if (!GUILD) return;
+    if (!confirm(`Disband "${GUILD.name}"? All members are removed and this cannot be undone.`)) return;
+    const typed = prompt('Type the guild name to confirm:');
+    if (typed === null || typed.trim() !== GUILD.name) { showGuildToast('Disband cancelled.', 'error'); return; }
+    const r = await guildPost('/api/guild/disband', {});
+    if (r.ok) { showGuildToast('Guild disbanded.', 'success'); setTimeout(() => location.reload(), 1200); }
+    else showGuildToast(r.data.error || 'Could not disband guild.', 'error');
+}
+
+async function deleteChatMsg(id) {
+    const r = await guildPost('/api/chat/delete', { id });
+    if (r.ok) loadChat(); else showGuildToast(r.data.error || 'Could not delete message.', 'error');
+}
+
+function guildModal(html) {
+    let bg = document.getElementById('guild-dyn-modal');
+    if (!bg) {
+        bg = document.createElement('div');
+        bg.id = 'guild-dyn-modal';
+        bg.style.cssText = 'position:fixed;inset:0;background:rgba(5,5,15,0.8);backdrop-filter:blur(6px);z-index:8000;display:flex;align-items:center;justify-content:center;padding:20px;';
+        bg.addEventListener('mousedown', e => { if (e.target === bg) bg.remove(); });
+        document.body.appendChild(bg);
+    }
+    bg.innerHTML = `<div style="width:100%;max-width:460px;max-height:85vh;overflow-y:auto;background:#0e0e18;border:1px solid var(--glass-border);border-radius:20px;padding:1.75rem;box-shadow:0 20px 50px rgba(0,0,0,0.5);">${html}</div>`;
+    return bg;
+}
+const closeGuildModal = () => { const b = document.getElementById('guild-dyn-modal'); if (b) b.remove(); };
+
+function openTreasuryModal() {
+    if (!GUILD) return;
+    const canWithdraw = IS_LEADER;
+    const bg = guildModal(`
+        <h3 style="font-family:'Sora',sans-serif;font-size:1.15rem;font-weight:800;margin-bottom:4px;">Guild Treasury</h3>
+        <p style="font-size:0.82rem;color:var(--dash-text-dim);margin-bottom:1rem;"><i class="fa-solid fa-coins" style="color:var(--gold)"></i> <span id="tr-balance">${(GUILD.treasury || 0).toLocaleString()}</span> gold. ${canWithdraw ? 'Anyone can deposit; only the leader can withdraw.' : 'Anyone can deposit; only the leader can withdraw.'}</p>
+        <input id="tr-amount" type="number" min="1" step="1" class="chat-input" style="width:100%;margin-bottom:10px;" placeholder="Gold amount">
+        <p id="tr-err" role="alert" style="color:var(--red);font-size:0.78rem;min-height:1.1em;margin-bottom:8px;"></p>
+        <div style="display:flex;gap:10px;">
+            <button class="party-btn" style="flex:1;justify-content:center;" id="tr-dep"><i class="fa-solid fa-arrow-down"></i> Deposit</button>
+            ${canWithdraw ? `<button class="party-btn" style="flex:1;justify-content:center;background:linear-gradient(90deg,var(--gold),#f59e0b);" id="tr-wd"><i class="fa-solid fa-arrow-up"></i> Withdraw</button>` : ''}
+            <button class="party-btn" style="background:rgba(255,255,255,0.05);color:var(--bone-white);border:1px solid var(--glass-border);" id="tr-x">Close</button>
+        </div>`);
+    const run = async action => {
+        const n = Number(document.getElementById('tr-amount').value);
+        const err = document.getElementById('tr-err');
+        if (!Number.isInteger(n) || n < 1) { err.textContent = 'Enter a whole number of gold.'; return; }
+        const r = await guildPost('/api/guild/treasury', { action, amount: n });
+        if (!r.ok) { err.textContent = r.data.error || 'Could not complete that.'; return; }
+        GUILD.treasury = r.data.treasury != null ? r.data.treasury : (GUILD.treasury || 0) + (action === 'deposit' ? n : -n);
+        document.getElementById('tr-balance').textContent = GUILD.treasury.toLocaleString();
+        const head = document.getElementById('guild-display-treasury');
+        if (head) head.textContent = GUILD.treasury.toLocaleString();
+        document.getElementById('tr-amount').value = '';
+        showGuildToast(action === 'deposit' ? 'Deposited.' : 'Withdrawn.', 'success');
+    };
+    bg.querySelector('#tr-dep').onclick = () => run('deposit');
+    const wd = bg.querySelector('#tr-wd'); if (wd) wd.onclick = () => run('withdraw');
+    bg.querySelector('#tr-x').onclick = closeGuildModal;
+}
+
+async function openRequestsModal() {
+    guildModal('<p style="color:var(--dash-text-dim);">Loading requests…</p>');
+    let list = [];
+    try {
+        const res = await fetch('/api/guild/requests');
+        const data = await res.json();
+        if (!res.ok) { closeGuildModal(); showGuildToast(data.error || 'Could not load requests.', 'error'); return; }
+        list = data.requests || [];
+    } catch (e) { closeGuildModal(); showGuildToast('Request failed.', 'error'); return; }
+    const rows = list.map(q => `
+        <div class="member-row" style="padding:0.6rem 0;">
+            <div class="member-left"><div class="member-avatar-placeholder">${esc((q.name || '?')[0].toUpperCase())}</div>
+                <div><div class="member-name">${esc(q.name)}</div><div class="member-level">Level ${esc(q.level)}</div></div></div>
+            <div style="display:flex;gap:6px;">
+                <button class="member-invite-btn added" title="Accept" aria-label="Accept ${esc(q.name)}" data-rid="${esc(q.id)}" data-accept="1"><i class="fa-solid fa-check"></i></button>
+                <button class="member-invite-btn" style="color:var(--red)" title="Decline" aria-label="Decline ${esc(q.name)}" data-rid="${esc(q.id)}" data-accept="0"><i class="fa-solid fa-xmark"></i></button>
+            </div></div>`).join('');
+    const bg = guildModal(`<h3 style="font-family:'Sora',sans-serif;font-size:1.15rem;font-weight:800;margin-bottom:1rem;">Join Requests</h3>
+        ${rows || '<p style="color:var(--dash-text-faint);font-size:0.85rem;">No pending requests.</p>'}
+        <button class="party-btn" style="margin-top:1rem;background:rgba(255,255,255,0.05);color:var(--bone-white);border:1px solid var(--glass-border);" id="rq-x">Close</button>`);
+    bg.querySelector('#rq-x').onclick = closeGuildModal;
+    bg.querySelectorAll('[data-rid]').forEach(b => b.addEventListener('click', async () => {
+        const r = await guildPost('/api/guild/requests/resolve', { request_id: b.dataset.rid, accept: b.dataset.accept === '1' });
+        if (r.ok) { showGuildToast(b.dataset.accept === '1' ? 'Member accepted.' : 'Request declined.', 'success'); openRequestsModal(); }
+        else showGuildToast(r.data.error || 'Could not update request.', 'error');
+    }));
+}
+
+// ─── TOAST ────────────────────────────────────────────
+function showGuildToast(msg, type = 'success') {
+    let t = document.getElementById('guild-toast');
+    if (!t) {
+        t = document.createElement('div');
+        t.id = 'guild-toast';
+        t.style.cssText = `position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(20px);
+            background:rgba(10,10,20,0.9);border:1px solid var(--glass-border);color:var(--bone-white);
+            padding:11px 22px;border-radius:40px;font-size:0.85rem;font-weight:600;
+            display:flex;align-items:center;gap:10px;z-index:9999;
+            opacity:0;transition:all 300ms cubic-bezier(0.22,1,0.36,1);pointer-events:none;`;
+        document.body.appendChild(t);
+    }
+    const color = type === 'error' ? '#f87171' : '#34d399';
+    t.innerHTML = `<i class="fa-solid fa-${type === 'error' ? 'circle-xmark' : 'circle-check'}" style="color:${color}"></i> ${msg}`;
+    t.style.opacity = '1';
+    t.style.transform = 'translateX(-50%) translateY(0)';
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => { t.style.opacity='0'; t.style.transform='translateX(-50%) translateY(10px)'; }, 3000);
+}
+
+function maybeShowBotIntro(me) {
+    if (sessionStorage.getItem('botIntroShown') === '1') return;
+    sessionStorage.setItem('botIntroShown', '1');
+    showBotIntro(me);
+}
+
+async function showBotIntro(me) {
+    const overlay = document.getElementById('botIntroOverlay');
+    if (!overlay) return;
+    let botName = 'RPG Ghost', ownerName = 'the bot owner';
+    let description = "I'm RPG Ghost, a text-based adventure bot for Discord — battle monsters, loot gear, trade in the auction house, and rise up the leaderboard with your guild.";
+    try {
+        const res = await fetch('/api/bot-info');
+        if (res.ok) {
+            const info = await res.json();
+            botName = info.name || botName;
+            ownerName = info.owner_username || (me && me.owner_username) || ownerName;
+            description = info.description || description;
+        }
+    } catch(e) { if (me && me.owner_username) ownerName = me.owner_username; }
+
+    document.getElementById('botIntroName').textContent = botName;
+    document.getElementById('botIntroOwner').innerHTML = `<span>@${ownerName}</span>`;
+    overlay.classList.add('show');
+
+    const closeBtn = document.getElementById('botIntroClose');
+    closeBtn.classList.remove('ready');
+    typeWriter(document.getElementById('botIntroText'), description, () => closeBtn.classList.add('ready'));
+
+    const hide = () => overlay.classList.remove('show');
+    closeBtn.onclick = hide;
+    document.getElementById('botIntroSkip').onclick = hide;
+}
+
+function typeWriter(el, text, onDone) {
+    el.innerHTML = '<span class="cursor"></span>';
+    let i = 0;
+    (function step() {
+        if (i <= text.length) { el.innerHTML = text.slice(0,i) + '<span class="cursor"></span>'; i++; setTimeout(step, 22); }
+        else if (onDone) onDone();
+    })();
+}
+</script>
+
+<!-- ── CREATE GUILD MODAL ─────────────────────────────── -->
+<div id="create-guild-modal" style="display:none;position:fixed;inset:0;background:rgba(5,5,15,0.8);backdrop-filter:blur(6px);z-index:8000;align-items:center;justify-content:center;padding:20px;">
+    <div style="width:100%;max-width:440px;background:#0e0e18;border:1px solid var(--glass-border);border-radius:20px;padding:2rem;box-shadow:0 0 60px rgba(45,217,232,0.1),0 20px 50px rgba(0,0,0,0.5);">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;">
+            <div>
+                <div style="font-size:0.7rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--dash-teal);margin-bottom:4px;">Guild Hall</div>
+                <h3 style="font-family:'Sora',sans-serif;font-size:1.2rem;font-weight:800;color:var(--bone-white);">Found a New Guild</h3>
+            </div>
+            <button onclick="closeCreateGuildModal()" style="background:none;border:none;color:var(--dash-text-faint);font-size:1.3rem;cursor:pointer;line-height:1;">&times;</button>
+        </div>
+        <form id="create-guild-form" style="display:flex;flex-direction:column;gap:14px;">
+            <div>
+                <label style="display:block;font-size:0.75rem;color:var(--dash-text-dim);margin-bottom:6px;font-weight:600;">Guild Name <span style="color:#f87171;">*</span></label>
+                <input id="cg-name" class="chat-input" style="width:100%;padding:11px 14px;" placeholder="e.g. Iron Vanguard" required maxlength="32">
+            </div>
+            <div>
+                <label style="display:block;font-size:0.75rem;color:var(--dash-text-dim);margin-bottom:6px;font-weight:600;">Tag <span style="font-weight:400;color:var(--dash-text-faint);">(optional, shown as [TAG])</span></label>
+                <input id="cg-tag" class="chat-input" style="width:100%;padding:11px 14px;" placeholder="e.g. IV" maxlength="5">
+            </div>
+            <div>
+                <label style="display:block;font-size:0.75rem;color:var(--dash-text-dim);margin-bottom:6px;font-weight:600;">Description <span style="font-weight:400;color:var(--dash-text-faint);">(optional)</span></label>
+                <textarea id="cg-desc" class="chat-input" style="width:100%;padding:11px 14px;resize:vertical;min-height:72px;" placeholder="Tell adventurers what your guild is about..." maxlength="200"></textarea>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:4px;">
+                <button type="button" onclick="closeCreateGuildModal()" style="flex:1;padding:11px;border-radius:10px;background:rgba(255,255,255,0.04);border:1px solid var(--glass-border);color:var(--dash-text-dim);font-family:'Sora',sans-serif;font-weight:600;font-size:0.82rem;cursor:pointer;">Cancel</button>
+                <button type="submit" class="party-btn" style="flex:2;justify-content:center;border:none;font-size:0.82rem;"><i class="fa-solid fa-shield-halved"></i> Create Guild</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ── EDIT GUILD MODAL ──────────────────────────────── -->
+<div id="edit-guild-modal" style="display:none;position:fixed;inset:0;background:rgba(5,5,15,0.8);backdrop-filter:blur(6px);z-index:8000;align-items:center;justify-content:center;padding:20px;">
+    <div style="width:100%;max-width:440px;background:#0e0e18;border:1px solid var(--glass-border);border-radius:20px;padding:2rem;box-shadow:0 0 60px rgba(168,85,247,0.1),0 20px 50px rgba(0,0,0,0.5);">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;">
+            <div>
+                <div style="font-size:0.7rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--dash-purple);margin-bottom:4px;">Guild Settings</div>
+                <h3 style="font-family:'Sora',sans-serif;font-size:1.2rem;font-weight:800;color:var(--bone-white);">Edit Guild</h3>
+            </div>
+            <button onclick="closeEditGuildModal()" style="background:none;border:none;color:var(--dash-text-faint);font-size:1.3rem;cursor:pointer;line-height:1;">&times;</button>
+        </div>
+        <form id="edit-guild-form" style="display:flex;flex-direction:column;gap:14px;">
+            <div>
+                <label style="display:block;font-size:0.75rem;color:var(--dash-text-dim);margin-bottom:6px;font-weight:600;">Guild Name</label>
+                <input id="eg-name" class="chat-input" style="width:100%;padding:11px 14px;" placeholder="Guild name" maxlength="32">
+            </div>
+            <div>
+                <label style="display:block;font-size:0.75rem;color:var(--dash-text-dim);margin-bottom:6px;font-weight:600;">Description</label>
+                <textarea id="eg-desc" class="chat-input" style="width:100%;padding:11px 14px;resize:vertical;min-height:72px;" placeholder="About your guild..." maxlength="200"></textarea>
+            </div>
+            <div>
+                <label style="display:block;font-size:0.75rem;color:var(--dash-text-dim);margin-bottom:6px;font-weight:600;">Message of the Day <span style="font-weight:400;color:var(--dash-text-faint);">(optional)</span></label>
+                <input id="eg-motd" class="chat-input" style="width:100%;padding:11px 14px;" placeholder="Today's announcement..." maxlength="120">
+            </div>
+            <div style="display:flex;gap:10px;margin-top:4px;">
+                <button type="button" onclick="closeEditGuildModal()" style="flex:1;padding:11px;border-radius:10px;background:rgba(255,255,255,0.04);border:1px solid var(--glass-border);color:var(--dash-text-dim);font-family:'Sora',sans-serif;font-weight:600;font-size:0.82rem;cursor:pointer;">Cancel</button>
+                <button type="submit" class="party-btn" style="flex:2;justify-content:center;border:none;font-size:0.82rem;background:linear-gradient(90deg,var(--dash-purple),var(--soul-purple));"><i class="fa-solid fa-floppy-disk"></i> Save Changes</button>
+            </div>
+        </form>
+    </div>
+</div>
+</body>
+</html>

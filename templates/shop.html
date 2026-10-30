@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RPG Ghost | Shop</title>
+    <link rel="stylesheet" href="/static/dashboard.css">
+    <link rel="stylesheet" href="/static/game-ui.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700&family=Inter:wght@400;500;600;700" rel="stylesheet">
+</head>
+<body data-page="shop">
+    <div id="layout-slot"></div>
+    <script src="/static/layout.js"></script>
+
+    <main class="main-content" id="main-content">
+        <header class="page-header">
+            <div class="user-greeting">
+                <h1>Shop</h1>
+                <p>Spend gold on supplies and gear, or gems on rare scrolls and titles.</p>
+            </div>
+        </header>
+
+        <div class="gx-wrap">
+            <div id="hud"></div>
+
+            <section class="panel">
+                <div class="panel-header">
+                    <div class="gx-tabs" role="tablist" id="tabs">
+                        <button class="gx-tab" role="tab" data-tab="gear" aria-selected="true">Gear</button>
+                        <button class="gx-tab" role="tab" data-tab="supplies" aria-selected="false">Supplies</button>
+                        <button class="gx-tab" role="tab" data-tab="titles" aria-selected="false">Titles</button>
+                    </div>
+                    <span class="gx-faint" id="discount"></span>
+                </div>
+                <div id="shop" class="gx-grid" style="padding:16px"><div class="gx-status">Opening the shop...</div></div>
+            </section>
+        </div>
+    </main>
+
+    <script src="/static/game-ui.js"></script>
+    <script>
+    let state = null, shop = null, tab = 'gear';
+
+    function setState(s) {
+        if (!s) return;
+        state = s;
+        GX.hud(document.getElementById('hud'), s, { onHeal: async () => { const r = await GX.act('POST', 'heal'); if (r.data.state) setState(r.data.state); } });
+    }
+
+    const inTab = i => tab === 'titles' ? i.kind === 'title'
+                     : tab === 'supplies' ? i.kind === 'item' && (i.slot === 'consumable')
+                     : i.kind === 'item' && (i.slot === 'weapon' || i.slot === 'armor');
+
+    function priceHtml(i) {
+        const icon = i.currency === 'gems' ? '<i class="fa-solid fa-gem"></i>' : '<i class="fa-solid fa-coins"></i>';
+        const old = i.base_price !== i.price ? `<s>${GX.fmt(i.base_price)}</s>` : '';
+        return `<span class="gx-price ${i.currency}">${old}${icon} ${GX.fmt(i.price)}</span>`;
+    }
+
+    function render() {
+        const box = document.getElementById('shop');
+        document.getElementById('discount').textContent = shop.discount ? `Guild discount: ${shop.discount}% off gold prices` : 'Join the Adventurer Guild for discounts on gold prices';
+        const items = shop.items.filter(inTab);
+        if (!items.length) { box.innerHTML = '<div class="gx-empty">Nothing for sale here.</div>'; return; }
+
+        box.innerHTML = items.map(i => {
+            const stat = i.atk ? `+${i.atk} attack` : i.def ? `+${i.def} defense` : '';
+            const equipped = i.kind === 'title' && shop.equipped_title === i.name;
+            let action;
+            if (i.kind === 'title') {
+                action = i.owned
+                    ? `<button class="gx-btn sm ${equipped ? '' : 'primary'}" data-equip="${GX.esc(i.name)}">${equipped ? 'Remove title' : 'Wear title'}</button>`
+                    : `<button class="gx-btn sm primary" data-buy="${i.id}" ${i.locked ? 'disabled' : ''}>${i.locked ? 'Level ' + i.req_level : 'Buy'}</button>`;
+            } else {
+                action = `<span style="display:flex;gap:6px">
+                    <button class="gx-btn sm primary" data-buy="${i.id}" ${i.locked ? 'disabled' : ''}>${i.locked ? 'Level ' + i.req_level : 'Buy'}</button>
+                    ${i.slot === 'consumable' && !i.locked ? `<button class="gx-btn sm" data-buy="${i.id}" data-qty="5">×5</button>` : ''}</span>`;
+            }
+            return `
+            <article class="gx-card ${i.locked ? 'locked' : ''}">
+                <div class="gx-card-head"><span class="gx-card-title">${GX.esc(i.name)}</span><span class="gx-pill ${i.rarity}">${GX.esc(i.rarity)}</span></div>
+                <div class="gx-muted" style="font-size:.86rem">${GX.esc(i.description)}</div>
+                <div class="gx-faint">${[stat, i.owned_qty ? 'You own ' + i.owned_qty : '', i.locked ? 'Requires level ' + i.req_level : ''].filter(Boolean).join(' · ')}</div>
+                <div class="gx-buy-row">${priceHtml(i)}${action}</div>
+            </article>`;
+        }).join('');
+
+        box.querySelectorAll('[data-buy]').forEach(b => b.addEventListener('click', () => buy(b.dataset.buy, Number(b.dataset.qty) || 1)));
+        box.querySelectorAll('[data-equip]').forEach(b => b.addEventListener('click', () => wear(b.dataset.equip)));
+    }
+
+    async function buy(id, qty) {
+        const r = await GX.act('POST', 'shop/buy', { id, qty });
+        if (r.data.state) setState(r.data.state);
+        await load();
+    }
+
+    async function wear(name) {
+        const same = shop.equipped_title === name;
+        const r = await GX.act('POST', 'title', { title: same ? null : name });
+        if (r.data.state) setState(r.data.state);
+        await load();
+    }
+
+    async function load() {
+        const r = await GX.api('GET', 'shop');
+        if (r.ok) { shop = r.data; if (r.data.state) setState(r.data.state); render(); }
+        else document.getElementById('shop').innerHTML = '<div class="gx-status">Could not open the shop. Try again later.</div>';
+    }
+
+    document.getElementById('tabs').addEventListener('click', e => {
+        const t = e.target.closest('[data-tab]');
+        if (!t) return;
+        tab = t.dataset.tab;
+        document.querySelectorAll('#tabs .gx-tab').forEach(x => x.setAttribute('aria-selected', x === t ? 'true' : 'false'));
+        if (shop) render();
+    });
+
+    load();
+    </script>
+</body>
+</html>

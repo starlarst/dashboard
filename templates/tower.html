@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RPG Ghost | The Tower</title>
+    <link rel="stylesheet" href="/static/dashboard.css">
+    <link rel="stylesheet" href="/static/game-ui.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700&family=Inter:wght@400;500;600;700" rel="stylesheet">
+</head>
+<body data-page="tower">
+    <div id="layout-slot"></div>
+    <script src="/static/layout.js"></script>
+
+    <main class="main-content" id="main-content">
+        <header class="page-header">
+            <div class="user-greeting">
+                <h1>The Tower</h1>
+                <p>One hundred floors, one guardian each. Every fifth floor holds a boss. Only Adventurer Guild members may climb.</p>
+            </div>
+        </header>
+
+        <div class="gx-wrap">
+            <div id="hud"></div>
+            <div id="tower"><div class="gx-status">Opening the gates...</div></div>
+        </div>
+    </main>
+
+    <script src="/static/game-ui.js"></script>
+    <script>
+    let state = null, tower = null, busy = false;
+    const log = [];
+
+    function setState(s) {
+        if (!s) return;
+        state = s;
+        GX.hud(document.getElementById('hud'), s, { onHeal: heal });
+    }
+
+    async function heal() {
+        const r = await GX.act('POST', 'heal');
+        if (r.data.state) setState(r.data.state);
+    }
+
+    function render() {
+        const el = document.getElementById('tower');
+        if (!tower) return;
+
+        if (!tower.member) {
+            el.innerHTML = `
+                <div class="gx-join">
+                    <div class="gx-card-title" style="font-size:1.25rem">The gates are closed to outsiders</div>
+                    <div class="gx-muted">The Tower belongs to the Adventurer Guild. Join the guild to receive your Guild Card, take missions, and start climbing.</div>
+                    <div><a class="gx-btn primary" href="/quest-board" style="text-decoration:none;display:inline-block">Go to the Adventurer Guild</a></div>
+                </div>`;
+            return;
+        }
+
+        const n = tower.next;
+        if (!n) {
+            el.innerHTML = `<div class="gx-join"><div class="gx-card-title" style="font-size:1.25rem">You conquered the Tower</div>
+                <div class="gx-muted">All ${tower.floors_total} floors are cleared. Nothing above you but sky.</div></div>`;
+            return;
+        }
+
+        const blocked = tower.blocked_by_rank;
+        el.innerHTML = `
+            <div class="gx-two">
+                <section class="panel">
+                    <div class="panel-header"><span><i class="fa-solid fa-chess-rook"></i> Next floor</span>
+                        <span class="gx-faint">${tower.cleared} of ${tower.floors_total} cleared</span></div>
+                    <div style="padding:18px;display:grid;gap:16px">
+                        <div class="gx-floor-hero">
+                            <div class="gx-floor-num"><small>Floor</small>${n.floor}</div>
+                            <div style="display:grid;gap:6px;min-width:0">
+                                <div class="gx-card-title">${GX.esc(n.name)} ${n.boss ? '<span class="gx-pill legendary">Boss</span>' : ''}</div>
+                                <div class="gx-muted" style="font-size:.88rem">Guardian power ${GX.fmt(n.power)} · Your win chance <b style="color:var(--dash-text)">${n.win_chance}%</b></div>
+                            </div>
+                        </div>
+                        <div class="gx-reward">
+                            <span><b>${GX.fmt(n.reward.xp)}</b> XP</span>
+                            <span><b>${GX.fmt(n.reward.gold)}</b> gold</span>
+                            ${n.reward.gems ? `<span><b>${n.reward.gems}</b> gems</span>` : ''}
+                            <span><b>${n.reward.gp}</b> guild points</span>
+                        </div>
+                        ${blocked ? `<div class="gx-muted" style="font-size:.88rem">Floor ${n.floor} needs Guild Rank <b style="color:var(--dash-text)">${GX.esc(n.rank_req)}</b>. You are Rank ${GX.esc(tower.rank)}. Finish guild missions to rank up.</div>` : ''}
+                        <div><button class="gx-btn primary" id="climb" ${blocked ? 'disabled' : ''}>Climb floor ${n.floor}</button></div>
+                        <ul class="gx-log" id="tlog" style="margin:0;padding:0"></ul>
+                    </div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-header"><span><i class="fa-solid fa-stairs"></i> Ladder</span></div>
+                    <div class="gx-ladder" style="padding:14px 16px">
+                        ${tower.ladder.map(f => `
+                            <div class="gx-rung ${f.cleared ? 'cleared' : ''} ${f.floor === n.floor ? 'next' : ''} ${f.boss ? 'boss' : ''} ${f.locked ? 'locked' : ''}">
+                                <span class="gx-rung-f">Floor ${f.floor}</span>
+                                <span class="gx-faint">${f.boss ? 'Boss · ' : ''}Rank ${GX.esc(f.rank_req)}${f.locked ? ' needed' : ''}</span>
+                            </div>`).join('')}
+                    </div>
+                    <div class="gx-faint" style="padding:0 16px 16px">Titles at floors ${Object.keys(tower.titles).join(', ')}.</div>
+                </section>
+            </div>`;
+
+        const list = document.getElementById('tlog');
+        log.slice(0, 6).forEach(l => { const li = document.createElement('li'); if (l.bad) li.className = 'bad'; li.textContent = l.text; list.appendChild(li); });
+        const btn = document.getElementById('climb');
+        if (btn) btn.addEventListener('click', climb);
+    }
+
+    async function climb() {
+        if (busy) return;
+        busy = true;
+        const r = await GX.api('POST', 'tower/climb');
+        if (r.data.state) setState(r.data.state);
+        if (r.ok) {
+            log.unshift({ text: r.data.message, bad: r.data.result !== 'win' });
+            GX.toast((r.data.result === 'win' ? '🏁 ' : '💀 ') + r.data.message, r.data.result !== 'win');
+            GX.events(r.data.events);
+        } else {
+            GX.toast(r.data.error || 'Could not climb.', true);
+        }
+        await load();
+        busy = false;
+    }
+
+    async function load() {
+        const r = await GX.api('GET', 'tower');
+        if (r.ok) { tower = r.data.tower; if (r.data.state) setState(r.data.state); render(); }
+        else document.getElementById('tower').innerHTML = '<div class="gx-status">Could not load the Tower. Try again later.</div>';
+    }
+
+    (async function init() {
+        const s = await GX.api('GET', 'state');
+        if (s.ok) setState(s.data.state);
+        await load();
+    })();
+    </script>
+</body>
+</html>

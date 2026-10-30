@@ -1,0 +1,1571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RPG Ghost | Community</title>
+    <link rel="stylesheet" href="/static/dashboard.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700&family=Inter:wght@400;500;600;700" rel="stylesheet">
+    <style>
+        .cm-shell { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 16px; height: calc(100vh - 200px); min-height: 540px; }
+        .cm-box { border: 1px solid var(--dash-border); border-radius: 14px; background: var(--dash-surface); min-height: 0; display: flex; flex-direction: column; }
+        .cm-side { overflow: hidden; }
+        .cm-chat { position: relative; overflow: hidden; }
+
+        /* status dots: shape + color, never color alone */
+        .cm-av { position: relative; flex: none; width: 36px; height: 36px; }
+        .cm-av img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; background: var(--dash-glass); }
+        .cm-dot { position: absolute; right: -2px; bottom: -2px; width: 13px; height: 13px; border-radius: 50%; border: 2px solid var(--dash-surface); box-sizing: border-box; }
+        .cm-dot.online  { background: var(--dash-emerald); }
+        .cm-dot.idle    { background: var(--gold); }
+        .cm-dot.idle::after { content: ''; position: absolute; left: -2px; top: -2px; width: 7px; height: 7px; border-radius: 50%; background: var(--dash-surface); }
+        .cm-dot.dnd     { background: var(--dash-red); }
+        .cm-dot.dnd::after { content: ''; position: absolute; left: 1px; right: 1px; top: 3px; height: 2px; background: #fff; border-radius: 1px; }
+        .cm-dot.offline { background: var(--dash-surface); border: 2px solid var(--dash-text-faint); }
+        .cm-dot.inline { position: static; display: inline-block; vertical-align: middle; margin-right: 6px; }
+
+        /* me card */
+        .cm-me { padding: 14px; border-bottom: 1px solid var(--dash-border); display: grid; gap: 10px; }
+        .cm-me-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+        .cm-me-name { font-weight: 700; font-family: 'Sora', sans-serif; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .cm-statusbtn { margin-left: auto; font: inherit; font-size: .78rem; font-weight: 600; cursor: pointer; padding: 6px 10px; border-radius: 99px; border: 1px solid var(--dash-border-strong); background: var(--dash-glass); color: var(--dash-text); white-space: nowrap; }
+        .cm-statusbtn:hover { background: rgba(255,255,255,.09); }
+        .cm-menu { display: none; position: absolute; z-index: 30; left: 12px; right: 12px; top: 64px; padding: 6px; border-radius: 12px; border: 1px solid var(--dash-border-strong); background: var(--dash-surface-2); box-shadow: 0 14px 34px rgba(0,0,0,.5); }
+        .cm-menu.open { display: block; }
+        .cm-menu button { display: flex; gap: 10px; align-items: center; width: 100%; text-align: left; font: inherit; cursor: pointer; padding: 9px 10px; border-radius: 9px; border: 0; background: transparent; color: var(--dash-text); }
+        .cm-menu button:hover, .cm-menu button[aria-checked="true"] { background: var(--dash-glass); }
+        .cm-menu small { display: block; color: var(--dash-text-dim); font-size: .72rem; }
+        .cm-input { width: 100%; box-sizing: border-box; font: inherit; font-size: .86rem; padding: 9px 11px; border-radius: 10px; border: 1px solid var(--dash-border); background: var(--dash-glass-soft); color: var(--dash-text); }
+        .cm-input:focus-visible, textarea.cm-input:focus-visible { outline: 2px solid var(--dash-teal); outline-offset: 1px; }
+
+        /* lists */
+        .cm-listwrap { flex: 1; overflow-y: auto; padding: 8px; }
+        .cm-searchbox { padding: 10px 12px 0; }
+        .cm-group { padding: 12px 8px 4px; font-size: .7rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--dash-text-faint); }
+        .cm-row { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; font: inherit; cursor: pointer; padding: 8px; border-radius: 10px; border: 0; background: transparent; color: var(--dash-text); min-width: 0; }
+        .cm-row:hover { background: var(--dash-glass); }
+        .cm-row[aria-current="true"] { background: var(--dash-teal-dim); }
+        .cm-row:focus-visible, .cm-iconbtn:focus-visible, .cm-send:focus-visible, .cm-tabbtn:focus-visible, .cm-statusbtn:focus-visible, .cm-menu button:focus-visible { outline: 2px solid var(--dash-teal); outline-offset: 1px; }
+        .cm-row-main { min-width: 0; flex: 1; }
+        .cm-row-name { font-size: .88rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .cm-row-sub { font-size: .72rem; color: var(--dash-text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .cm-badge { flex: none; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 99px; font-size: .72rem; font-weight: 700; display: grid; place-items: center; background: var(--dash-red); color: #fff; }
+        .cm-hash { width: 36px; height: 36px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--dash-glass); color: var(--dash-teal); }
+        .cm-empty { padding: 20px 12px; text-align: center; color: var(--dash-text-dim); font-size: .86rem; }
+        .cm-head { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--dash-border); min-height: 36px; }
+        .cm-head-title { font-family: 'Sora', sans-serif; font-weight: 700; }
+        .cm-head-sub { font-size: .76rem; color: var(--dash-text-dim); }
+        .cm-head-actions { margin-left: auto; display: flex; gap: 8px; }
+        .cm-iconbtn.cm-mobile-only { display: none; }
+
+        /* messages */
+        .cm-msgs { flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; }
+        .cm-msg { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 10px; padding: 3px 6px; border-radius: 10px; position: relative; }
+        .cm-msg:hover, .cm-msg:focus-within, .cm-msg.picking { background: var(--dash-glass-soft); }
+        .cm-msg.first { margin-top: 10px; }
+        .cm-msg.cont .cm-msg-av { visibility: hidden; height: 0; }
+        .cm-msg.flash { animation: cmflash 1.4s ease; }
+        @keyframes cmflash { 0%, 60% { background: var(--dash-teal-dim); } 100% { background: transparent; } }
+        .cm-msg-av img { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; background: var(--dash-glass); }
+        .cm-msg-meta { display: flex; gap: 8px; align-items: baseline; }
+        .cm-msg-name { font-weight: 700; font-size: .88rem; }
+        .cm-msg.mine .cm-msg-name { color: var(--dash-teal); }
+        .cm-msg-time { font-size: .7rem; color: var(--dash-text-faint); }
+        .cm-msg-body { font-size: .92rem; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+        .cm-msg-body.jumbo { font-size: 2.2rem; line-height: 1.2; }
+        .cm-msg-body img { display: block; max-width: min(300px, 100%); max-height: 260px; border-radius: 10px; margin-top: 4px; background: var(--dash-glass); }
+        .cm-msg-body img.sticker { max-width: 150px; max-height: 150px; background: transparent; }
+        .cm-msg-body img.cm-media, .cm-msg-body video.cm-media { display: block; max-width: min(420px, 100%); max-height: 320px; border-radius: 10px; margin-top: 4px; background: var(--dash-glass); }
+        .cm-msg-body img.cm-media { cursor: zoom-in; }
+        .cm-newpill { position: absolute; left: 50%; transform: translateX(-50%); bottom: 96px; display: none; font: inherit; font-size: .8rem; font-weight: 600; cursor: pointer; padding: 7px 14px; border-radius: 99px; border: 0; background: var(--dash-teal); color: #04161a; box-shadow: 0 6px 20px rgba(0,0,0,.4); }
+        .cm-newpill.show { display: block; }
+        .cm-notice { margin: 0 16px 8px; padding: 8px 12px; border-radius: 10px; font-size: .8rem; background: var(--dash-glass); color: var(--dash-text-dim); display: none; }
+        .cm-notice.show { display: block; }
+
+        /* reply quote, edited tag, reactions, actions, picker, edit box */
+        .cm-quote { display: block; margin: 2px 0 3px; padding: 3px 9px; border-left: 3px solid var(--dash-teal); border-radius: 4px; background: var(--dash-glass-soft); font-size: .78rem; color: var(--dash-text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; text-align: left; font-family: inherit; border-top: 0; border-right: 0; border-bottom: 0; max-width: 100%; }
+        .cm-quote b { color: var(--dash-text); font-weight: 600; }
+        .cm-quote:focus-visible { outline: 2px solid var(--dash-teal); outline-offset: 1px; }
+        .cm-edited { font-size: .68rem; color: var(--dash-text-faint); margin-left: 4px; }
+        .cm-mention { color: var(--dash-teal); background: var(--dash-teal-dim); border-radius: 5px; padding: 0 3px; font-weight: 600; }
+        .cm-mention.me { background: rgba(255,200,60,.25); color: var(--gold); }
+        .cm-reacts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+        .cm-react { font: inherit; font-size: .78rem; cursor: pointer; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--dash-border-strong); background: var(--dash-glass); color: var(--dash-text); }
+        .cm-react[aria-pressed="true"] { border-color: var(--dash-teal); background: var(--dash-teal-dim); }
+        .cm-react:focus-visible { outline: 2px solid var(--dash-teal); outline-offset: 1px; }
+        .cm-acts { position: absolute; right: 6px; top: -12px; display: none; gap: 4px; padding: 3px; border-radius: 10px; border: 1px solid var(--dash-border-strong); background: var(--dash-surface-2); box-shadow: 0 6px 18px rgba(0,0,0,.4); z-index: 5; }
+        .cm-msg:hover .cm-acts, .cm-msg:focus-within .cm-acts, .cm-msg.picking .cm-acts { display: flex; }
+        .cm-acts button { font: inherit; font-size: .74rem; cursor: pointer; padding: 3px 8px; border-radius: 7px; border: 0; background: transparent; color: var(--dash-text); }
+        .cm-acts button:hover, .cm-acts button:focus-visible { background: var(--dash-glass); outline: none; }
+        .cm-acts button.danger { color: var(--dash-red); }
+        .cm-rpick { display: none; position: absolute; right: 6px; top: 26px; z-index: 6; padding: 5px; gap: 2px; border-radius: 10px; border: 1px solid var(--dash-border-strong); background: var(--dash-surface-2); box-shadow: 0 10px 26px rgba(0,0,0,.5); }
+        .cm-rpick.open { display: flex; }
+        .cm-rpick button { font-size: 1.15rem; padding: 3px 5px; border: 0; border-radius: 7px; background: transparent; cursor: pointer; }
+        .cm-rpick button:hover, .cm-rpick button:focus-visible { background: var(--dash-glass); outline: none; }
+        .cm-editbox { display: grid; gap: 6px; margin-top: 3px; }
+        .cm-editbox .row { display: flex; gap: 6px; }
+        .cm-minibtn { font: inherit; font-size: .72rem; font-weight: 700; cursor: pointer; padding: 3px 9px; border-radius: 99px; border: 1px solid var(--dash-border-strong); background: var(--dash-glass); color: var(--dash-text); }
+        .cm-minibtn:hover { background: rgba(255,255,255,.09); }
+        .cm-minibtn:focus-visible { outline: 2px solid var(--dash-teal); outline-offset: 1px; }
+
+        /* gift card inside a conversation */
+        .cm-gift { display: inline-flex; align-items: center; gap: 12px; max-width: min(380px, 100%); margin-top: 4px; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--dash-border-strong); border-left: 3px solid var(--gold); background: var(--dash-glass); }
+        .cm-gift-ic { flex: none; width: 38px; height: 38px; display: grid; place-items: center; border-radius: 10px; font-size: 1.2rem; background: rgba(255,200,60,.16); color: var(--gold); }
+        .cm-gift-t { font-size: .9rem; font-weight: 600; overflow-wrap: anywhere; }
+        .cm-gift-s { font-size: .74rem; color: var(--dash-text-dim); }
+        .cm-gift-n { margin-top: 3px; font-size: .82rem; color: var(--dash-text-dim); font-style: italic; overflow-wrap: anywhere; }
+
+        .cm-typing { min-height: 18px; padding: 0 18px 2px; font-size: .74rem; color: var(--dash-text-dim); }
+        .cm-replybar { display: none; align-items: center; gap: 10px; margin: 0 14px; padding: 7px 10px; border-radius: 10px 10px 0 0; background: var(--dash-glass); font-size: .8rem; color: var(--dash-text-dim); border: 1px solid var(--dash-border); border-bottom: 0; }
+        .cm-replybar.show { display: flex; }
+        .cm-replybar span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+
+        /* attachment being uploaded */
+        .cm-attachbar { display: none; padding: 8px 14px 0; }
+        .cm-attachbar.show { display: block; }
+        .cm-attach { display: inline-flex; align-items: center; gap: 10px; max-width: 100%; padding: 6px 8px; border-radius: 10px; border: 1px solid var(--dash-border); background: var(--dash-glass); }
+        .cm-attach-thumb img, .cm-attach-thumb video { display: block; width: 56px; height: 56px; object-fit: cover; border-radius: 8px; background: var(--dash-glass-soft); }
+        .cm-attach-info { min-width: 0; width: 180px; font-size: .78rem; color: var(--dash-text-dim); }
+        .cm-attach-name { color: var(--dash-text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .cm-progress { height: 4px; margin-top: 6px; border-radius: 99px; background: var(--dash-glass-soft); overflow: hidden; }
+        .cm-progress i { display: block; height: 100%; width: 0; background: var(--dash-teal); transition: width .15s linear; }
+        .cm-progress.done i { background: var(--dash-emerald); }
+
+        /* composer */
+        .cm-composer { display: flex; align-items: flex-end; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--dash-border); position: relative; }
+        .cm-composer textarea { flex: 1; resize: none; max-height: 130px; line-height: 1.4; }
+        .cm-iconbtn { flex: none; width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--dash-border-strong); background: var(--dash-glass); color: var(--dash-text); cursor: pointer; font-size: .95rem; display: grid; place-items: center; font-weight: 700; }
+        .cm-iconbtn:hover:not(:disabled) { background: rgba(255,255,255,.09); }
+        .cm-iconbtn[aria-expanded="true"] { border-color: var(--dash-teal); color: var(--dash-teal); }
+        .cm-send { flex: none; height: 40px; padding: 0 16px; border-radius: 10px; border: 0; background: var(--dash-teal); color: #04161a; font: inherit; font-weight: 700; cursor: pointer; }
+        .cm-send:disabled, .cm-iconbtn:disabled { opacity: .45; cursor: not-allowed; }
+        .cm-count { position: absolute; right: 150px; top: -2px; font-size: .7rem; color: var(--dash-text-faint); display: none; }
+        .cm-count.show { display: block; }
+        .cm-count.over { color: var(--dash-red); }
+
+        .cm-pop { display: none; position: absolute; left: 12px; bottom: 66px; z-index: 20; width: min(480px, calc(100% - 24px)); max-height: min(460px, calc(100vh - 360px)); border-radius: 14px; border: 1px solid var(--dash-border-strong); background: var(--dash-surface-2); box-shadow: 0 16px 40px rgba(0,0,0,.55); flex-direction: column; overflow: hidden; }
+        .cm-pop.open { display: flex; }
+        .cm-tabs { display: flex; gap: 2px; padding: 6px; border-bottom: 1px solid var(--dash-border); overflow-x: auto; }
+        .cm-tabbtn { flex: none; font: inherit; font-size: 1.05rem; cursor: pointer; padding: 5px 8px; border-radius: 8px; border: 0; background: transparent; }
+        .cm-tabbtn[aria-selected="true"] { background: var(--dash-teal-dim); }
+        .cm-emojis { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; padding: 8px; overflow-y: auto; }
+        .cm-emojis button { font-size: 1.35rem; padding: 5px 0; border: 0; border-radius: 8px; background: transparent; cursor: pointer; }
+        .cm-emojis button:hover, .cm-emojis button:focus-visible { background: var(--dash-glass); outline: none; }
+        .cm-gifbar { flex: none; padding: 10px; display: grid; gap: 8px; border-bottom: 1px solid var(--dash-border); }
+        .cm-gifs { display: grid; grid-template-columns: repeat(3, 1fr); grid-auto-rows: 110px; align-content: start; gap: 6px; padding: 8px; overflow-y: auto; flex: 1; min-height: 0; }
+        .cm-gifs button { padding: 0; border: 0; border-radius: 8px; overflow: hidden; background: var(--dash-glass); cursor: pointer; height: 100%; }
+        .cm-gifs button:focus-visible { outline: 2px solid var(--dash-teal); }
+        .cm-gifs img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .cm-gifnote { padding: 12px; font-size: .8rem; color: var(--dash-text-dim); }
+        .cm-gifttabs { display: flex; gap: 6px; }
+        .cm-gifttabs button { font: inherit; font-size: .8rem; font-weight: 600; cursor: pointer; padding: 5px 12px; border-radius: 99px; border: 1px solid var(--dash-border-strong); background: transparent; color: var(--dash-text); }
+        .cm-gifttabs button[aria-selected="true"] { background: var(--dash-teal-dim); border-color: var(--dash-teal); }
+        .cm-gifttabs button:focus-visible { outline: 2px solid var(--dash-teal); outline-offset: 1px; }
+        .cm-toast { position: fixed; right: 16px; bottom: 16px; z-index: 9999; display: grid; gap: 8px; max-width: min(340px, calc(100vw - 32px)); }
+        .cm-toast div { padding: 11px 15px; border-radius: 11px; font-size: .86rem; background: var(--dash-surface-2); border: 1px solid var(--dash-border-strong); border-left: 3px solid var(--dash-teal); box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+        .cm-toast div.bad { border-left-color: var(--dash-red); }
+
+        /* custom emojis */
+        .cm-cemoji { height: 1.5em; width: auto; max-width: 3em; object-fit: contain; vertical-align: -0.35em; }
+        .cm-msg-body.jumbo .cm-cemoji { height: 2.6rem; max-width: 5rem; vertical-align: middle; }
+        .cm-ce-panel { grid-column: 1 / -1; display: grid; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--dash-border); margin-bottom: 4px; }
+        .cm-ce-panel .row { display: flex; gap: 6px; align-items: center; }
+        .cm-ce-hint { font-size: .72rem; color: var(--dash-text-dim); }
+        .cm-ce { position: relative; }
+        .cm-emojis .cm-ce > button.use { width: 100%; padding: 4px 0; display: grid; place-items: center; }
+        .cm-ce img { height: 32px; width: 32px; object-fit: contain; }
+        .cm-emojis .cm-ce-del { position: absolute; top: -2px; right: -2px; width: 18px; height: 18px; padding: 0; border-radius: 50%; border: 1px solid var(--dash-border-strong); background: var(--dash-surface-2); color: var(--dash-red); font-size: .72rem; line-height: 1; cursor: pointer; display: none; }
+        .cm-ce:hover .cm-ce-del, .cm-ce:focus-within .cm-ce-del { display: block; }
+        @media (hover: none) { .cm-emojis .cm-ce-del { display: block; } }
+
+        /* modal (gift dialog) */
+        .cm-modalbg { position: fixed; inset: 0; z-index: 9000; display: none; align-items: center; justify-content: center; padding: 16px; background: rgba(0,0,0,.6); }
+        .cm-modalbg.open { display: flex; }
+        .cm-modal { width: min(440px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; padding: 20px; border-radius: 16px; border: 1px solid var(--dash-border-strong); background: var(--dash-surface-2); box-shadow: 0 24px 60px rgba(0,0,0,.6); display: grid; gap: 12px; }
+        .cm-modal h2 { margin: 0; font-family: 'Sora', sans-serif; font-size: 1.1rem; }
+        .cm-modal p { margin: 0; font-size: .86rem; color: var(--dash-text-dim); }
+        .cm-modal label { font-size: .78rem; font-weight: 600; display: grid; gap: 5px; }
+        .cm-modal .row { display: flex; gap: 8px; justify-content: flex-end; }
+        .cm-modal .row.left { justify-content: flex-start; }
+        .cm-modal .cm-err { color: var(--dash-red); min-height: 1.1em; }
+        .cm-items { display: grid; gap: 6px; max-height: 240px; overflow-y: auto; }
+        .cm-item { display: flex; justify-content: space-between; gap: 10px; align-items: center; width: 100%; text-align: left; font: inherit; cursor: pointer; padding: 9px 11px; border-radius: 10px; border: 1px solid var(--dash-border); background: var(--dash-glass-soft); color: var(--dash-text); }
+        .cm-item[aria-pressed="true"] { border-color: var(--dash-teal); background: var(--dash-teal-dim); }
+        .cm-item:focus-visible { outline: 2px solid var(--dash-teal); outline-offset: 1px; }
+
+        /* v2 additions */
+        .cm-iconbtn[hidden] { display: none; }
+        .cm-iconbtn[aria-pressed="true"] { border-color: var(--dash-teal); color: var(--dash-teal); }
+        .cm-rowwrap { display: flex; align-items: center; gap: 4px; }
+        .cm-rowwrap .cm-row { flex: 1; }
+        .cm-gl { width: 32px; height: 32px; font-size: .78rem; }
+
+        /* v3 additions: unread divider, pins, profile card, item share */
+        .cm-divider { display: flex; align-items: center; gap: 10px; margin: 10px 6px 6px; color: var(--dash-red); font-size: .7rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+        .cm-divider::before, .cm-divider::after { content: ''; flex: 1; height: 1px; background: var(--dash-red); opacity: .45; }
+        .cm-avbtn { all: unset; cursor: pointer; display: block; border-radius: 50%; }
+        .cm-avbtn:focus-visible { outline: 2px solid var(--dash-teal); outline-offset: 1px; }
+        .cm-pin-ic { color: var(--gold); font-size: .72rem; margin-left: 4px; }
+        .cm-profile-head { display: flex; align-items: center; gap: 12px; }
+        .cm-badges { display: flex; flex-wrap: wrap; gap: 6px; }
+        .cm-badgechip { font-size: .74rem; font-weight: 600; padding: 4px 10px; border-radius: 99px; border: 1px solid var(--dash-border-strong); background: var(--dash-glass); color: var(--dash-text); }
+        .cm-minibtn.danger { color: var(--dash-red); border-color: var(--dash-red); }
+        .cm-older { align-self: center; margin: 4px 0 8px; }
+        .cm-chat.drag { outline: 2px dashed var(--dash-teal); outline-offset: -6px; }
+        .cm-lb-bg { position: fixed; inset: 0; z-index: 9500; display: grid; place-items: center; background: rgba(0,0,0,.88); cursor: zoom-out; }
+        .cm-lb-bg img { max-width: 96vw; max-height: 94vh; object-fit: contain; border-radius: 8px; }
+        .cm-hrow { display: flex; justify-content: space-between; gap: 10px; padding: 8px 10px; border: 1px solid var(--dash-border); border-radius: 10px; font-size: .84rem; overflow-wrap: anywhere; }
+        .cm-hrow > span:last-child { flex: none; color: var(--dash-text-dim); }
+        .cm-rep { display: grid; gap: 6px; padding: 10px; border: 1px solid var(--dash-border); border-radius: 10px; font-size: .84rem; overflow-wrap: anywhere; }
+        .cm-rep .row { flex-wrap: wrap; justify-content: flex-start; }
+        @media (max-width: 900px) {
+            .cm-shell { grid-template-columns: minmax(0, 1fr); height: calc(100vh - 170px); }
+            .cm-side { display: none; }
+            .cm-shell.show-side .cm-side { display: flex; }
+            .cm-shell.show-side .cm-chat { display: none; }
+            .cm-iconbtn.cm-mobile-only { display: inline-block; }
+            .cm-emojis { grid-template-columns: repeat(7, 1fr); }
+        }
+        @media (hover: none) {
+            .cm-acts { display: flex; position: static; box-shadow: none; border: 0; background: transparent; padding: 2px 0 0; justify-content: flex-start; flex-wrap: wrap; grid-column: 2; }
+            .cm-rpick { position: static; grid-column: 2; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            * { scroll-behavior: auto !important; }
+            .cm-msg.flash { animation: none; background: var(--dash-teal-dim); }
+            .cm-progress i { transition: none; }
+        }
+    </style>
+</head>
+<body data-page="community">
+    <div id="layout-slot"></div>
+    <script src="/static/layout.js"></script>
+
+    <main class="main-content" id="main-content">
+        <header class="page-header">
+            <div class="user-greeting">
+                <h1>Community</h1>
+                <p>Set your status, chat in the Lounge, or message another adventurer directly. Share photos, videos, emojis and GIFs, or send a gift.</p>
+            </div>
+        </header>
+
+        <div class="cm-shell" id="shell">
+            <aside class="cm-box cm-side" aria-label="People and conversations">
+                <div class="cm-me" style="position:relative">
+                    <div class="cm-me-row">
+                        <div class="cm-av"><img id="meAv" alt=""><span class="cm-dot online" id="meDot"></span></div>
+                        <div style="min-width:0">
+                            <div class="cm-me-name" id="meName">You</div>
+                        </div>
+                        <button class="cm-statusbtn" id="statusBtn" aria-haspopup="menu" aria-expanded="false">Online</button>
+                    </div>
+                    <div class="cm-menu" id="statusMenu" role="menu" aria-label="Set your status"></div>
+                    <input class="cm-input" id="statusText" maxlength="60" placeholder="What are you up to? (optional)" aria-label="Custom status message">
+                </div>
+                <div class="cm-searchbox"><input class="cm-input" id="search" type="search" placeholder="Search adventurers" aria-label="Search adventurers"></div>
+                <div class="cm-listwrap" id="list"></div>
+            </aside>
+
+            <section class="cm-box cm-chat" aria-label="Conversation">
+                <header class="cm-head">
+                    <button class="cm-iconbtn cm-mobile-only" id="sideBtn" aria-label="Show people" style="width:auto;padding:0 12px">People</button>
+                    <div id="headMain" style="min-width:0;display:flex;align-items:center;gap:12px"></div>
+                    <div class="cm-head-actions"><button class="cm-iconbtn" id="searchBtn" aria-label="Search messages" title="Search"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i></button><button class="cm-iconbtn" id="bellBtn" aria-label="Sound and desktop notifications" aria-pressed="false" title="Sound and notifications"><i class="fa-solid fa-bell" aria-hidden="true"></i></button><button class="cm-iconbtn" id="histBtn" aria-label="My gift history" title="My gift history"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i></button><button class="cm-iconbtn" id="adminBtn" aria-label="Moderation" title="Moderation" hidden><i class="fa-solid fa-shield-halved" aria-hidden="true"></i></button><span id="headActions" style="display:contents"></span></div>
+                </header>
+                <div class="cm-msgs" id="msgs" role="log" aria-live="polite" aria-label="Messages" tabindex="0"></div>
+                <button class="cm-newpill" id="newPill">New messages</button>
+                <div class="cm-notice" id="notice" role="status"></div>
+                <div class="cm-typing" id="typing" aria-live="polite"></div>
+                <div class="cm-replybar" id="replyBar"><span id="replyText"></span><button class="cm-minibtn" id="replyCancel" aria-label="Cancel reply">Cancel</button></div>
+
+                <div class="cm-attachbar" id="attachBar">
+                    <div class="cm-attach">
+                        <div class="cm-attach-thumb" id="attachThumb"></div>
+                        <div class="cm-attach-info">
+                            <div class="cm-attach-name" id="attachName"></div>
+                            <div id="attachStatus" role="status"></div>
+                            <div class="cm-progress" id="attachProg"><i></i></div>
+                        </div>
+                        <button type="button" class="cm-minibtn" id="attachClear" aria-label="Remove attachment">Remove</button>
+                    </div>
+                </div>
+
+                <div class="cm-composer">
+                    <div class="cm-pop" id="emojiPop" role="dialog" aria-label="Emoji picker">
+                        <div class="cm-tabs" id="emojiTabs" role="tablist"></div>
+                        <div class="cm-emojis" id="emojiGrid"></div>
+                    </div>
+                    <div class="cm-pop" id="gifPop" role="dialog" aria-label="GIF picker">
+                        <div class="cm-gifbar">
+                            <div class="cm-gifttabs" role="tablist" id="gifTabs">
+                                <button type="button" role="tab" data-gt="gif" aria-selected="true">GIFs</button>
+                                <button type="button" role="tab" data-gt="sticker" aria-selected="false">Stickers</button>
+                            </div>
+                            <input class="cm-input" id="gifSearch" type="search" placeholder="Search GIFs" aria-label="Search GIFs" style="display:none">
+                            <div style="display:flex;gap:6px">
+                                <input class="cm-input" id="gifLink" placeholder="Or paste a GIPHY / Tenor GIF link" aria-label="GIF link">
+                                <button class="cm-iconbtn" id="gifLinkSend" style="width:auto;padding:0 12px" aria-label="Send GIF link">Send</button>
+                            </div>
+                        </div>
+                        <div class="cm-gifs" id="gifGrid"></div>
+                    </div>
+                    <input type="file" id="uploadFile" accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm,video/quicktime" hidden aria-label="Photo or video file">
+                    <button class="cm-iconbtn" id="emojiBtn" aria-label="Emoji" aria-expanded="false" aria-haspopup="dialog">😊</button>
+                    <button class="cm-iconbtn" id="gifBtn" aria-label="GIF" aria-expanded="false" aria-haspopup="dialog">GIF</button>
+                    <button class="cm-iconbtn" id="uploadBtn" aria-label="Attach a photo or video" title="Attach a photo or video"><i class="fa-solid fa-paperclip" aria-hidden="true"></i></button>
+                    <button class="cm-iconbtn" id="itemBtn" aria-label="Share an item from your inventory" title="Share an item"><i class="fa-solid fa-box-open" aria-hidden="true"></i></button>
+                    <textarea class="cm-input" id="text" rows="1" maxlength="600" placeholder="Message" aria-label="Message"></textarea>
+                    <span class="cm-count" id="count"></span>
+                    <button class="cm-send" id="sendBtn">Send</button>
+                </div>
+            </section>
+        </div>
+    </main>
+    <div class="cm-toast" id="toast" aria-live="polite"></div>
+    <div class="cm-modalbg" id="modalBg"><div class="cm-modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle"></div></div>
+
+    <script>
+    (function () {
+        const $ = id => document.getElementById(id);
+        const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        const STATUS = {
+            online:  { label: 'Online',         desc: 'You are available' },
+            idle:    { label: 'Idle',           desc: 'You are away for now' },
+            dnd:     { label: 'Do Not Disturb', desc: 'No notifications. People can still message you' },
+            offline: { label: 'Offline',        desc: 'Appear offline. You can still chat' }
+        };
+        const ORDER = ['online', 'idle', 'dnd', 'offline'];
+        const GIF_OK = /^https:\/\/(media[0-4]?\.giphy\.com|i\.giphy\.com|media\.tenor\.com|c\.tenor\.com)\//;
+        const UPLOAD_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/webm', 'video/quicktime'];
+        const UPLOAD_BODY = /^(image|video):(\d{1,12})$/;
+
+        let me = null, isAdmin = false, gifSearch = false, limits = { text: 500, upload_mb: 50, gift_note: 100, max_pins: 25 };
+        let mutedChannels = [], lastReadId = 0;
+        let members = [], channel = 'lounge', lastId = 0, otherInfo = null;
+        let lastUnread = {}, membersLoaded = false, lastActivity = Date.now(), rendered = [];
+        let busyMsgs = false, busyList = false, query = '';
+        let lastFocusEl = null, hasMore = false, otherSig = '', soundOn = false;
+        let reactionSet = ['👍', '❤️', '😂', '😮', '😢', '🔥', '🎉', '⚔️'];
+        let replyTo = null, editingId = null, editDraft = '', pickerFor = null, lastTypingSent = 0;
+        let customEmojis = [], emojiMap = {}, emojiSig = null, emojiLimit = 20, emojiMaxKb = 256;
+        let pendingUpload = null, uploadXhr = null, uploadBlobUrl = null, deferredPaint = false;
+
+        const findMsg = id => rendered.find(m => m.id === id);
+        const previewOf = m => m.kind === 'gif' ? 'GIF'
+            : m.kind === 'sticker' ? 'Sticker'
+            : m.kind === 'upload' ? (/^video:/.test(m.body) ? 'Video' : 'Photo')
+            : m.kind === 'gift' ? 'Gift'
+            : m.kind === 'item' ? 'Item'
+            : String(m.body || '').replace(/\s+/g, ' ').slice(0, 80);
+        // the canonical (sorted) form of a DM channel id, matching how the server names it in muted_channels
+        function canonOf(ch) {
+            if (!ch || ch === 'lounge' || !ch.startsWith('dm:') || !me) return ch;
+            return 'dm:' + [me.key, ch.slice(3)].sort().join('|');
+        }
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
+        const fmtSize = b => b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
+
+        // ── modal helper ──────────────────────────────────
+        function openModal(html, mount) {
+            lastFocusEl = document.activeElement;
+            $('modal').innerHTML = html;
+            $('modalBg').classList.add('open');
+            const f = $('modal').querySelector('input, textarea, select, button');
+            if (f) f.focus();
+            if (mount) mount($('modal'));
+        }
+        function closeModal() {
+            $('modalBg').classList.remove('open'); $('modal').innerHTML = ''; $('modal').style.width = '';
+            if (lastFocusEl && lastFocusEl.focus) { try { lastFocusEl.focus(); } catch (e) { /* gone */ } }
+        }
+        $('modalBg').addEventListener('mousedown', e => { if (e.target === $('modalBg')) closeModal(); });
+
+        // ── custom emoji helpers ──────────────────────────
+        const SHORTCODE = /:([a-z0-9_]{2,24}):/gi;
+        const emojiSrc = e => '/api/community/emojis/' + e.id + '/img';
+        function emojify(html) {
+            if (!customEmojis.length) return html;
+            return html.replace(SHORTCODE, (all, n) => {
+                const e = emojiMap[n.toLowerCase()];
+                return e ? `<img class="cm-cemoji" src="${emojiSrc(e)}" alt=":${esc(e.name)}:" title=":${esc(e.name)}:" loading="lazy">` : all;
+            });
+        }
+        function isEmojiOnly(text) {
+            if (!customEmojis.length || text.length > 80) return false;
+            let n = 0;
+            const rest = text.replace(SHORTCODE, (all, x) => { if (emojiMap[x.toLowerCase()]) { n++; return ''; } return all; });
+            return n > 0 && n <= 3 && !rest.trim();
+        }
+
+        // ── text helpers: @mentions ───────────────────────
+        function mentionize(escaped) {
+            const names = [];
+            if (me) names.push(me.name);
+            members.forEach(m => names.push(m.name));
+            const uniq = Array.from(new Set(names.filter(Boolean))).sort((a, b) => b.length - a.length).slice(0, 300);
+            if (!uniq.length) return escaped;
+            const pat = uniq.map(n => esc(n).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+            let re;
+            try { re = new RegExp('(^|[\\s(])@(' + pat + ')(?![\\p{L}\\p{N}_])', 'giu'); } catch (e) { return escaped; }
+            return escaped.replace(re, (all, pre, name) =>
+                `${pre}<span class="cm-mention${me && name.toLowerCase() === esc(me.name).toLowerCase() ? ' me' : ''}">@${name}</span>`);
+        }
+
+        // ── API ───────────────────────────────────────────
+        async function api(method, path, body) {
+            try {
+                const res = await fetch('/api/community/' + path, {
+                    method, credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: body === undefined ? undefined : JSON.stringify(body)
+                });
+                if (res.status === 401) { window.location.href = '/'; return { ok: false, status: 401, data: {} }; }
+                const data = await res.json().catch(() => ({}));
+                return { ok: res.ok && data.ok !== false, status: res.status, data };
+            } catch (e) {
+                return { ok: false, status: 0, data: { error: 'Could not reach the server.' } };
+            }
+        }
+
+        function toast(msg, bad) {
+            const d = document.createElement('div');
+            if (bad) d.className = 'bad';
+            d.textContent = msg;
+            $('toast').appendChild(d);
+            setTimeout(() => d.remove(), 4500);
+        }
+
+        const avatarFor = (name, url) => url && /^https:\/\//.test(url) ? url : initialsAvatar(name);
+        function initialsAvatar(name) {
+            const n = String(name || '?').trim();
+            const t = (n.split(/\s+/).map(w => Array.from(w)[0] || '').join('').slice(0, 2) || '?').toUpperCase();
+            let h = 0; for (const c of n) h = (h * 31 + c.codePointAt(0)) >>> 0;
+            return 'data:image/svg+xml;utf8,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" fill="hsl(${h % 360},45%,38%)"/><text x="20" y="26" font-size="16" font-family="sans-serif" font-weight="700" text-anchor="middle" fill="#fff">${esc(t)}</text></svg>`);
+        }
+        const dot = (st, inline) => `<span class="cm-dot ${esc(st)}${inline ? ' inline' : ''}" role="img" aria-label="${esc(STATUS[st] ? STATUS[st].label : st)}"></span>`;
+        const timeOf = ts => { const d = new Date(ts); return isNaN(d) ? '' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); };
+
+        // ── me / status ───────────────────────────────────
+        function renderMe() {
+            if (!me) return;
+            $('meAv').src = avatarFor(me.name, me.avatar);
+            $('meName').textContent = me.name;
+            $('meDot').className = 'cm-dot ' + me.status;
+            const chosen = me.chosen_status || me.status;
+            $('statusBtn').textContent = STATUS[chosen].label;
+            if (document.activeElement !== $('statusText')) $('statusText').value = me.status_text || '';
+            $('statusMenu').innerHTML = ORDER.map(s => `
+                <button role="menuitemradio" aria-checked="${s === chosen}" data-status="${s}">
+                    ${dot(s, true)}<span><b>${STATUS[s].label}</b><small>${STATUS[s].desc}</small></span>
+                </button>`).join('');
+            $('statusMenu').querySelectorAll('button').forEach(b => b.addEventListener('click', () => setStatus(b.dataset.status)));
+        }
+
+        async function setStatus(status) {
+            closeMenus();
+            const r = await api('POST', 'status', { status, text: $('statusText').value });
+            if (r.ok) { me = r.data.me; renderMe(); loadMembers(); }
+            else toast(r.data.error || 'Could not change status.', true);
+        }
+
+        $('statusText').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); setStatus(me.chosen_status || me.status); $('statusText').blur(); } });
+        $('statusText').addEventListener('blur', () => { if (me && $('statusText').value !== (me.status_text || '')) setStatus(me.chosen_status || me.status); });
+        $('statusBtn').addEventListener('click', e => {
+            e.stopPropagation();
+            const open = !$('statusMenu').classList.contains('open');
+            closeMenus();
+            $('statusMenu').classList.toggle('open', open);
+            $('statusBtn').setAttribute('aria-expanded', open);
+            if (open) { const sel = $('statusMenu').querySelector('[aria-checked="true"]'); if (sel) sel.focus(); }
+        });
+
+        // ── members list ──────────────────────────────────
+        function renderList() {
+            const groups = {};
+            members.forEach(m => (groups[m.status] = groups[m.status] || []).push(m));
+            const row = m => `<div class="cm-rowwrap">
+                <button class="cm-row" data-dm="${esc(m.key)}" aria-current="${channel === 'dm:' + m.key}">
+                    <div class="cm-av"><img src="${esc(avatarFor(m.name, m.avatar))}" alt="" loading="lazy">${dot(m.status)}</div>
+                    <div class="cm-row-main">
+                        <div class="cm-row-name">${esc(m.name)}${m.blocked ? ' (blocked)' : ''}</div>
+                        <div class="cm-row-sub">${esc(m.status_text || STATUS[m.status].label)}</div>
+                    </div>
+                    ${m.unread ? `<span class="cm-badge" aria-label="${m.unread} unread">${m.unread > 99 ? '99+' : m.unread}</span>` : ''}
+                </button><button type="button" class="cm-iconbtn cm-gl" data-profile="${esc(m.key)}" aria-label="View ${esc(m.name)}'s profile" title="Profile"><i class="fa-solid fa-circle-info" aria-hidden="true"></i></button><button type="button" class="cm-iconbtn cm-gl" data-gift="${esc(m.key)}" aria-label="Gift ${esc(m.name)}" title="Gift"><i class="fa-solid fa-gift" aria-hidden="true"></i></button></div>`;
+            let html = `<div class="cm-group">Channels</div>
+                <button class="cm-row" data-guild="lounge" aria-current="${channel === 'lounge'}">
+                    <div class="cm-hash" aria-hidden="true"><i class="fa-solid fa-hashtag"></i></div>
+                    <div class="cm-row-main"><div class="cm-row-name">Lounge</div><div class="cm-row-sub">Everyone</div></div>
+                </button>`;
+            if (!members.length) {
+                html += `<div class="cm-empty">${query ? 'No adventurers match that search.' : 'No one else has joined the Community yet. Say hello in the Lounge and invite a friend.'}</div>`;
+            }
+            ORDER.forEach(s => {
+                if (groups[s] && groups[s].length) {
+                    html += `<div class="cm-group">${STATUS[s].label} — ${groups[s].length}</div>` + groups[s].map(row).join('');
+                }
+            });
+            $('list').innerHTML = html;
+            $('list').querySelectorAll('[data-guild]').forEach(b => b.addEventListener('click', () => openChannel(b.dataset.guild)));
+            $('list').querySelectorAll('[data-dm]').forEach(b => b.addEventListener('click', () => openChannel('dm:' + b.dataset.dm)));
+            $('list').querySelectorAll('[data-profile]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); openProfile(b.dataset.profile); }));
+            $('list').querySelectorAll('[data-gift]').forEach(b => b.addEventListener('click', async () => {
+                await openChannel('dm:' + b.dataset.gift);
+                if (otherInfo && !otherInfo.blocked && !otherInfo.blocked_me) openGift();
+            }));
+        }
+
+        async function loadMembers() {
+            if (busyList) return;
+            busyList = true;
+            const r = await api('GET', 'members?q=' + encodeURIComponent(query));
+            busyList = false;
+            if (!r.ok) return;
+            members = r.data.members;
+            // notify about new DMs that arrived in conversations that are not open
+            members.forEach(m => {
+                const before = lastUnread[m.key] || 0;
+                if (m.unread > before && channel !== 'dm:' + m.key && me && (me.chosen_status || me.status) !== 'dnd' && membersLoaded
+                        && !mutedChannels.includes(canonOf('dm:' + m.key))) {
+                    toast('New message from ' + m.name); notify('New message from ' + m.name, m.status_text || '');
+                }
+                lastUnread[m.key] = m.unread;
+            });
+            membersLoaded = true;
+            updateTitle();
+            renderList();
+        }
+
+        function updateTitle() {
+            const total = members.reduce((n, m) => n + (m.unread || 0), 0);
+            document.title = (total ? `(${total}) ` : '') + 'RPG Ghost | Community';
+        }
+
+        let searchTimer = null;
+        $('search').addEventListener('input', () => {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(() => { query = $('search').value.trim(); loadMembers(); }, 250);
+        });
+
+        // ── conversation header ───────────────────────────
+        function renderHead() {
+            if (channel === 'lounge') {
+                $('headMain').innerHTML = '<div class="cm-hash" aria-hidden="true"><i class="fa-solid fa-hashtag"></i></div>' +
+                    '<div style="min-width:0"><div class="cm-head-title">Lounge</div><div class="cm-head-sub">Everyone in the Community</div></div>';
+                $('headActions').innerHTML = `<button class="cm-iconbtn" id="pinsBtn" style="width:auto;padding:0 12px;font-size:.8rem" aria-label="Pinned messages" title="Pinned messages"><i class="fa-solid fa-thumbtack" aria-hidden="true"></i></button>` + muteButtonHtml();
+                $('pinsBtn').addEventListener('click', openPinned);
+                $('muteBtn').addEventListener('click', toggleMute);
+                return;
+            }
+            const o = otherInfo;
+            if (!o) { $('headMain').innerHTML = '<div class="cm-head-title">Direct message</div>'; $('headActions').innerHTML = ''; return; }
+            $('headMain').innerHTML = `
+                <button type="button" class="cm-avbtn" id="headProfileBtn" aria-label="View ${esc(o.name)}'s profile"><div class="cm-av"><img src="${esc(avatarFor(o.name, o.avatar))}" alt="">${dot(o.status)}</div></button>
+                <div style="min-width:0"><div class="cm-head-title">${esc(o.name)}</div>
+                <div class="cm-head-sub">${esc(STATUS[o.status].label)}${o.status_text ? ' · ' + esc(o.status_text) : ''}</div></div>`;
+            const canGift = !o.blocked && !o.blocked_me;
+            $('headActions').innerHTML =
+                (canGift ? `<button class="cm-iconbtn" id="giftBtn" style="width:auto;padding:0 12px;font-size:.8rem" aria-haspopup="dialog"><i class="fa-solid fa-gift" aria-hidden="true" style="margin-right:6px"></i>Gift</button>` : '') +
+                `<button class="cm-iconbtn" id="blockBtn" style="width:auto;padding:0 12px;font-size:.8rem">${o.blocked ? 'Unblock' : 'Block'}</button>` + muteButtonHtml();
+            $('headProfileBtn').addEventListener('click', () => openProfile(o.key));
+            $('blockBtn').addEventListener('click', toggleBlock);
+            $('muteBtn').addEventListener('click', toggleMute);
+            if (canGift) $('giftBtn').addEventListener('click', openGift);
+        }
+
+        function muteButtonHtml() {
+            const muted = mutedChannels.includes(canonOf(channel));
+            return `<button class="cm-iconbtn" id="muteBtn" aria-pressed="${muted}" aria-label="${muted ? 'Unmute this conversation' : 'Mute this conversation'}" title="${muted ? 'Unmute notifications' : 'Mute notifications'}"><i class="fa-solid ${muted ? 'fa-bell-slash' : 'fa-bell'}" aria-hidden="true"></i></button>`;
+        }
+
+        async function toggleMute() {
+            const canon = canonOf(channel);
+            const wasMuted = mutedChannels.includes(canon);
+            const r = await api('POST', 'mute', { channel, muted: !wasMuted });
+            if (!r.ok) { toast(r.data.error || 'Could not update mute.', true); return; }
+            mutedChannels = wasMuted ? mutedChannels.filter(c => c !== canon) : mutedChannels.concat(canon);
+            renderHead();
+            toast(wasMuted ? 'Notifications unmuted.' : 'Notifications muted for this conversation.');
+        }
+
+        async function toggleBlock() {
+            const o = otherInfo; if (!o) return;
+            if (!o.blocked && !confirm(`Block ${o.name}? You won't see their messages and they can't message you.`)) return;
+            const r = await api('POST', 'block', { key: o.key, blocked: !o.blocked });
+            if (r.ok) { o.blocked = r.data.blocked; renderHead(); loadMembers(); toast(o.blocked ? `${o.name} is blocked.` : `${o.name} is unblocked.`); }
+            else toast(r.data.error || 'Could not update block.', true);
+        }
+
+        // ── pinned messages ────────────────────────────────
+        async function openPinned() {
+            openModal('<h2 id="modalTitle">Pinned messages</h2><p>Loading…</p>');
+            const r = await api('GET', 'pinned?channel=' + encodeURIComponent(channel));
+            if (!r.ok) { closeModal(); toast(r.data.error || 'Could not load pinned messages.', true); return; }
+            const items = r.data.pinned;
+            const rows = items.length ? items.map(m => `
+                <div class="cm-hrow">
+                    <span><b>${esc(m.name)}</b>: ${esc(previewOf(m))}</span>
+                    <span style="display:flex;gap:6px">
+                        <button type="button" class="cm-minibtn" data-jump="${m.id}">Jump</button>
+                        ${isAdmin ? `<button type="button" class="cm-minibtn danger" data-unpin="${m.id}">Unpin</button>` : ''}
+                    </span>
+                </div>`).join('') : '<p>No pinned messages yet.</p>';
+            $('modal').innerHTML = `<h2 id="modalTitle">Pinned messages</h2><div class="cm-items" style="max-height:60vh">${rows}</div>
+                <div class="row"><button type="button" class="cm-minibtn" id="pinClose" style="padding:8px 14px">Close</button></div>`;
+            $('modal').querySelectorAll('[data-jump]').forEach(b => b.addEventListener('click', () => { closeModal(); jumpTo(Number(b.dataset.jump)); }));
+            $('modal').querySelectorAll('[data-unpin]').forEach(b => b.addEventListener('click', async () => {
+                const id = Number(b.dataset.unpin);
+                const rr = await api('POST', 'messages/' + id + '/pin', { pinned: false });
+                if (!rr.ok) { toast(rr.data.error || 'Could not unpin.', true); return; }
+                const m = findMsg(id); if (m) { m.pinned = false; paint(false, true, true); }
+                openPinned();
+            }));
+            $('pinClose').addEventListener('click', closeModal); $('pinClose').focus();
+        }
+
+        async function togglePin(id, pin) {
+            const r = await api('POST', 'messages/' + id + '/pin', { pinned: pin });
+            if (!r.ok) { toast(r.data.error || 'Could not update pin.', true); return; }
+            const m = findMsg(id); if (m) { m.pinned = pin; paint(false, true, true); }
+            toast(pin ? 'Pinned to the top of this channel.' : 'Unpinned.');
+        }
+
+        // ── profile card ────────────────────────────────────
+        async function openProfile(key) {
+            if (!key) return;
+            openModal('<h2 id="modalTitle">Profile</h2><p>Loading…</p>');
+            const r = await api('GET', 'profile/' + encodeURIComponent(key));
+            if (!r.ok) { closeModal(); toast(r.data.error || 'Could not load that profile.', true); return; }
+            renderProfile(r.data.profile);
+        }
+
+        function renderProfile(p) {
+            const rows = [];
+            if (p.level != null) rows.push(['Level', esc(String(p.level))]);
+            if (p.class) rows.push(['Class', esc(String(p.class))]);
+            if (p.guild) rows.push(['Guild', esc(String(p.guild))]);
+            const joined = p.joined ? new Date(p.joined).toLocaleDateString() : '';
+            if (joined) rows.push(['Joined', esc(joined)]);
+            const detail = rows.length ? `<div class="cm-items">${rows.map(([k, v]) => `<div class="cm-hrow"><span>${k}</span><span>${v}</span></div>`).join('')}</div>` : '';
+            const badges = p.badges && p.badges.length ? `<div class="cm-badges">${p.badges.map(b => `<span class="cm-badgechip">${esc(b)}</span>`).join('')}</div>` : '';
+            const canAct = !p.is_self && !p.blocked && !p.blocked_me;
+            $('modal').innerHTML = `
+                <div class="cm-profile-head">
+                    <div class="cm-av" style="width:56px;height:56px"><img src="${esc(avatarFor(p.name, p.avatar))}" alt="">${dot(p.status)}</div>
+                    <div style="min-width:0"><h2 id="modalTitle" style="margin:0">${esc(p.name)}</h2>
+                    <div class="cm-head-sub">${esc(STATUS[p.status].label)}${p.status_text ? ' · ' + esc(p.status_text) : ''}</div></div>
+                </div>
+                ${detail}${badges}
+                <div class="row">
+                    ${canAct ? `<button type="button" class="cm-minibtn" id="pfMsg" style="padding:8px 14px">Message</button><button type="button" class="cm-send" id="pfGift">Gift</button>` : ''}
+                    <button type="button" class="cm-minibtn" id="pfClose" style="padding:8px 14px">Close</button>
+                </div>`;
+            if (canAct) {
+                $('pfMsg').addEventListener('click', async () => { closeModal(); await openChannel('dm:' + p.key); });
+                $('pfGift').addEventListener('click', async () => {
+                    closeModal(); await openChannel('dm:' + p.key);
+                    if (otherInfo && !otherInfo.blocked && !otherInfo.blocked_me) openGift();
+                });
+            }
+            $('pfClose').addEventListener('click', closeModal); $('pfClose').focus();
+        }
+
+        // ── gifts ─────────────────────────────────────────
+        async function openGift() {
+            const o = otherInfo; if (!o) return;
+            openModal(`<h2 id="modalTitle">Gift ${esc(o.name)}</h2><p>Loading your inventory…</p>`);
+            const r = await api('GET', 'gift/inventory');
+            if (!r.ok) { closeModal(); toast(r.data.error || 'Could not load your inventory.', true); return; }
+            const inv = r.data;
+            const st = { mode: 'gold', amount: '', item: '', qty: '1', note: '' };
+            renderGift(o, inv, st);
+        }
+
+        function renderGift(o, inv, st) {
+            const sel = inv.items.find(i => i.id === st.item);
+            const maxGold = Math.min(inv.gold, inv.max_gold);
+            const goldPane = `
+                <label>Gold amount
+                    <input class="cm-input" id="gAmount" type="number" inputmode="numeric" min="1" max="${maxGold}" step="1" value="${esc(st.amount)}" placeholder="100">
+                </label>
+                <p>You have ${inv.gold.toLocaleString()} gold.</p>`;
+            const itemPane = inv.items.length ? `
+                <div class="cm-items" role="group" aria-label="Choose an item">
+                    ${inv.items.map(i => `<button type="button" class="cm-item" data-item="${esc(i.id)}" aria-pressed="${i.id === st.item}"><span>${esc(i.name)}</span><span>×${i.qty}</span></button>`).join('')}
+                </div>
+                ${sel ? `<label>Quantity
+                    <input class="cm-input" id="gQty" type="number" inputmode="numeric" min="1" max="${Math.min(sel.qty, inv.max_qty)}" step="1" value="${esc(st.qty)}">
+                </label>` : ''}` : '<p>Your inventory is empty. Gift gold instead, or find some loot first.</p>';
+            $('modal').innerHTML = `
+                <h2 id="modalTitle">Gift ${esc(o.name)}</h2>
+                <div class="cm-gifttabs" role="tablist" aria-label="What to gift">
+                    <button type="button" role="tab" data-mode="gold" aria-selected="${st.mode === 'gold'}">Gold</button>
+                    <button type="button" role="tab" data-mode="item" aria-selected="${st.mode === 'item'}">Item</button>
+                </div>
+                ${st.mode === 'gold' ? goldPane : itemPane}
+                <label>Note (optional)
+                    <input class="cm-input" id="gNote" maxlength="${inv.max_note}" value="${esc(st.note)}" placeholder="Thanks for the help in the tower">
+                </label>
+                <p>Gifts can’t be taken back.${inv.limits ? ` Next 24 hours: up to ${inv.limits.gold_left.toLocaleString()} more gold and ${inv.limits.items_left} more items${inv.limits.new ? ' (new-account limit)' : ''}.` : ''}</p>
+                <p class="cm-err" id="gErr" role="alert"></p>
+                <div class="row">
+                    <button type="button" class="cm-minibtn" id="gCancel" style="padding:8px 14px">Cancel</button>
+                    <button type="button" class="cm-send" id="gSend">Send gift</button>
+                </div>`;
+            const m = $('modal');
+            m.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => { st.mode = b.dataset.mode; renderGift(o, inv, st); }));
+            m.querySelectorAll('[data-item]').forEach(b => b.addEventListener('click', () => { st.item = b.dataset.item; st.qty = '1'; renderGift(o, inv, st); }));
+            const bind = (id, key) => { const el = $(id); if (el) el.addEventListener('input', () => { st[key] = el.value; $('gErr').textContent = ''; }); };
+            bind('gAmount', 'amount'); bind('gQty', 'qty'); bind('gNote', 'note');
+            $('gCancel').addEventListener('click', closeModal);
+            $('gSend').addEventListener('click', () => submitGift(o, inv, st));
+        }
+
+        async function submitGift(o, inv, st) {
+            const err = $('gErr');
+            const payload = { to: o.key, kind: st.mode, note: st.note.trim() };
+            if (st.mode === 'gold') {
+                const n = Number(st.amount);
+                if (!st.amount || !Number.isInteger(n) || n < 1) { err.textContent = 'Enter a whole number of gold.'; return; }
+                if (n > inv.max_gold) { err.textContent = `You can gift up to ${inv.max_gold.toLocaleString()} gold at a time.`; return; }
+                if (n > inv.gold) { err.textContent = `You only have ${inv.gold.toLocaleString()} gold.`; return; }
+                payload.amount = n;
+            } else {
+                const sel = inv.items.find(i => i.id === st.item);
+                if (!sel) { err.textContent = 'Choose an item first.'; return; }
+                const q = Number(st.qty);
+                if (!Number.isInteger(q) || q < 1) { err.textContent = 'Enter a whole number for the quantity.'; return; }
+                if (q > sel.qty) { err.textContent = `You only have ${sel.qty} of that item.`; return; }
+                payload.item = sel.id; payload.quantity = q;
+            }
+            const what = st.mode === 'gold' ? payload.amount.toLocaleString() + ' gold'
+                : payload.quantity + '× ' + ((inv.items.find(i => i.id === payload.item) || {}).name || 'item');
+            if (!confirm(`Send ${what} to ${o.name}? Gifts can’t be taken back.`)) return;
+            $('gSend').disabled = true;
+            const r = await api('POST', 'gift', payload);
+            if (!r.ok) { err.textContent = r.data.error || 'Could not send the gift.'; $('gSend').disabled = false; return; }
+            closeModal();
+            toast('Gift sent.');
+            const msg = r.data.message;
+            if (msg && !rendered.some(x => x.id === msg.id)) {
+                rendered.push(msg);
+                if (msg.id > lastId) lastId = msg.id;
+                paint(true);
+            }
+        }
+
+        function giftHtml(m) {
+            let g = null;
+            try { g = JSON.parse(m.body); } catch (e) { /* bad data */ }
+            if (!g || typeof g !== 'object') return '<div class="cm-msg-body">[Gift unavailable]</div>';
+            const what = g.type === 'gold'
+                ? `${Number(g.amount || 0).toLocaleString()} gold`
+                : `${Number(g.qty || 1).toLocaleString()}× ${esc(g.name || 'item')}`;
+            const title = m.mine ? `You sent ${what}` : `${esc(m.name)} sent you ${what}`;
+            const sub = g.type === 'item' && g.rarity ? `<div class="cm-gift-s">${esc(g.rarity)}</div>` : '';
+            const note = g.note ? `<div class="cm-gift-n">“${esc(g.note)}”</div>` : '';
+            return `<div class="cm-gift"><div class="cm-gift-ic" aria-hidden="true"><i class="fa-solid fa-gift"></i></div>
+                <div><div class="cm-gift-t">${title}</div>${sub}${note}</div></div>`;
+        }
+
+        // ── share an item ──────────────────────────────────
+        function itemHtml(m) {
+            let it = null;
+            try { it = JSON.parse(m.body); } catch (e) { /* bad data */ }
+            if (!it || typeof it !== 'object') return '<div class="cm-msg-body">[Item unavailable]</div>';
+            const title = m.mine ? `You shared ${esc(it.name || 'an item')}` : `${esc(m.name)} shared ${esc(it.name || 'an item')}`;
+            const owns = Number(it.qty || 0);
+            const sub = `<div class="cm-gift-s">${esc(it.rarity || 'common')}${owns > 1 ? ' · owns ×' + owns : ''}</div>`;
+            return `<div class="cm-gift"><div class="cm-gift-ic" aria-hidden="true"><i class="fa-solid fa-box-open"></i></div>
+                <div><div class="cm-gift-t">${title}</div>${sub}</div></div>`;
+        }
+
+        async function openItemShare() {
+            openModal('<h2 id="modalTitle">Share an item</h2><p>Loading your inventory…</p>');
+            const r = await api('GET', 'gift/inventory');
+            if (!r.ok) { closeModal(); toast(r.data.error || 'Could not load your inventory.', true); return; }
+            const items = r.data.items;
+            const rows = items.length ? `<div class="cm-items" role="group" aria-label="Choose an item to share">
+                ${items.map(i => `<button type="button" class="cm-item" data-item="${esc(i.id)}"><span>${esc(i.name)}</span><span>×${i.qty}</span></button>`).join('')}
+            </div>` : '<p>Your inventory is empty.</p>';
+            $('modal').innerHTML = `<h2 id="modalTitle">Share an item</h2>${rows}
+                <div class="row"><button type="button" class="cm-minibtn" id="itClose" style="padding:8px 14px">Cancel</button></div>`;
+            $('modal').querySelectorAll('[data-item]').forEach(b => b.addEventListener('click', async () => {
+                closeModal();
+                await send({ kind: 'item', item: b.dataset.item });
+            }));
+            $('itClose').addEventListener('click', closeModal); $('itClose').focus();
+        }
+        $('itemBtn').addEventListener('click', openItemShare);
+
+        // ── messages ──────────────────────────────────────
+        function isJumbo(text) {
+            if (text.length > 24) return false;
+            try {
+                if (!/^(?:\p{Extended_Pictographic}|\uFE0F|\u200D|\s)+$/u.test(text)) return false;
+                return (text.match(/\p{Extended_Pictographic}/gu) || []).length <= 3;
+            } catch (e) { return false; }
+        }
+
+        function uploadHtml(m) {
+            const u = UPLOAD_BODY.exec(m.body || '');
+            if (!u) return '<div class="cm-msg-body">[Attachment unavailable]</div>';
+            const src = '/api/community/upload/' + u[2] + '/file';
+            if (u[1] === 'video') {
+                return `<div class="cm-msg-body"><video class="cm-media" src="${src}" controls playsinline preload="metadata" aria-label="Video from ${esc(m.name)}"></video></div>`;
+            }
+            return `<div class="cm-msg-body"><a class="cm-lb" href="${src}" target="_blank" rel="noopener"><img class="cm-media" src="${src}" alt="Photo from ${esc(m.name)}" loading="lazy"></a></div>`;
+        }
+
+        function msgHtml(m, prev, forceFirst) {
+            const cont = !forceFirst && prev && !m.reply && prev.sender === m.sender && (new Date(m.ts) - new Date(prev.ts)) < 5 * 60 * 1000;
+            const editing = editingId === m.id;
+            let body;
+            if (editing) {
+                body = `<div class="cm-editbox">
+                    <textarea class="cm-input" id="editBox" rows="2" maxlength="600" aria-label="Edit message">${esc(editDraft)}</textarea>
+                    <div class="row"><button type="button" class="cm-minibtn" data-act="save-edit">Save</button><button type="button" class="cm-minibtn" data-act="cancel-edit">Cancel</button></div>
+                </div>`;
+            } else if ((m.kind === 'gif' || m.kind === 'sticker') && GIF_OK.test(m.body)) {
+                body = `<div class="cm-msg-body"><img${m.kind === 'sticker' ? ' class="sticker"' : ''} src="${esc(m.body)}" alt="${m.kind === 'sticker' ? 'Sticker' : 'GIF'} from ${esc(m.name)}" loading="lazy" referrerpolicy="no-referrer"></div>`;
+            } else if (m.kind === 'gif' || m.kind === 'sticker') {
+                body = '<div class="cm-msg-body">[GIF unavailable]</div>';
+            } else if (m.kind === 'upload') {
+                body = uploadHtml(m);
+            } else if (m.kind === 'gift') {
+                body = giftHtml(m);
+            } else if (m.kind === 'item') {
+                body = itemHtml(m);
+            } else {
+                body = `<div class="cm-msg-body${(isJumbo(m.body) || isEmojiOnly(m.body)) ? ' jumbo' : ''}">${emojify(mentionize(esc(m.body)))}${m.edited ? '<span class="cm-edited">(edited)</span>' : ''}</div>`;
+            }
+            const quote = m.reply ? `<button type="button" class="cm-quote" data-act="jump" data-id="${m.reply.id}" aria-label="Jump to the original message">${
+                m.reply.deleted ? '<i>Original message deleted</i>' : `<b>${esc(m.reply.name)}</b> ${esc(m.reply.preview)}`}</button>` : '';
+            const reacts = (m.reactions && m.reactions.length) ? `<div class="cm-reacts">${m.reactions.map(r =>
+                `<button type="button" class="cm-react" data-act="react" data-id="${m.id}" data-emoji="${esc(r.emoji)}" aria-pressed="${r.mine}" aria-label="${esc(r.emoji)} ${r.count}, ${r.mine ? 'remove your reaction' : 'add your reaction'}">${esc(r.emoji)} ${r.count}</button>`).join('')}</div>` : '';
+            const canDel = (m.mine || isAdmin) && !(m.kind === 'gift' && !isAdmin);
+            const acts = editing ? '' : `<div class="cm-acts">
+                <button type="button" data-act="picker" data-id="${m.id}" aria-label="Add reaction">😊 React</button>
+                <button type="button" data-act="reply" data-id="${m.id}">Reply</button>
+                ${!m.mine && m.kind !== 'gift' ? `<button type="button" data-act="report" data-id="${m.id}">Report</button>` : ''}
+                ${isAdmin && !m.mine ? `<button type="button" data-act="mod" data-id="${m.id}">Mod</button>` : ''}
+                ${isAdmin ? `<button type="button" data-act="${m.pinned ? 'unpin' : 'pin'}" data-id="${m.id}">${m.pinned ? 'Unpin' : 'Pin'}</button>` : ''}
+                ${m.mine && m.kind === 'text' ? `<button type="button" data-act="edit" data-id="${m.id}">Edit</button>` : ''}
+                ${canDel ? `<button type="button" class="danger" data-act="delete" data-id="${m.id}" aria-label="Delete message">Delete</button>` : ''}
+            </div>`;
+            const picker = pickerFor === m.id ? `<div class="cm-rpick open" role="menu" aria-label="Pick a reaction">${reactionSet.map(e =>
+                `<button type="button" data-act="react" data-id="${m.id}" data-emoji="${esc(e)}" aria-label="React ${esc(e)}">${esc(e)}</button>`).join('')}</div>` : '';
+            return `
+            <div class="cm-msg ${cont ? 'cont' : 'first'} ${m.mine ? 'mine' : ''}${pickerFor === m.id ? ' picking' : ''}" data-id="${m.id}">
+                <div class="cm-msg-av"><button type="button" class="cm-avbtn" data-act="profile" data-id="${esc(m.sender)}" aria-label="View ${esc(m.name)}'s profile"><img src="${esc(avatarFor(m.name, m.avatar))}" alt="" loading="lazy"></button></div>
+                <div>
+                    ${cont ? '' : `<div class="cm-msg-meta"><span class="cm-msg-name">${esc(m.name)}</span><span class="cm-msg-time">${esc(timeOf(m.ts))}</span>${m.pinned ? '<i class="fa-solid fa-thumbtack cm-pin-ic" title="Pinned" aria-label="Pinned"></i>' : ''}</div>`}
+                    ${quote}
+                    ${body}
+                    ${reacts}
+                </div>
+                ${acts}${picker}
+            </div>`;
+        }
+
+        function nearBottom() { const el = $('msgs'); return el.scrollHeight - el.scrollTop - el.clientHeight < 90; }
+        function toBottom() { const el = $('msgs'); el.scrollTop = el.scrollHeight; $('newPill').classList.remove('show'); }
+        function videoPlaying() { return Array.from($('msgs').querySelectorAll('video')).some(v => !v.paused && !v.ended); }
+
+        // replace: full reset/scroll to bottom. quiet: never show the "New messages" pill.
+        // force: repaint even while a message is being edited.
+        function paint(replace, quiet, force) {
+            if (editingId !== null && !replace && !force) return;   // don't wipe the edit box mid-typing
+            // A repaint rebuilds every <video>, which would cut off one that is playing. Wait until it pauses.
+            if (!replace && !force && videoPlaying()) { deferredPaint = true; return; }
+            deferredPaint = false;
+            const el = $('msgs');
+            const stick = replace || nearBottom();
+            if (!rendered.length) {
+                el.innerHTML = `<div class="cm-empty">${channel === 'lounge' ? 'The Lounge is quiet. Be the first to say something.' : 'No messages yet. Say hello.'}</div>`;
+            } else {
+                const dividerAt = lastReadId > 0 ? rendered.findIndex(m => m.id > lastReadId && !m.mine) : -1;
+                el.innerHTML = (hasMore ? '<button type="button" class="cm-minibtn cm-older" data-act="older">Load older messages</button>' : '')
+                    + rendered.map((m, i) => (i === dividerAt ? '<div class="cm-divider" role="separator"><span>New messages</span></div>' : '')
+                        + msgHtml(m, rendered[i - 1], i === dividerAt)).join('');
+            }
+            if (stick) toBottom(); else if (!quiet) $('newPill').classList.add('show');
+            if (editingId !== null && force) {
+                const t = $('editBox');
+                if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); }
+            }
+        }
+        $('newPill').addEventListener('click', toBottom);
+        ['pause', 'ended'].forEach(ev => $('msgs').addEventListener(ev, () => { if (deferredPaint) paint(false, true); }, true));
+
+        // ── message actions (one delegated listener) ──────
+        $('msgs').addEventListener('click', e => {
+            const lb = e.target.closest('a.cm-lb');
+            if (lb) { e.preventDefault(); openLightbox(lb.href); return; }
+            const b = e.target.closest('[data-act]');
+            if (!b) return;
+            e.stopPropagation();
+            closePopovers();
+            const act = b.dataset.act;
+            if (act === 'profile') { openProfile(b.dataset.id); return; }
+            const id = Number(b.dataset.id);
+            if (act === 'picker') { pickerFor = pickerFor === id ? null : id; paint(false, true, true); }
+            else if (act === 'react') { pickerFor = null; reactTo(id, b.dataset.emoji); }
+            else if (act === 'reply') { startReply(id); }
+            else if (act === 'edit') { startEdit(id); }
+            else if (act === 'save-edit') { saveEdit(); }
+            else if (act === 'cancel-edit') { cancelEdit(); }
+            else if (act === 'delete') { delMsg(id); }
+            else if (act === 'jump') { jumpTo(id); }
+            else if (act === 'report') { openReport(id); }
+            else if (act === 'mod') { const x = findMsg(id); if (x) openMod(x.sender, x.name); }
+            else if (act === 'pin') { togglePin(id, true); }
+            else if (act === 'unpin') { togglePin(id, false); }
+            else if (act === 'older') { loadOlder(); }
+        });
+        $('msgs').addEventListener('input', e => { if (e.target.id === 'editBox') editDraft = e.target.value; });
+        $('msgs').addEventListener('keydown', e => {
+            if (e.target.id !== 'editBox') return;
+            if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); saveEdit(); }
+            else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancelEdit(); }
+        });
+
+        async function delMsg(id) {
+            const r = await api('DELETE', 'messages/' + id);
+            if (r.ok) {
+                rendered = rendered.filter(m => m.id !== id);
+                if (replyTo && replyTo.id === id) clearReply();
+                if (editingId === id) { editingId = null; editDraft = ''; }
+                paint(false, true, true);
+            } else toast(r.data.error || 'Could not delete.', true);
+        }
+
+        async function reactTo(id, emoji) {
+            const r = await api('POST', `messages/${id}/react`, { emoji });
+            if (!r.ok) { toast(r.data.error || 'Could not react.', true); paint(false, true, true); return; }
+            const m = findMsg(id);
+            if (m) m.reactions = r.data.reactions;
+            paint(false, true, true);
+        }
+
+        function jumpTo(id) {
+            const el = $('msgs').querySelector(`.cm-msg[data-id="${id}"]`);
+            if (!el) { toast('That message is not loaded.'); return; }
+            el.scrollIntoView({ block: 'center' });
+            el.classList.add('flash');
+            setTimeout(() => el.classList.remove('flash'), 1500);
+        }
+
+        // reply
+        function renderReply() {
+            $('replyBar').classList.toggle('show', !!replyTo);
+            $('replyText').textContent = replyTo ? `Replying to ${replyTo.name}: ${replyTo.preview}` : '';
+        }
+        function clearReply() { replyTo = null; renderReply(); }
+        function startReply(id) {
+            const m = findMsg(id); if (!m) return;
+            replyTo = { id: m.id, name: m.name, preview: previewOf(m) };
+            renderReply();
+            $('text').focus();
+        }
+        $('replyCancel').addEventListener('click', () => { clearReply(); $('text').focus(); });
+
+        // edit
+        function startEdit(id) {
+            const m = findMsg(id); if (!m || !m.mine || m.kind !== 'text') return;
+            editingId = id; editDraft = m.body;
+            paint(false, true, true);
+        }
+        function cancelEdit() { editingId = null; editDraft = ''; paint(false, true, true); }
+        async function saveEdit() {
+            const id = editingId; if (id === null) return;
+            const m = findMsg(id);
+            const text = editDraft.trim();
+            if (!text) { toast('A message cannot be empty. Delete it instead.', true); return; }
+            if (text.length > limits.text) { toast(`Messages can be up to ${limits.text} characters.`, true); return; }
+            if (m && text === m.body) { cancelEdit(); return; }
+            const r = await api('PATCH', 'messages/' + id, { text });
+            if (!r.ok) { toast(r.data.error || 'Could not save the edit.', true); return; }
+            if (m) Object.assign(m, r.data.message);
+            editingId = null; editDraft = '';
+            paint(false, true, true);
+        }
+
+        // ── channels + polling ────────────────────────────
+        function renderTyping(names) {
+            const t = $('typing');
+            if (!names || !names.length) { t.textContent = ''; return; }
+            t.textContent = names.length === 1 ? `${names[0]} is typing…`
+                : names.length === 2 ? `${names[0]} and ${names[1]} are typing…`
+                : 'Several people are typing…';
+        }
+
+        async function openChannel(ch) {
+            channel = ch; lastId = 0; lastReadId = 0; rendered = []; otherInfo = null; hasMore = false; otherSig = '';
+            replyTo = null; editingId = null; editDraft = ''; pickerFor = null;
+            clearUpload();
+            renderReply(); renderTyping([]);
+            $('shell').classList.remove('show-side');
+            $('notice').classList.remove('show');
+            renderHead(); renderList(); paint(true);
+            await pollMessages(true);
+            $('text').focus();
+        }
+
+        async function pollMessages(initial) {
+            if (busyMsgs) return;
+            busyMsgs = true;
+            const ch = channel;
+            const r = await api('GET', `messages?channel=${encodeURIComponent(ch)}&after=${initial ? 0 : lastId}`);
+            busyMsgs = false;
+            if (ch !== channel) return;                       // user switched conversations meanwhile
+            if (!r.ok) {
+                if (initial) { rendered = []; $('msgs').innerHTML = `<div class="cm-empty">${esc(r.data.error || 'Could not load messages.')}</div>`; if (r.status === 404) setTimeout(() => openChannel('lounge'), 1200); }
+                return;
+            }
+            renderTyping(r.data.typing);
+            if (r.data.other) {
+                const sig = JSON.stringify(r.data.other);
+                otherInfo = r.data.other;
+                if (sig !== otherSig) { otherSig = sig; renderHead(); }
+                const mm = members.find(x => x.key === r.data.other.key);
+                if (mm && mm.unread) { mm.unread = 0; lastUnread[mm.key] = 0; renderList(); updateTitle(); }
+            }
+            let changed = initial, gotNew = false;
+            if (initial) {
+                rendered = r.data.messages; hasMore = !!r.data.has_more;
+                if (typeof r.data.last_read_id === 'number') lastReadId = r.data.last_read_id;
+            } else if (r.data.messages.length) {
+                const fresh = r.data.messages.filter(m => !rendered.some(x => x.id === m.id));
+                if (fresh.length) {
+                    rendered = rendered.concat(fresh); changed = true; gotNew = true;
+                    if (!mutedChannels.includes(canonOf(channel))) {
+                        fresh.filter(x => !x.mine && (mentionsMe(x) || (channel !== 'lounge' && document.hidden)))
+                             .forEach(x => notify(x.name + (channel === 'lounge' ? ' mentioned you' : ' sent a message'), previewOf(x)));
+                    }
+                }
+            }
+            // pick up edits and reactions made by other people
+            if (!initial && Array.isArray(r.data.updates)) {
+                r.data.updates.forEach(u => {
+                    const m = findMsg(u.id); if (!m) return;
+                    const same = m.body === u.body && !!m.edited === !!u.edited &&
+                        JSON.stringify(m.reactions || []) === JSON.stringify(u.reactions || []);
+                    if (!same) { m.body = u.body; m.edited = u.edited; m.reactions = u.reactions; changed = true; }
+                });
+            }
+            const gone = new Set(r.data.deleted || []);
+            if (gone.size && rendered.some(m => gone.has(m.id))) { rendered = rendered.filter(m => !gone.has(m.id)); changed = true; }
+            rendered.forEach(m => { if (m.id > lastId) lastId = m.id; });
+            if (changed) paint(initial, !gotNew);
+            if (r.data.other && r.data.other.blocked_me) showNotice('This adventurer has blocked you. You cannot message them.');
+        }
+
+        function showNotice(t) { $('notice').textContent = t; $('notice').classList.add('show'); }
+
+        // ── sending ───────────────────────────────────────
+        async function send(payload) {
+            if (replyTo) payload.reply_to = replyTo.id;
+            const r = await api('POST', 'messages', Object.assign({ channel }, payload));
+            if (!r.ok) { toast(r.data.error || 'Could not send.', true); return false; }
+            if (r.data.notice) showNotice(r.data.notice); else $('notice').classList.remove('show');
+            const m = r.data.message;
+            if (!rendered.some(x => x.id === m.id)) rendered.push(m);
+            if (m.id > lastId) lastId = m.id;
+            clearReply();
+            paint(true);
+            return true;
+        }
+
+        async function sendText() {
+            if (uploadXhr) { toast('Wait for the upload to finish, or remove it.'); return; }
+            const text = $('text').value.trim();
+            if (!text && !pendingUpload) return;
+            if (text.length > limits.text) { toast(`Messages can be up to ${limits.text} characters.`, true); return; }
+            $('sendBtn').disabled = true;
+            let sent = true;
+            if (pendingUpload) {
+                sent = await send({ kind: 'upload', upload_id: pendingUpload.id });
+                if (sent) {
+                    clearUpload(true);
+                    if (text) await sleep(1100);        // the server allows one message per second
+                }
+            }
+            if (sent && text && (await send({ kind: 'text', text }))) { $('text').value = ''; autosize(); updateCount(); }
+            $('sendBtn').disabled = false;
+            $('text').focus();
+        }
+        $('sendBtn').addEventListener('click', sendText);
+        $('text').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendText(); } });
+        function autosize() { const t = $('text'); t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 130) + 'px'; }
+        function updateCount() {
+            const n = $('text').value.length, c = $('count');
+            c.textContent = `${n}/${limits.text}`;
+            c.classList.toggle('show', n > limits.text * 0.8);
+            c.classList.toggle('over', n > limits.text);
+        }
+        $('text').addEventListener('input', () => {
+            autosize(); updateCount();
+            const now = Date.now();
+            if ($('text').value.trim() && now - lastTypingSent > 2500) {
+                lastTypingSent = now;
+                api('POST', 'typing', { channel });
+            }
+        });
+
+        // ── photo / video upload ──────────────────────────
+        function clearUpload(sent) {
+            if (uploadXhr) { try { uploadXhr.abort(); } catch (e) { /* done */ } uploadXhr = null; }
+            if (uploadBlobUrl) { URL.revokeObjectURL(uploadBlobUrl); uploadBlobUrl = null; }
+            pendingUpload = null;
+            $('attachBar').classList.remove('show');
+            $('attachThumb').innerHTML = '';
+            $('attachProg').classList.remove('done');
+            $('attachProg').firstElementChild.style.width = '0';
+        }
+
+        function startUpload(f) {
+            if (!UPLOAD_TYPES.includes(f.type)) { toast('Use a JPEG, PNG, GIF, WebP, MP4, MOV or WebM file.', true); return; }
+            if (f.size > limits.upload_mb * 1024 * 1024) { toast(`Files can be up to ${limits.upload_mb} MB.`, true); return; }
+            clearUpload();
+            uploadBlobUrl = URL.createObjectURL(f);
+            $('attachThumb').innerHTML = f.type.startsWith('video/')
+                ? `<video src="${uploadBlobUrl}" muted preload="metadata" aria-hidden="true"></video>`
+                : `<img src="${uploadBlobUrl}" alt="">`;
+            $('attachName').textContent = f.name;
+            $('attachStatus').textContent = `Uploading ${fmtSize(f.size)}…`;
+            $('attachBar').classList.add('show');
+
+            const bar = $('attachProg').firstElementChild;
+            const xhr = new XMLHttpRequest();
+            uploadXhr = xhr;
+            xhr.open('POST', '/api/community/upload');
+            xhr.withCredentials = true;
+            xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+            xhr.upload.onprogress = e => {
+                if (!e.lengthComputable) return;
+                const pct = Math.round(e.loaded / e.total * 100);
+                bar.style.width = pct + '%';
+                $('attachStatus').textContent = `Uploading ${pct}%`;
+            };
+            xhr.onload = () => {
+                if (uploadXhr !== xhr) return;
+                uploadXhr = null;
+                if (xhr.status === 401) { window.location.href = '/'; return; }
+                let d = {};
+                try { d = JSON.parse(xhr.responseText); } catch (e) { /* plain-text error from a proxy */ }
+                if (xhr.status >= 200 && xhr.status < 300 && d.ok) {
+                    pendingUpload = d.upload;
+                    bar.style.width = '100%';
+                    $('attachProg').classList.add('done');
+                    $('attachStatus').textContent = 'Ready. Press Send.';
+                } else {
+                    toast(d.error || (xhr.status === 413 ? `Files can be up to ${limits.upload_mb} MB.` : 'Upload failed.'), true);
+                    clearUpload();
+                }
+            };
+            xhr.onerror = () => { if (uploadXhr !== xhr) return; uploadXhr = null; toast('Upload failed. Check your connection.', true); clearUpload(); };
+            xhr.send(f);                                   // the File itself is the body, so nothing is base64-encoded
+        }
+
+        $('uploadBtn').addEventListener('click', () => { closeMenus(); $('uploadFile').click(); });
+        $('uploadFile').addEventListener('change', () => { const f = $('uploadFile').files[0]; $('uploadFile').value = ''; if (f) startUpload(f); });
+        $('attachClear').addEventListener('click', () => { clearUpload(); $('text').focus(); });
+        const chatEl = document.querySelector('.cm-chat');
+        const hasFiles = e => e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+        ['dragenter', 'dragover'].forEach(ev => chatEl.addEventListener(ev, e => { if (hasFiles(e)) { e.preventDefault(); chatEl.classList.add('drag'); } }));
+        chatEl.addEventListener('dragleave', e => { if (!chatEl.contains(e.relatedTarget)) chatEl.classList.remove('drag'); });
+        chatEl.addEventListener('drop', e => {
+            if (!hasFiles(e)) return;
+            e.preventDefault(); chatEl.classList.remove('drag');
+            const f = Array.from(e.dataTransfer.files).find(x => UPLOAD_TYPES.includes(x.type));
+            if (f) startUpload(f); else toast('Use a JPEG, PNG, GIF, WebP, MP4, MOV or WebM file.', true);
+        });
+        $('text').addEventListener('paste', e => {          // paste a screenshot straight into the chat
+            const f = Array.from((e.clipboardData && e.clipboardData.files) || []).find(x => UPLOAD_TYPES.includes(x.type));
+            if (f) { e.preventDefault(); startUpload(f); }
+        });
+
+        // ── emoji picker ──────────────────────────────────
+        const EMOJI = {
+            '😀': '😀 😃 😄 😁 😆 😅 😂 🤣 😊 🙂 😉 😍 🥰 😘 😋 😎 🤩 🥳 😏 😌 😴 🤔 🤨 😐 🙄 😬 😮 😲 😢 😭 😤 😠 😡 🤯 😱 😳 🥺 😇 🤗 🤭 🫡 🤫 🥱 😈 👻 💀 🤖',
+            '👍': '👍 👎 👏 🙌 🙏 💪 🤝 ✌️ 🤞 🤟 🤘 👌 🤙 👋 ✋ 🫶 ☝️ 👊 ✊ 🫰 🖖 👀 🧠 🫵',
+            '❤️': '❤️ 🧡 💛 💚 💙 💜 🖤 🤍 💔 ❤️‍🔥 💖 💯 💥 ✨ 🔥 ⭐ 🌟 💫 🎉 🎊',
+            '🐉': '🐉 🐲 🦄 🐺 🦊 🐱 🐶 🦁 🐯 🐻 🐼 🦇 🦅 🦉 🐍 🕷️ 🦂 🐢 🐙 🦑 🧙 🧛 🧟 🧞 🧝 🧚 👹 👺 🎃',
+            '🍕': '🍕 🍔 🍟 🌮 🍣 🍜 🍩 🍪 🎂 🍰 🍫 🍿 🍎 🍌 🍇 🍓 🥑 🍺 🍷 ☕ 🧃 🥤',
+            '⚔️': '⚔️ 🗡️ 🏹 🛡️ 👑 💎 🪙 💰 🧪 📜 🗝️ 🔮 🪄 🏰 🗺️ 🧭 🔥 ⚡ 🌋 🌲 🏆 🥇 🎯 🎲 🎮 🕹️ 🪓 ⛏️ 🔱',
+            '🔣': '✅ ❌ ⚠️ ❓ ❗ 💤 💬 💭 🔔 🔕 🔒 🔓 ➕ ➖ ➡️ ⬅️ ⬆️ ⬇️ 🔴 🟢 🟡 🔵 ⚫ ⚪'
+        };
+        let recent = [];
+        try { recent = JSON.parse(localStorage.getItem('cm_recent') || '[]').slice(0, 16); } catch (e) { recent = []; }
+        let emojiTab = Object.keys(EMOJI)[0];
+
+        function renderEmoji() {
+            const tabs = (recent.length ? [{ id: '🕘', label: '🕘', aria: 'Recent' }] : [])
+                .concat(Object.keys(EMOJI).map(k => ({ id: k, label: k, aria: 'Category ' + k })))
+                .concat([{ id: 'custom', label: '✨', aria: 'Custom emojis' }]);
+            $('emojiTabs').innerHTML = tabs.map(t => `<button class="cm-tabbtn" role="tab" data-tab="${esc(t.id)}" aria-selected="${t.id === emojiTab}" aria-label="${esc(t.aria)}">${t.label}</button>`).join('');
+            $('emojiTabs').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { emojiTab = b.dataset.tab; renderEmoji(); }));
+            if (emojiTab === 'custom') { renderCustomPanel(); return; }
+            const list = emojiTab === '🕘' ? recent : (EMOJI[emojiTab] || '').split(' ');
+            $('emojiGrid').innerHTML = list.map(e => `<button type="button" data-e="${esc(e)}" aria-label="Insert ${esc(e)}">${esc(e)}</button>`).join('');
+            $('emojiGrid').querySelectorAll('button').forEach(b => b.addEventListener('click', () => insertEmoji(b.dataset.e)));
+        }
+
+        function renderCustomPanel() {
+            const mineCount = customEmojis.filter(e => e.mine).length;
+            const grid = customEmojis.map(e => `
+                <div class="cm-ce">
+                    <button type="button" class="use" data-ins=":${esc(e.name)}:" aria-label="Insert :${esc(e.name)}:" title=":${esc(e.name)}:"><img src="${emojiSrc(e)}" alt="" loading="lazy"></button>
+                    ${(e.mine || isAdmin) ? `<button type="button" class="cm-ce-del" data-del="${e.id}" aria-label="Delete :${esc(e.name)}:" title="Delete">×</button>` : ''}
+                </div>`).join('');
+            $('emojiGrid').innerHTML = `
+                <div class="cm-ce-panel">
+                    <input class="cm-input" type="file" id="ceFile" accept="image/gif,image/png,image/webp" aria-label="Emoji image file">
+                    <div class="row">
+                        <input class="cm-input" id="ceName" maxlength="24" placeholder="emoji_name" aria-label="Emoji name">
+                        <button type="button" class="cm-minibtn" id="ceAdd">Add</button>
+                    </div>
+                    <div class="cm-ce-hint">GIF, PNG or WebP (animated works), up to ${emojiMaxKb} KB. Type :name: to use it. You have ${mineCount}/${emojiLimit}.</div>
+                </div>` + (grid || '<div class="cm-gifnote" style="grid-column:1/-1">No custom emojis yet. Add the first one above.</div>');
+            $('emojiGrid').querySelectorAll('[data-ins]').forEach(b => b.addEventListener('click', () => insertEmoji(b.dataset.ins + ' ', true)));
+            $('emojiGrid').querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => deleteEmoji(Number(b.dataset.del))));
+            $('ceAdd').addEventListener('click', uploadEmoji);
+            $('ceFile').addEventListener('change', () => {
+                const f = $('ceFile').files[0];
+                if (f && !$('ceName').value) $('ceName').value = f.name.replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 24);
+            });
+        }
+
+        async function loadEmojis() {
+            const r = await api('GET', 'emojis');
+            if (!r.ok) return;
+            const list = r.data.emojis || [];
+            emojiLimit = r.data.limit || emojiLimit;
+            emojiMaxKb = r.data.max_kb || emojiMaxKb;
+            const sig = list.map(e => e.id + ':' + e.name).join(',');
+            if (sig === emojiSig) return;
+            emojiSig = sig; customEmojis = list; emojiMap = {};
+            list.forEach(e => { emojiMap[e.name.toLowerCase()] = e; });
+            paint(false, true);                                  // re-render so :shortcodes: resolve
+            if ($('emojiPop').classList.contains('open') && emojiTab === 'custom') renderEmoji();
+        }
+
+        async function uploadEmoji() {
+            const f = $('ceFile').files[0];
+            const name = $('ceName').value.trim().replace(/^:|:$/g, '').toLowerCase();
+            if (!f) { toast('Choose a GIF, PNG or WebP file first.', true); return; }
+            if (!/^image\/(gif|png|webp)$/.test(f.type)) { toast('Use a GIF, PNG or WebP image.', true); return; }
+            if (f.size > emojiMaxKb * 1024) { toast(`Emoji files can be up to ${emojiMaxKb} KB.`, true); return; }
+            if (!/^[a-z0-9_]{2,24}$/.test(name)) { toast('Names use 2 to 24 letters, numbers or underscores.', true); return; }
+            const data = await new Promise((res, rej) => {
+                const fr = new FileReader();
+                fr.onload = () => res(String(fr.result).split(',')[1] || '');
+                fr.onerror = () => rej(new Error('read'));
+                fr.readAsDataURL(f);
+            }).catch(() => '');
+            if (!data) { toast('Could not read that file.', true); return; }
+            $('ceAdd').disabled = true;
+            const r = await api('POST', 'emojis', { name, data });
+            if (!r.ok) { toast(r.data.error || 'Upload failed.', true); $('ceAdd').disabled = false; return; }
+            toast(`:${name}: added.`);
+            emojiSig = null;
+            await loadEmojis();
+            renderEmoji();
+        }
+
+        async function deleteEmoji(id) {
+            const e = customEmojis.find(x => x.id === id); if (!e) return;
+            if (!confirm(`Delete :${e.name}:? It will stop showing in older messages too.`)) return;
+            const r = await api('DELETE', 'emojis/' + id);
+            if (!r.ok) { toast(r.data.error || 'Could not delete.', true); return; }
+            emojiSig = null;
+            await loadEmojis();
+            renderEmoji();
+        }
+        function insertEmoji(e, noRecent) {
+            const t = $('text'), s = t.selectionStart == null ? t.value.length : t.selectionStart, en = t.selectionEnd == null ? s : t.selectionEnd;
+            t.value = t.value.slice(0, s) + e + t.value.slice(en);
+            t.focus(); t.selectionStart = t.selectionEnd = s + e.length;
+            if (!noRecent) {
+                recent = [e].concat(recent.filter(x => x !== e)).slice(0, 16);
+                try { localStorage.setItem('cm_recent', JSON.stringify(recent)); } catch (err) { /* private mode */ }
+            }
+            autosize(); updateCount();
+        }
+
+        // ── GIF picker ────────────────────────────────────
+        let gifTimer = null, gifType = 'gif';
+        async function loadGifs(q) {
+            if (!gifSearch) { $('gifGrid').innerHTML = '<div class="cm-gifnote" style="grid-column:1/-1">GIF search is not set up on this server yet, but you can paste any GIPHY or Tenor GIF link above. (Tip: on Tenor, right-click the GIF and choose “Copy image address”.)</div>'; return; }
+            $('gifGrid').innerHTML = '<div class="cm-gifnote" style="grid-column:1/-1">Loading…</div>';
+            const r = await api('GET', 'gifs?type=' + gifType + '&q=' + encodeURIComponent(q || ''));
+            if (!r.ok) { $('gifGrid').innerHTML = `<div class="cm-gifnote" style="grid-column:1/-1">${esc(r.data.error || 'GIF search failed.')}</div>`; return; }
+            if (!r.data.gifs.length) { $('gifGrid').innerHTML = '<div class="cm-gifnote" style="grid-column:1/-1">No GIFs found.</div>'; return; }
+            $('gifGrid').innerHTML = r.data.gifs.filter(g => GIF_OK.test(g.preview) && GIF_OK.test(g.url)).map(g =>
+                `<button type="button" data-url="${esc(g.url)}" aria-label="Send GIF: ${esc(g.title || 'GIF')}"><img src="${esc(g.preview)}" alt="${esc(g.title || 'GIF')}" loading="lazy" referrerpolicy="no-referrer"></button>`).join('');
+            $('gifGrid').querySelectorAll('button').forEach(b => b.addEventListener('click', async () => { if (await send({ kind: gifType, url: b.dataset.url })) closeMenus(); }));
+        }
+        $('gifSearch').addEventListener('input', () => { clearTimeout(gifTimer); gifTimer = setTimeout(() => loadGifs($('gifSearch').value.trim()), 450); });
+        $('gifTabs').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+            gifType = b.dataset.gt;
+            $('gifTabs').querySelectorAll('button').forEach(x => x.setAttribute('aria-selected', String(x === b)));
+            $('gifSearch').placeholder = gifType === 'sticker' ? 'Search stickers' : 'Search GIFs';
+            $('gifSearch').value = '';
+            loadGifs('');
+        }));
+        async function sendGifLink() {
+            const url = $('gifLink').value.trim();
+            if (!url) return;
+            if (await send({ kind: 'gif', url })) { $('gifLink').value = ''; closeMenus(); }
+        }
+        $('gifLinkSend').addEventListener('click', sendGifLink);
+        $('gifLink').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); sendGifLink(); } });
+
+        // ── popovers ──────────────────────────────────────
+        function closePopovers() {
+            ['statusMenu', 'emojiPop', 'gifPop'].forEach(id => $(id).classList.remove('open'));
+            $('statusBtn').setAttribute('aria-expanded', 'false');
+            $('emojiBtn').setAttribute('aria-expanded', 'false');
+            $('gifBtn').setAttribute('aria-expanded', 'false');
+        }
+        function closeMenus() {
+            closePopovers();
+            if (pickerFor !== null) { pickerFor = null; paint(false, true, true); }
+        }
+        function togglePop(popId, btnId, onOpen) {
+            const open = !$(popId).classList.contains('open');
+            closeMenus();
+            if (open) { $(popId).classList.add('open'); $(btnId).setAttribute('aria-expanded', 'true'); onOpen && onOpen(); }
+        }
+        $('emojiBtn').addEventListener('click', e => { e.stopPropagation(); togglePop('emojiPop', 'emojiBtn', renderEmoji); });
+        $('gifBtn').addEventListener('click', e => { e.stopPropagation(); togglePop('gifPop', 'gifBtn', () => { $('gifSearch').style.display = gifSearch ? '' : 'none'; loadGifs(''); }); });
+        document.addEventListener('click', e => {
+            const inside = e.composedPath().some(n => n.classList && (n.classList.contains('cm-pop') || n.classList.contains('cm-menu')));
+            if (!inside) closeMenus();
+        });
+        document.addEventListener('keydown', e => {
+            if (e.key !== 'Escape') return;
+            if ($('modalBg').classList.contains('open')) closeModal(); else closeMenus();
+        });
+        $('sideBtn').addEventListener('click', () => $('shell').classList.toggle('show-side'));
+
+        // ── older messages ────────────────────────────────
+        async function loadOlder() {
+            if (!rendered.length) return;
+            const ch = channel, el = $('msgs'), prevH = el.scrollHeight;
+            const r = await api('GET', `messages?channel=${encodeURIComponent(ch)}&before=${rendered[0].id}`);
+            if (ch !== channel) return;
+            if (!r.ok) { toast(r.data.error || 'Could not load older messages.', true); return; }
+            const old = r.data.messages.filter(m => !rendered.some(x => x.id === m.id));
+            hasMore = !!r.data.has_more && old.length > 0;
+            rendered = old.concat(rendered);
+            paint(false, true, true);
+            el.scrollTop = el.scrollHeight - prevH;                // keep the reader where they were
+        }
+
+        // ── search ────────────────────────────────────────
+        function openSearch() {
+            openModal(`<h2 id="modalTitle">Search ${channel === 'lounge' ? 'the Lounge' : 'this conversation'}</h2>
+                <input class="cm-input" id="sq" type="search" placeholder="Type at least 2 letters" aria-label="Search messages">
+                <div class="cm-items" id="sr" style="max-height:340px" aria-live="polite"></div>
+                <div class="row"><button type="button" class="cm-minibtn" id="sx" style="padding:8px 14px">Close</button></div>`, () => {
+                let t = null;
+                $('sx').addEventListener('click', closeModal);
+                $('sq').addEventListener('input', () => {
+                    clearTimeout(t);
+                    t = setTimeout(async () => {
+                        const q = $('sq').value.trim();
+                        if (q.length < 2) { $('sr').innerHTML = ''; return; }
+                        const r = await api('GET', `search?channel=${encodeURIComponent(channel)}&q=${encodeURIComponent(q)}`);
+                        if (!$('sr')) return;
+                        $('sr').innerHTML = !r.ok ? `<p>${esc(r.data.error || 'Search failed.')}</p>`
+                            : !r.data.results.length ? '<p>No messages found.</p>'
+                            : r.data.results.map(x => `<div class="cm-hrow"><span><b>${esc(x.name)}</b> ${esc(x.body.slice(0, 200))}</span><span>${esc(new Date(x.ts).toLocaleString())}</span></div>`).join('');
+                    }, 350);
+                });
+            });
+        }
+
+        // ── report a message ──────────────────────────────
+        function openReport(id) {
+            const m = findMsg(id); if (!m) return;
+            openModal(`<h2 id="modalTitle">Report message</h2>
+                <p>From ${esc(m.name)}: ${esc(previewOf(m))}</p>
+                <label>Reason (optional)<input class="cm-input" id="rr" maxlength="200" placeholder="Spam, harassment, scam…"></label>
+                <p>Moderators will see this message and your report.</p>
+                <p class="cm-err" id="re" role="alert"></p>
+                <div class="row"><button type="button" class="cm-minibtn" id="rc" style="padding:8px 14px">Cancel</button><button type="button" class="cm-send" id="rs">Send report</button></div>`, () => {
+                $('rc').addEventListener('click', closeModal);
+                $('rs').addEventListener('click', async () => {
+                    $('rs').disabled = true;
+                    const r = await api('POST', `messages/${id}/report`, { reason: $('rr').value });
+                    if (r.ok) { closeModal(); toast('Report sent. Thank you.'); }
+                    else { $('re').textContent = r.data.error || 'Could not send the report.'; $('rs').disabled = false; }
+                });
+            });
+        }
+
+        // ── moderation (admins) ───────────────────────────
+        function openMod(key, name, after) {
+            openModal(`<h2 id="modalTitle">Moderate ${esc(name)}</h2>
+                <label>Action<select class="cm-input" id="mk">
+                    <option value="mute">Mute (can read, cannot post)</option>
+                    <option value="ban">Ban from the Community</option>
+                    <option value="clear">Lift mute or ban</option></select></label>
+                <label>Hours (empty = permanent ban)<input class="cm-input" id="mh" type="number" min="1" max="8760" value="24"></label>
+                <label>Reason (shown to them)<input class="cm-input" id="mr" maxlength="200"></label>
+                <p class="cm-err" id="mer" role="alert"></p>
+                <div class="row"><button type="button" class="cm-minibtn" id="mc" style="padding:8px 14px">Cancel</button><button type="button" class="cm-send" id="ms">Apply</button></div>`, () => {
+                $('mc').addEventListener('click', closeModal);
+                $('ms').addEventListener('click', async () => {
+                    $('ms').disabled = true;
+                    const r = await api('POST', 'admin/sanction', { key, kind: $('mk').value, hours: Number($('mh').value) || 0, reason: $('mr').value });
+                    if (r.ok) { closeModal(); toast('Done.'); if (after) after(); }
+                    else { $('mer').textContent = r.data.error || 'Could not apply.'; $('ms').disabled = false; }
+                });
+            });
+        }
+
+        async function openAdmin(tab) {
+            tab = tab || 'reports';
+            openModal('<h2 id="modalTitle">Moderation</h2><p>Loading…</p>');
+            $('modal').style.width = 'min(760px, 100%)';
+            const r = await api('GET', tab === 'gifts' ? 'admin/gifts' : tab === 'log' ? 'admin/log' : 'admin/reports');
+            if (!r.ok) { closeModal(); toast(r.data.error || 'Could not load.', true); return; }
+            const tabs = `<div class="cm-gifttabs" role="tablist">
+                <button type="button" role="tab" data-t="reports" aria-selected="${tab === 'reports'}">Reports</button>
+                <button type="button" role="tab" data-t="gifts" aria-selected="${tab === 'gifts'}">Gift log</button>
+                <button type="button" role="tab" data-t="log" aria-selected="${tab === 'log'}">Audit log</button></div>`;
+            const body = tab === 'log'
+                ? (r.data.log.map(l => `<div class="cm-hrow"><span><b>${esc(l.admin)}</b> ${esc(l.action.replace(/_/g, ' '))}${l.target ? ' → ' + esc(l.target) : ''}${l.detail ? ' · ' + esc(l.detail) : ''}</span><span>${esc(new Date(l.ts).toLocaleString())}</span></div>`).join('') || '<p>Nothing logged yet.</p>')
+                : tab === 'gifts'
+                ? (r.data.gifts.map(g => `<div class="cm-hrow"><span>${esc(g.from_name)} → ${esc(g.to_name)}: ${esc(g.item_name ? g.qty + '× ' + g.item_name : (g.amount || 0).toLocaleString() + ' gold')}${g.note ? ' “' + esc(g.note) + '”' : ''}</span><span>${esc(new Date(g.ts).toLocaleString())}</span></div>`).join('') || '<p>No gifts yet.</p>')
+                : (r.data.reports.map(x => `<div class="cm-rep" data-rid="${x.id}">
+                    <div><b>${esc(x.sender_name)}</b> reported by ${esc(x.reporter_name)} · ${esc(new Date(x.ts).toLocaleString())}${x.dm ? ' · private message' : ''}</div>
+                    <div>“${esc(x.snapshot)}”</div>${x.reason ? `<div>Reason: ${esc(x.reason)}</div>` : ''}
+                    <div class="row"><button type="button" class="cm-minibtn" data-a="dismiss">Dismiss</button><button type="button" class="cm-minibtn" data-a="delete">Delete message</button><button type="button" class="cm-minibtn" data-a="history">Edit history</button><button type="button" class="cm-minibtn" data-a="mod">Mute / ban</button></div></div>`).join('') || '<p>No open reports.</p>');
+            $('modal').innerHTML = `<h2 id="modalTitle">Moderation</h2>${tabs}<div class="cm-items" style="max-height:60vh">${body}</div>
+                <div class="row"><button type="button" class="cm-minibtn" id="ax" style="padding:8px 14px">Close</button></div>`;
+            $('modal').querySelectorAll('[data-t]').forEach(b => b.addEventListener('click', () => openAdmin(b.dataset.t)));
+            $('ax').addEventListener('click', closeModal);
+            $('modal').querySelectorAll('.cm-rep').forEach(el => {
+                const x = r.data.reports.find(y => y.id === Number(el.dataset.rid));
+                const resolve = () => api('POST', `admin/reports/${x.id}/resolve`, {});
+                el.querySelectorAll('[data-a]').forEach(b => b.addEventListener('click', async () => {
+                    const a = b.dataset.a;
+                    if (a === 'mod') { openMod(x.sender_key, x.sender_name, async () => { await resolve(); openAdmin('reports'); }); return; }
+                    if (a === 'history') {
+                        const h = await api('GET', 'admin/history/' + x.message_id);
+                        if (!h.ok) { toast(h.data.error || 'Could not load.', true); return; }
+                        $('modal').innerHTML = `<h2 id="modalTitle">Edit history</h2>
+                            <div class="cm-items" style="max-height:60vh"><div class="cm-hrow"><span><b>Now:</b> ${esc(h.data.deleted ? '[deleted]' : h.data.current)}</span></div>
+                            ${h.data.edits.map(e => `<div class="cm-hrow"><span><b>${esc(e.editor)}:</b> ${esc(e.old_body)}</span><span>${esc(new Date(e.ts).toLocaleString())}</span></div>`).join('')}</div>
+                            <div class="row"><button type="button" class="cm-minibtn" id="hb" style="padding:8px 14px">Back</button></div>`;
+                        $('hb').addEventListener('click', () => openAdmin('reports'));
+                        return;
+                    }
+                    if (a === 'delete') {
+                        const d = await api('DELETE', 'messages/' + x.message_id);
+                        if (!d.ok && d.status !== 404) { toast(d.data.error || 'Could not delete.', true); return; }
+                    }
+                    await resolve();
+                    openAdmin('reports');
+                }));
+            });
+        }
+
+        // ── my gift history ───────────────────────────────
+        async function openGiftHistory() {
+            openModal('<h2 id="modalTitle">Your gifts</h2><p>Loading…</p>');
+            const r = await api('GET', 'gift/history');
+            if (!r.ok) { closeModal(); toast(r.data.error || 'Could not load.', true); return; }
+            const rows = r.data.gifts.map(g => `<div class="cm-hrow"><span>${g.direction === 'sent' ? 'Sent' : 'Received'} <b>${esc(g.item_name ? g.qty + '× ' + g.item_name : (g.amount || 0).toLocaleString() + ' gold')}</b> ${g.direction === 'sent' ? 'to' : 'from'} ${esc(g.other_name)}${g.note ? ' · “' + esc(g.note) + '”' : ''}</span><span>${esc(new Date(g.ts).toLocaleDateString())}</span></div>`).join('') || '<p>No gifts yet.</p>';
+            $('modal').innerHTML = `<h2 id="modalTitle">Your gifts</h2><div class="cm-items" style="max-height:60vh">${rows}</div>
+                <div class="row"><button type="button" class="cm-minibtn" id="hx" style="padding:8px 14px">Close</button></div>`;
+            $('hx').addEventListener('click', closeModal); $('hx').focus();
+        }
+
+        // ── notifications + sound ─────────────────────────
+        try { soundOn = localStorage.getItem('cm_sound') === '1'; } catch (e) { soundOn = false; }
+        const mentionsMe = m => {
+            if (!me || m.kind !== 'text') return false;
+            try { return new RegExp('(^|[\\s(])@' + me.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\p{L}\\p{N}_])', 'iu').test(m.body); } catch (e) { return false; }
+        };
+        function beep() {
+            try {
+                const a = new (window.AudioContext || window.webkitAudioContext)(), o = a.createOscillator(), g = a.createGain();
+                o.connect(g); g.connect(a.destination); o.frequency.value = 880;
+                g.gain.setValueAtTime(.08, a.currentTime); g.gain.exponentialRampToValueAtTime(.001, a.currentTime + .25);
+                o.start(); o.stop(a.currentTime + .26); setTimeout(() => a.close(), 400);
+            } catch (e) { /* audio blocked */ }
+        }
+        function notify(title, body) {
+            if (!soundOn || !me || (me.chosen_status || me.status) === 'dnd') return;
+            beep();
+            if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+                try { const n = new Notification(title, { body: body || '', tag: 'cm' }); n.onclick = () => { window.focus(); n.close(); }; } catch (e) { /* unsupported */ }
+            }
+        }
+        function initBell() {
+            const b = $('bellBtn');
+            b.setAttribute('aria-pressed', String(soundOn));
+            b.addEventListener('click', async () => {
+                soundOn = !soundOn;
+                try { localStorage.setItem('cm_sound', soundOn ? '1' : '0'); } catch (e) { /* private mode */ }
+                b.setAttribute('aria-pressed', String(soundOn));
+                if (soundOn) {
+                    if ('Notification' in window && Notification.permission === 'default') { try { await Notification.requestPermission(); } catch (e) { /* ignore */ } }
+                    beep(); toast('Sound and notifications on.');
+                } else toast('Sound and notifications off.');
+            });
+        }
+
+        // ── photo lightbox ────────────────────────────────
+        function openLightbox(src) {
+            const prev = document.activeElement;
+            const d = document.createElement('div');
+            d.className = 'cm-lb-bg'; d.tabIndex = -1;
+            d.setAttribute('role', 'dialog'); d.setAttribute('aria-label', 'Photo viewer. Press Escape to close.');
+            d.innerHTML = `<img src="${esc(src)}" alt="Full size photo">`;
+            const close = () => { d.remove(); document.removeEventListener('keydown', onKey, true); if (prev && prev.focus) { try { prev.focus(); } catch (e) { /* gone */ } } };
+            const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
+            d.addEventListener('click', close);
+            document.addEventListener('keydown', onKey, true);
+            document.body.appendChild(d); d.focus();
+        }
+
+        $('searchBtn').addEventListener('click', openSearch);
+        $('histBtn').addEventListener('click', openGiftHistory);
+        $('adminBtn').addEventListener('click', () => openAdmin('reports'));
+
+        // ── presence + polling ────────────────────────────
+        ['mousemove', 'keydown', 'click', 'touchstart', 'scroll'].forEach(ev => window.addEventListener(ev, () => { lastActivity = Date.now(); }, { passive: true }));
+        const isActive = () => !document.hidden && Date.now() - lastActivity < 5 * 60 * 1000;
+
+        setInterval(() => api('POST', 'heartbeat', { active: isActive() }), 30000);
+        setInterval(() => { if (!document.hidden) pollMessages(false); }, 3000);
+        setInterval(() => { if (!document.hidden) loadMembers(); }, 10000);
+        setInterval(() => { if (!document.hidden) loadEmojis(); }, 30000);
+        setInterval(async () => { const r = await api('GET', 'me'); if (r.ok) { me = r.data.me; renderMe(); } }, 60000);
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) { api('POST', 'heartbeat', { active: true }); pollMessages(false); loadMembers(); }
+        });
+
+        // ── boot ──────────────────────────────────────────
+        (async function init() {
+            const r = await api('GET', 'me');
+            if (!r.ok) { $('msgs').innerHTML = `<div class="cm-empty">${esc(r.data.error || 'Could not load the Community. Try again later.')}</div>`; return; }
+            me = r.data.me; isAdmin = r.data.is_admin; gifSearch = r.data.gif_search; limits = Object.assign(limits, r.data.limits || {});
+            if (Array.isArray(r.data.reactions) && r.data.reactions.length) reactionSet = r.data.reactions;
+            if (Array.isArray(r.data.muted_channels)) mutedChannels = r.data.muted_channels;
+            renderMe(); renderHead(); $('adminBtn').hidden = !isAdmin; initBell();
+            await loadMembers();
+            await loadEmojis();
+            await openChannel('lounge');
+        })();
+    })();
+    </script>
+</body>
+</html>

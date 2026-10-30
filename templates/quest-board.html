@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RPG Ghost | Adventurer Guild</title>
+    <link rel="stylesheet" href="/static/dashboard.css">
+    <link rel="stylesheet" href="/static/game-ui.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700&family=Inter:wght@400;500;600;700" rel="stylesheet">
+</head>
+<body data-page="quest-board">
+    <div id="layout-slot"></div>
+    <script src="/static/layout.js"></script>
+
+    <main class="main-content" id="main-content">
+        <header class="page-header">
+            <div class="user-greeting">
+                <h1>Adventurer Guild</h1>
+                <p>Members take missions, earn guild points, and rank up from F to S. Higher ranks open harder missions, deeper Tower floors and shop discounts.</p>
+            </div>
+        </header>
+
+        <div class="gx-wrap">
+            <div id="hud"></div>
+            <div id="guild"><div class="gx-status">Opening the guild hall...</div></div>
+        </div>
+    </main>
+
+    <script src="/static/game-ui.js"></script>
+    <script>
+    let state = null, guild = null, tab = 'missions', busy = false;
+
+    function setState(s) {
+        if (!s) return;
+        state = s;
+        GX.hud(document.getElementById('hud'), s, {});
+    }
+
+    function renderJoin() {
+        document.getElementById('guild').innerHTML = `
+            <div class="gx-join">
+                <div class="gx-card-title" style="font-size:1.3rem">Become an Adventurer</div>
+                <div class="gx-muted">Without a Guild Card you cannot take missions, enter the Tower or earn guild rank. Joining is free.</div>
+                <ul>
+                    <li>15 missions that pay gold, XP and gems, unlocking as your rank grows</li>
+                    <li>Daily contracts for guild points</li>
+                    <li>Access to the Tower and its 100 floors</li>
+                    <li>Up to 15% off gold prices in the shop at Rank S</li>
+                    <li>A welcome gift of 50 gold</li>
+                </ul>
+                <div><button class="gx-btn primary" id="join">Join the Adventurer Guild</button></div>
+            </div>`;
+        document.getElementById('join').addEventListener('click', async () => {
+            const r = await GX.act('POST', 'guild/join');
+            if (r.data.state) setState(r.data.state);
+            await load();
+        });
+    }
+
+    function rewardHtml(r) {
+        return `<div class="gx-reward">
+            ${r.gold ? `<span><b>${GX.fmt(r.gold)}</b> gold</span>` : ''}
+            ${r.xp ? `<span><b>${GX.fmt(r.xp)}</b> XP</span>` : ''}
+            ${r.gems ? `<span><b>${r.gems}</b> gems</span>` : ''}
+            ${r.gp ? `<span><b>${r.gp}</b> guild pts</span>` : ''}</div>`;
+    }
+
+    function missionCard(q) {
+        const p = GX.pct(q.progress, q.target);
+        let action = '';
+        if (q.status === 'available') action = `<button class="gx-btn sm primary" data-act="accept" data-id="${q.id}">Accept</button>`;
+        else if (q.status === 'active') action = `<button class="gx-btn sm" data-act="abandon" data-id="${q.id}">Abandon</button>`;
+        else if (q.status === 'ready') action = `<button class="gx-btn sm gold" data-act="claim" data-id="${q.id}">Claim reward</button>`;
+        else if (q.status === 'locked') action = `<span class="gx-pill">Needs Rank ${GX.esc(q.rank)}</span>`;
+        else action = `<span class="gx-pill on">Completed</span>`;
+
+        return `
+        <article class="gx-card ${q.status === 'locked' ? 'locked' : ''} ${q.status === 'ready' ? 'accent' : ''}" style="--ac:var(--gold)">
+            <div class="gx-card-head"><span class="gx-card-title">${GX.esc(q.name)}</span><span class="gx-pill">Rank ${GX.esc(q.rank)}</span></div>
+            <div class="gx-muted" style="font-size:.88rem">${GX.esc(q.description)}</div>
+            ${q.status === 'active' || q.status === 'ready' ? `
+                <div class="gx-progress-row">
+                    <div class="gx-meter-label"><span>Progress</span><span>${GX.fmt(q.progress)} / ${GX.fmt(q.target)}</span></div>
+                    <div class="gx-track"><div class="gx-fill xp" style="width:${p}%"></div></div>
+                </div>` : ''}
+            ${rewardHtml(q.reward)}
+            <div class="gx-buy-row" style="justify-content:flex-end">${action}</div>
+        </article>`;
+    }
+
+    function dailyCard(d) {
+        const p = GX.pct(d.progress, d.target);
+        return `
+        <article class="gx-card">
+            <div class="gx-card-head"><span class="gx-card-title">${GX.esc(d.name)}</span>
+                <span class="gx-pill ${d.done ? 'on' : ''}">${d.done ? 'Done today' : 'Resets at midnight UTC'}</span></div>
+            <div class="gx-muted" style="font-size:.88rem">${GX.esc(d.description)}</div>
+            <div class="gx-progress-row">
+                <div class="gx-meter-label"><span>Progress</span><span>${GX.fmt(d.progress)} / ${GX.fmt(d.target)}</span></div>
+                <div class="gx-track"><div class="gx-fill xp" style="width:${d.done ? 100 : p}%"></div></div>
+            </div>
+            ${rewardHtml(d.reward)}
+            <div class="gx-faint">Paid out automatically when finished.</div>
+        </article>`;
+    }
+
+    function render() {
+        if (!guild.member) { renderJoin(); return; }
+        const g = guild;
+        const span = g.next_at ? g.next_at - g.rank_floor : 1;
+        const into = g.next_at ? g.points - g.rank_floor : 1;
+
+        const missions = g.quests.filter(q => q.status === 'active' || q.status === 'ready');
+        const open = g.quests.filter(q => q.status === 'available');
+        const locked = g.quests.filter(q => q.status === 'locked');
+        const done = g.quests.filter(q => q.status === 'done');
+
+        const section = (title, list, note) => list.length ? `
+            <h2 class="gx-h" style="font-size:1rem;margin:18px 0 4px">${title} <span class="gx-faint">${note || ''}</span></h2>
+            <div class="gx-grid">${list.map(missionCard).join('')}</div>` : '';
+
+        document.getElementById('guild').innerHTML = `
+            <section class="panel">
+                <div style="padding:18px;display:flex;gap:18px;align-items:center;flex-wrap:wrap">
+                    <div class="gx-rankbadge" aria-label="Guild rank ${GX.esc(g.rank)}">${GX.esc(g.rank)}</div>
+                    <div style="flex:1;min-width:220px;display:grid;gap:8px">
+                        <div class="gx-card-title" style="font-size:1.15rem">Rank ${GX.esc(g.rank)} Adventurer</div>
+                        <div class="gx-meter-label"><span>${GX.fmt(g.points)} guild points</span>
+                            <span>${g.next_rank ? `${GX.fmt(g.next_at - g.points)} to Rank ${GX.esc(g.next_rank)}` : 'Highest rank reached'}</span></div>
+                        <div class="gx-track"><div class="gx-fill rank" style="width:${g.next_rank ? GX.pct(into, span) : 100}%"></div></div>
+                        <div class="gx-faint">Shop discount ${g.discount}% · Missions carried ${g.active_count}/${g.max_active} · Completed ${g.done_count}</div>
+                    </div>
+                </div>
+            </section>
+
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+                <div class="gx-tabs" role="tablist" id="tabs">
+                    <button class="gx-tab" role="tab" data-tab="missions" aria-selected="${tab === 'missions'}">Missions</button>
+                    <button class="gx-tab" role="tab" data-tab="daily" aria-selected="${tab === 'daily'}">Daily contracts</button>
+                    <button class="gx-tab" role="tab" data-tab="ranks" aria-selected="${tab === 'ranks'}">Ranks</button>
+                </div>
+            </div>
+
+            ${tab === 'missions' ? `
+                ${section('Your missions', missions, 'Accept up to ' + g.max_active)}
+                ${section('Available', open)}
+                ${section('Locked', locked, 'Rank up to unlock')}
+                ${section('Completed', done)}`
+            : tab === 'daily' ? `<div class="gx-grid" style="margin-top:6px">${g.daily.map(dailyCard).join('')}</div>`
+            : `<div class="gx-grid" style="margin-top:6px">${g.ranks.map(r => `
+                <article class="gx-card ${r.rank === g.rank ? 'accent' : ''}" style="--ac:var(--dash-purple)">
+                    <div class="gx-card-head"><span class="gx-card-title">Rank ${GX.esc(r.rank)}</span>${r.rank === g.rank ? '<span class="gx-pill on">You</span>' : ''}</div>
+                    <div class="gx-facts"><span>Points <b>${GX.fmt(r.points)}</b></span><span>Shop <b>${r.discount}% off</b></span></div>
+                </article>`).join('')}</div>`}`;
+
+        document.querySelectorAll('#tabs [data-tab]').forEach(b => b.addEventListener('click', () => { tab = b.dataset.tab; render(); }));
+        document.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', () => doAct(b.dataset.act, b.dataset.id)));
+    }
+
+    async function doAct(action, id) {
+        if (busy) return;
+        busy = true;
+        const r = await GX.act('POST', 'guild/' + action, { id });
+        if (r.data.state) setState(r.data.state);
+        await load();
+        busy = false;
+    }
+
+    async function load() {
+        const r = await GX.api('GET', 'guild');
+        if (r.ok) { guild = r.data.guild; if (r.data.state) setState(r.data.state); render(); }
+        else document.getElementById('guild').innerHTML = '<div class="gx-status">Could not load the guild. Try again later.</div>';
+    }
+
+    (async function init() {
+        const s = await GX.api('GET', 'state');
+        if (s.ok) setState(s.data.state);
+        await load();
+    })();
+    </script>
+</body>
+</html>

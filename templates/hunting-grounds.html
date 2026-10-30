@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RPG Ghost | Hunting Grounds</title>
+    <link rel="stylesheet" href="/static/dashboard.css">
+    <link rel="stylesheet" href="/static/game-ui.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700&family=Inter:wght@400;500;600;700" rel="stylesheet">
+</head>
+<body data-page="hunting-grounds">
+    <div id="layout-slot"></div>
+    <script src="/static/layout.js"></script>
+
+    <main class="main-content" id="main-content">
+        <header class="page-header">
+            <div class="user-greeting">
+                <h1>Hunting Grounds</h1>
+                <p>Pick where to hunt. Deeper zones hit harder and pay better. Once a day a world boss appears for everyone.</p>
+            </div>
+        </header>
+
+        <div class="gx-wrap">
+            <div id="hud"></div>
+
+            <section class="panel">
+                <div class="panel-header"><span><i class="fa-solid fa-map"></i> Zones</span></div>
+                <div id="zones" class="gx-grid" style="padding:16px"><div class="gx-status">Loading zones...</div></div>
+            </section>
+
+            <div class="gx-two">
+                <section class="panel">
+                    <div class="panel-header"><span><i class="fa-solid fa-skull" style="color:var(--dash-red)"></i> World Boss</span><span class="gx-faint" id="boss-timer"></span></div>
+                    <div id="boss" style="padding:16px"><div class="gx-status">Looking for the boss...</div></div>
+                </section>
+
+                <section class="panel">
+                    <div class="panel-header"><span><i class="fa-solid fa-scroll"></i> Recent results</span></div>
+                    <ul class="gx-log" id="log" style="padding:14px 16px;margin:0"></ul>
+                </section>
+            </div>
+        </div>
+    </main>
+
+    <script src="/static/game-ui.js"></script>
+    <script>
+    const ZONE_COLOR = { forest: '#34d399', crypt: '#a855f7', volcano: '#f87171' };
+    let state = null, zones = [], boss = null, busy = false, bossTick = null, bossBase = 0, bossBaseAt = 0, cdBase = 0, cdBaseAt = 0;
+    const logEl = document.getElementById('log');
+
+    function setState(s) {
+        if (!s) return;
+        state = s;
+        GX.hud(document.getElementById('hud'), s, { onHeal: heal });
+    }
+
+    function addLog(text, bad) {
+        const li = document.createElement('li');
+        if (bad) li.className = 'bad';
+        li.textContent = text;
+        logEl.prepend(li);
+        while (logEl.children.length > 12) logEl.lastChild.remove();
+    }
+
+    async function heal() {
+        const r = await GX.act('POST', 'heal');
+        if (r.data.state) setState(r.data.state);
+    }
+
+    function renderZones() {
+        const box = document.getElementById('zones');
+        box.innerHTML = zones.map(z => `
+            <article class="gx-card accent ${z.locked ? 'locked' : ''}" style="--ac:${ZONE_COLOR[z.id] || 'var(--dash-teal)'}">
+                <div class="gx-card-head">
+                    <span class="gx-card-title">${GX.esc(z.name)}</span>
+                    ${z.current && !z.locked ? '<span class="gx-pill on">Current</span>' : `<span class="gx-pill">Level ${z.req_level}+</span>`}
+                </div>
+                <div class="gx-muted" style="font-size:.86rem">${GX.esc(z.blurb)}</div>
+                <div class="gx-facts">
+                    <span>Win chance <b>${z.win_chance}%</b></span>
+                    <span>Loot chance <b>${z.loot_chance}%</b></span>
+                    <span>XP <b>×${z.xp_mult}</b></span>
+                    <span>Gold <b>×${z.gold_mult}</b></span>
+                    <span style="grid-column:1/-1">Enemies <b>${z.enemies.map(GX.esc).join(', ')}</b></span>
+                    <span style="grid-column:1/-1">Your wins here <b>${GX.fmt(z.wins)}</b></span>
+                </div>
+                <button class="gx-btn ${z.locked ? '' : 'primary'} block" data-zone="${z.id}" ${z.locked ? 'disabled' : ''}>
+                    ${z.locked ? `Reach level ${z.req_level} to enter` : 'Hunt here'}
+                </button>
+            </article>`).join('');
+        box.querySelectorAll('button[data-zone]').forEach(b => b.addEventListener('click', () => hunt(b.dataset.zone)));
+    }
+
+    async function hunt(zid) {
+        if (busy) return;
+        busy = true;
+        const r = await GX.api('POST', 'hunt', { zone: zid });
+        if (r.data.state) setState(r.data.state);
+        if (r.ok) {
+            GX.toast((r.data.result === 'win' ? '⚔️ ' : '💀 ') + r.data.message, r.data.result !== 'win');
+            addLog(r.data.message, r.data.result !== 'win');
+            GX.events(r.data.events);
+        } else {
+            GX.toast(r.data.error || 'Could not hunt.', true);
+        }
+        await loadZones();
+        busy = false;
+    }
+
+    async function loadZones() {
+        const r = await GX.api('GET', 'zones');
+        if (r.ok) { zones = r.data.zones; renderZones(); if (r.data.state) setState(r.data.state); }
+    }
+
+    function renderBoss() {
+        const el = document.getElementById('boss');
+        if (!boss) return;
+        const hpPct = GX.pct(boss.hp, boss.max_hp);
+        el.innerHTML = `
+            <div class="gx-card-head"><span class="gx-card-title">${GX.esc(boss.name)}</span>
+                <span class="gx-pill ${boss.defeated ? 'on' : ''}">${boss.defeated ? 'Defeated' : 'Power ' + GX.fmt(boss.power)}</span></div>
+            <div class="gx-meter" style="margin:12px 0">
+                <div class="gx-meter-label"><span>Boss health</span><span>${GX.fmt(boss.hp)} / ${GX.fmt(boss.max_hp)}</span></div>
+                <div class="gx-track" style="height:12px"><div class="gx-fill boss" style="width:${hpPct}%"></div></div>
+            </div>
+            <div class="gx-facts" style="margin-bottom:12px">
+                <span>Your damage <b>${GX.fmt(boss.your_damage)}</b></span>
+                <span>Your hits <b>${GX.fmt(boss.your_hits)}</b></span>
+                ${boss.defeated && boss.killed_by ? `<span style="grid-column:1/-1">Final blow <b>${GX.esc(boss.killed_by)}</b></span>` : ''}
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+                <button class="gx-btn danger" id="boss-atk" ${boss.defeated ? 'disabled' : ''}>Attack</button>
+                <button class="gx-btn gold" id="boss-claim" ${boss.claimable ? '' : 'disabled'}>Claim rewards${boss.claimable ? ' (' + boss.claimable + ')' : ''}</button>
+            </div>
+            <div class="gx-faint" style="margin-bottom:6px">Top damage today</div>
+            <ol style="margin:0;padding-left:18px;display:grid;gap:4px;font-size:.86rem">
+                ${boss.top.length ? boss.top.map(t => `<li><b>${GX.esc(t.name)}</b> <span class="gx-muted">${GX.fmt(t.damage)}</span></li>`).join('') : '<li class="gx-muted" style="list-style:none;margin-left:-18px">Nobody has struck it yet.</li>'}
+            </ol>`;
+        document.getElementById('boss-atk').addEventListener('click', attackBoss);
+        document.getElementById('boss-claim').addEventListener('click', claimBoss);
+        bossBase = boss.ends_in; bossBaseAt = Date.now();
+        cdBase = boss.cooldown; cdBaseAt = Date.now();
+        tick();
+    }
+
+    function tick() {
+        if (!boss) return;
+        const left = bossBase - (Date.now() - bossBaseAt) / 1000;
+        document.getElementById('boss-timer').textContent = boss.defeated ? 'A new boss arrives at midnight UTC' : 'Escapes in ' + GX.countdown(left);
+        const btn = document.getElementById('boss-atk');
+        if (btn && !boss.defeated) {
+            const cd = Math.ceil(cdBase - (Date.now() - cdBaseAt) / 1000);
+            btn.disabled = cd > 0;
+            btn.textContent = cd > 0 ? `Attack (${cd}s)` : 'Attack';
+        }
+    }
+
+    async function loadBoss() {
+        const r = await GX.api('GET', 'boss');
+        if (r.ok) { boss = r.data.boss; renderBoss(); if (r.data.state) setState(r.data.state); }
+    }
+
+    async function attackBoss() {
+        const r = await GX.act('POST', 'boss/attack');
+        if (r.data.state) setState(r.data.state);
+        if (r.ok) { addLog(r.data.message, false); boss = r.data.boss; renderBoss(); }
+        else if (r.status === 429) { cdBase = 8; cdBaseAt = Date.now(); tick(); }
+    }
+
+    async function claimBoss() {
+        const r = await GX.act('POST', 'boss/claim');
+        if (r.data.state) setState(r.data.state);
+        if (r.ok) addLog(r.data.message, false);
+        loadBoss();
+    }
+
+    (async function init() {
+        const s = await GX.api('GET', 'state');
+        if (s.ok) setState(s.data.state);
+        await Promise.all([loadZones(), loadBoss()]);
+        bossTick = setInterval(tick, 1000);
+        setInterval(loadBoss, 20000);   // see other players' damage
+    })();
+    </script>
+</body>
+</html>
