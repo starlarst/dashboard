@@ -278,6 +278,11 @@ async function guildPost(path, body) {
     try {
         const res = await fetch(path, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body || {}) });
         const data = await res.json().catch(() => ({}));
+        if (!res.ok && data.error === undefined) {
+            data.error = res.status === 404 || res.status === 405
+                ? 'This action is not available on the server yet (' + path + ' returned ' + res.status + ').'
+                : 'Server error (' + res.status + '). Please try again.';
+        }
         return { ok: res.ok && data.error === undefined, data };
     } catch (e) { return { ok:false, data:{ error:'Request failed.' } }; }
 }
