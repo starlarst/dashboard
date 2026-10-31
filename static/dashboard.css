@@ -5,10 +5,7 @@
         transition-duration: 0.001ms !important;
     }
 }
-
-/* ── 1. DESIGN TOKENS ── */
 :root {
-    /* Brand identity — preserved exactly */
     --void-black:#0a0a0f;
     --void-light:       #11111f;
     --spectral-teal:#00f3ff;
@@ -311,7 +308,8 @@ body {
 }
 .social-btn-full:active { transform: translateY(0) scale(0.985); transition-duration: 0.08s; }
 .social-btn-full:focus-visible { outline: 2px solid var(--spectral-teal); outline-offset: 3px; }
-.social-btn-full:disabled, .social-btn-full.is-loading { opacity: 0.65; cursor: progress; transform: none; pointer-events: none; }
+.social-btn-full:disabled { opacity: 0.65; cursor: not-allowed; transform: none; }
+.social-btn-full.is-loading { opacity: 0.75; cursor: progress; }   /* stays clickable so a failed redirect can be retried */
 
 .recaptcha-notice {
     text-align: center; font-size: 0.7rem; color: #333;
