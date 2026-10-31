@@ -1,3 +1,5 @@
+#sidebar.sidebar { display: flex; flex-direction: column; }
+
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
         animation-duration: 0.001ms !important;
@@ -5,10 +7,7 @@
         transition-duration: 0.001ms !important;
     }
 }
-
-/* ── 1. DESIGN TOKENS ── */
 :root {
-    /* Brand identity — preserved exactly */
     --void-black:#0a0a0f;
     --void-light:       #11111f;
     --spectral-teal:#00f3ff;
@@ -668,17 +667,6 @@ body.sidebar-is-collapsed .main-content {
     }
 }
 
-/* ── Mobile sidebar ── */
-@media (max-width: 1100px) {
-    .sidebar {
-        transform: translateX(-100%);
-        top: 0;
-        z-index: 200;
-    }
-    .sidebar.is-open { transform: translateX(0); }
-    .topbar { display: flex !important; }
-}
-
 /* ── MAIN CONTENT (desktop default) ── */
 .main-content {
     margin-left: var(--sidebar-w);
@@ -701,8 +689,27 @@ body.sidebar-is-collapsed .main-content {
 /* (delete this old block entirely — it was setting width back to
    calc(100% - var(--sidebar-w)) even on mobile) */
 
-/* ── Mobile: main content must be full-width regardless of sidebar state ── */
+/* ── Mobile: sidebar off-canvas, main content full-width ── */
 @media (max-width: 1100px) {
+    /* Sidebar must always be a flex column so it can render once opened */
+    #sidebar,
+    .sidebar {
+        display: flex !important;
+        transform: translateX(-100%);
+        top: 0;
+        z-index: 200;
+        width: var(--sidebar-w);
+        height: 100vh;
+        height: 100dvh;
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
+    }
+    #sidebar.is-open,
+    .sidebar.is-open { transform: translateX(0); }
+
+    .topbar { display: flex !important; }
+
+    /* Main content must be full-width regardless of sidebar state */
     .main-content,
     .dashboard-container.is-collapsed .main-content,
     body.sidebar-is-collapsed .main-content {
@@ -712,22 +719,10 @@ body.sidebar-is-collapsed .main-content {
         padding: calc(var(--topbar-h) + env(safe-area-inset-top, 0px) + 1.5rem) 1.25rem 2rem;
         padding-left:  max(1.25rem, env(safe-area-inset-left));
         padding-right: max(1.25rem, env(safe-area-inset-right));
+        padding-bottom: max(2rem, env(safe-area-inset-bottom));
     }
 
-    /* Sidebar is off-canvas — never occupies layout space while closed */
-    .sidebar {
-        transform: translateX(-100%);
-        top: 0;
-        z-index: 200;
-        width: var(--sidebar-w);
-        height: 100vh;
-        height: 100dvh;
-    }
-    .sidebar.is-open { transform: translateX(0); }
-
-    .topbar { display: flex !important; }
-
-    /* Grid becomes single column, children shrink to fit */
+    /* Grid becomes single column */
     .dashboard-grid {
         grid-template-columns: minmax(0, 1fr);
         gap: 16px;
@@ -738,33 +733,114 @@ body.sidebar-is-collapsed .main-content {
         min-width: 0;
     }
 
-    /* Admin grid tracks must be shrinkable */
+    /* Admin grid shrinkable */
     .admin-stats-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
         gap: 10px;
     }
     .admin-stat-card,
-    .admin-table-wrap {
-        min-width: 0;
-    }
+    .admin-table-wrap { min-width: 0; }
 
-    /* Tabs scroll inside their own strip, not the page */
     .admin-panel > div[style*="display:flex"] {
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
         padding-bottom: 4px;
     }
 
-    /* Podium should wrap neatly */
     .lb-podium { gap: 0.75rem; flex-wrap: wrap; }
+
+    /* Touch targets */
+    .nav-links li a { min-height: 44px; padding: 10px 12px; }
+    .nav-links li a .nav-icon { width: 34px; height: 34px; }
+    .action-btn { min-height: 52px; }
+    .btn-bid { min-height: 40px; padding: 8px 16px; }
+    .admin-action-btn { width: 36px; height: 36px; }
+    .pin-btn, .member-invite-btn { width: 36px; height: 36px; }
+    .equip-slot-mini { width: 38px; height: 38px; font-size: 0.8rem; }
+    .sidebar-collapse-btn { display: none; }
+
+    input, select, textarea,
+    .input-group input,
+    .admin-search-input,
+    .modal-field select,
+    .modal-field input,
+    .modal-field textarea,
+    .otp-input {
+        font-size: 16px !important;
+    }
+    .otp-input { width: 42px; height: 50px; }
+
+    .mini-game {
+        right: max(12px, env(safe-area-inset-right));
+        bottom: max(12px, env(safe-area-inset-bottom));
+    }
+    .mini-game-card {
+        width: min(280px, calc(100vw - 24px));
+        max-height: 70vh;
+        overflow-y: auto;
+    }
+    .mini-game-fab { width: 48px; height: 48px; }
+
+    .toast {
+        left: 12px;
+        right: 12px;
+        bottom: calc(72px + env(safe-area-inset-bottom));
+        max-width: none;
+        min-width: 0;
+    }
+    .toast.show { transform: translateX(0); }
+
+    .notif-panel {
+        position: fixed;
+        top: calc(var(--topbar-h) + env(safe-area-inset-top) + 8px);
+        left: 12px;
+        right: 12px;
+        width: auto;
+        max-height: 60vh;
+    }
+
+    .lb-table, .admin-table { min-width: 480px; }
+
+    .modal-card, .modal-card-wide {
+        max-width: 100%;
+        max-height: 90dvh;
+        overflow-y: auto;
+    }
+    .modal-field-row { flex-direction: column; gap: 0; }
+    .modal-actions { flex-direction: column-reverse; }
+    .modal-actions button { width: 100%; }
+
+    .lb-podium { gap: 0.75rem; }
+    .podium-item { padding: 0.6rem 1rem; }
+    .podium-avatar { width: 40px; height: 40px; }
+
+    /* Prevent lift transform causing overlap on touch */
+    .panel:hover, .inv-slot:hover, .stat-widget:hover, .auction-item:hover,
+    .admin-stat-card:hover, .podium-item:hover {
+        transform: none;
+    }
+
+    body.drawer-open .mini-game { display: none; }
+
+    @media (max-width: 600px) {
+        .panel, .sidebar, .topbar, .auth-container, .modal-card,
+        .notif-panel, .mini-game-card {
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
+            background: rgba(8, 9, 13, 0.97);
+        }
+    }
 }
 
 @media (max-width: 480px) {
-    .admin-stats-grid {
-        grid-template-columns: minmax(0, 1fr) !important;
-    }
+    .admin-stats-grid { grid-template-columns: minmax(0, 1fr) !important; }
     .currency-display { flex-direction: column; gap: 0.4rem; }
     .header-actions { width: 100%; justify-content: space-between; }
+}
+
+@supports (height: 100dvh) {
+    .sidebar { height: 100dvh; }
+    .auth-screen { min-height: 100dvh; }
 }
 
 .page-header {
@@ -2428,39 +2504,4 @@ body.sidebar-is-collapsed .main-content {
     .auth-foot { margin-top: 0.9rem; }
     .social-btns-full { gap: 0.6rem; }
     .social-btn-full { min-height: 48px; }
-}/* ══════════════════════════════════════════════════════════════════
-   SIDEBAR FIX — prevents fixed sidebar bleeding over auth screen
-══════════════════════════════════════════════════════════════════ */
-
-/* 1. Hide sidebar whenever the dashboard wrapper is hidden via class */
-#dashboard-app.hidden .sidebar,
-.dashboard-app.hidden .sidebar {
-    display: none !important;
-}
-
-/* 2. Hide sidebar when auth screen is visible.
-   IMPORTANT: match the actual "display: flex" declaration, not just the
-   substring "flex" — a bare [style*="flex"] also matches unrelated inline
-   properties like "align-items: flex-start" or "justify-content: flex-end"
-   that can be present even while the auth screen is hidden, which was
-   wiping out the sidebar everywhere, on every page and viewport.
-   (:has() — Chrome 105+, Safari 15.4+, FF 121+) */
-body:has(#auth-screen[style*="display:flex"]) .sidebar,
-body:has(#auth-screen[style*="display: flex"]) .sidebar,
-body:has(.auth-screen[style*="display:flex"]) .sidebar,
-body:has(.auth-screen[style*="display: flex"]) .sidebar {
-    display: none !important;
-    pointer-events: none !important;
-}
-
-/* 3. Raise auth screen above any fixed sidebar stacking context */
-#auth-screen,
-.auth-screen {
-    z-index: 99999 !important;
-    isolation: isolate;
-}
-@media (max-width: 1100px) {
-    .dashboard-container {
-        margin-left: 0 !important;
-    }
 }
