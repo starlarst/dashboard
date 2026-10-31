@@ -27,8 +27,6 @@
                 <h1 class="auth-title">Realm of Valor</h1>
                 <p class="auth-subtitle">Forge Your Legend</p>
             </div>
-            <!-- Social Login (Discord + Google only — no email/password).
-                 These are plain links, so they work even if JavaScript fails to load. -->
             <form id="login-form" class="auth-form active" role="tabpanel">
                 <p class="auth-lead">Sign in to continue your adventure.</p>
                 <div class="social-btns-full">
@@ -53,18 +51,16 @@
     ============================================ -->
     <div id="dashboard-app" class="dashboard-app hidden">
 
-        <!-- Ambient Background -->
         <div class="bg-canvas"></div>
         <div class="bg-grid"></div>
 
-        <!-- ===== SIDEBAR (shared across every page, see /static/layout.js) ===== -->
+        <!-- ===== SIDEBAR (injected by /static/layout.js) ===== -->
         <div id="layout-slot"></div>
         <script src="/static/layout.js"></script>
 
         <!-- ===== MAIN CONTENT ===== -->
         <main class="main-content" id="main-content" role="main">
 
-            <!-- ===== HEADER ===== -->
             <header class="page-header" id="pageHeader">
                 <div class="user-greeting">
                     <div class="page-eyebrow"><span>Dashboard</span></div>
@@ -73,12 +69,10 @@
                 </div>
 
                 <div class="header-actions">
-                    <!-- Music Toggle -->
                     <button class="music-toggle" id="musicToggle" aria-label="Toggle background music">
                         <i class="fa-solid fa-volume-xmark"></i>
                     </button>
 
-                    <!-- Notification Bell -->
                     <div class="notif-bell" id="notifBell">
                         <i class="fa-solid fa-bell"></i>
                         <span class="notif-dot"></span>
@@ -93,7 +87,6 @@
                         </div>
                     </div>
 
-                    <!-- Currencies -->
                     <div class="currency-display">
                         <div class="currency-badge gold">
                             <i class="fa-solid fa-coins"></i>
@@ -105,7 +98,6 @@
                         </div>
                     </div>
 
-                    <!-- Logout -->
                     <button class="logout-btn" id="logoutBtn" aria-label="Logout">
                         <i class="fa-solid fa-right-from-bracket"></i>
                         <span>Logout</span>
@@ -113,19 +105,11 @@
                 </div>
             </header>
 
-            <!-- ===== DASHBOARD CONTENT ===== -->
             <div class="dashboard-container" id="dashboard">
-
-                <!-- ===== DASHBOARD GRID ===== -->
                 <div class="dashboard-grid">
 
-                    <!-- ==========================================
-                    CHARACTER CARD
-                    ========================================== -->
                     <div class="panel character-card hidden" id="character-card">
                         <div class="char-particles" id="charParticles"></div>
-
-                        <!-- Avatar with XP Ring -->
                         <div class="avatar-ring-wrap">
                             <svg class="avatar-ring-svg" viewBox="0 0 120 120">
                                 <defs>
@@ -212,21 +196,14 @@
                         </div>
                     </div>
 
-                    <!-- ==========================================
-                    INVENTORY PREVIEW
-                    ========================================== -->
                     <div class="panel inventory-grid hidden" id="inventory-grid">
                         <div class="panel-header">
                             <span><i class="fa-solid fa-backpack" style="color:var(--soul-purple)"></i> Inventory</span>
                             <span style="font-size:0.65rem;font-family:Inter;font-weight:400;color:var(--dash-text-faint);" id="inventory-count">0 items</span>
                         </div>
                         <div class="inv-container" id="inventory-container"></div>
-                        
                     </div>
 
-                    <!-- ==========================================
-                    ADMIN PANEL
-                    ========================================== -->
                     <div class="panel admin-panel hidden" id="adminPanel">
                         <div class="panel-header"><span><i class="fa-solid fa-crown" style="color:var(--gold)"></i> Admin Panel</span></div>
 
@@ -288,7 +265,6 @@
             </div>
         </main>
 
-        <!-- ===== MINI GAME (bottom-right corner) ===== -->
         <div class="mini-game" id="miniGame">
             <div class="mini-game-card" id="miniGameCard" role="dialog" aria-label="Spirit Catcher mini game">
                 <div class="mini-game-head">
@@ -310,27 +286,18 @@
         </div>
     </div>
 
-    <!-- ============================================
-    TOAST
-    ============================================ -->
     <div class="toast" id="toast">
         <i class="fa-solid fa-circle-check" style="color:var(--spectral-teal);font-size:1.1rem;"></i>
         <span id="toast-message">Notification</span>
         <div class="toast-progress"></div>
     </div>
 
-    <!-- ============================================
-    TOOLTIP
-    ============================================ -->
     <div class="tooltip" id="tooltip">
         <h4 id="tt-name">Item Name</h4>
         <p id="tt-desc">Description</p>
         <div class="stat" id="tt-stat">Stats</div>
     </div>
 
-    <!-- ============================================
-    EDIT PLAYER MODAL
-    ============================================ -->
     <div class="modal-backdrop" id="editPlayerModal">
         <div class="modal-card modal-card-wide">
             <div class="modal-head">
@@ -362,9 +329,6 @@
         </div>
     </div>
 
-    <!-- ============================================
-    BOT INTRO OVERLAY
-    ============================================ -->
     <div class="bot-intro-overlay" id="botIntroOverlay">
         <div class="bot-intro-card">
             <button class="bot-intro-skip" id="botIntroSkip">Skip</button>
@@ -391,7 +355,7 @@
     </div>
     <div id="ytMusicPlayer" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;"></div>
     <script src="https://www.youtube.com/iframe_api"></script>
-    <script src="/static/dashboard.js"></script>
+    <script src="/static/dashboard.js" defer></script>
     <script src="/static/insights.js" defer></script>
 </body>
 </html>
