@@ -1,80 +1,74 @@
 import os
-import re
+import sys
 import json
-import urllib.request
-import urllib.error
-import asyncio
+import hmac
+import time
+import socket
+import logging
+import secrets
+import threading
 from contextlib import asynccontextmanager
+from collections import defaultdict
+from datetime import datetime, timedelta, timezone, UTC
+from urllib.parse import urlencode
+
+import uvicorn
+import requests as http_requests
+from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, RedirectResponse, PlainTextResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware.sessions import SessionMiddleware
-from dotenv import load_dotenv
-import json, os, threading, time, secrets, hashlib, hmac
-from urllib.parse import urlencode
-from datetime import datetime, timedelta, timezone,UTC
-from collections import defaultdict
-import sqlite3  # legacy import
-import psycopg2
-from psycopg2.extras import RealDictCursor
-import requests as http_requests
-import logging
-import socket
-import uvicorn
 
 load_dotenv()
 
-# Setup logging
-log = logging.getLogger(__name__)
+# If this file is started directly (python dashboard_app.py), make `import dashboard_app` in the route
+# modules return THIS module instead of importing the file a second time.
+if __name__ == '__main__':
+    sys.modules.setdefault('dashboard_app', sys.modules['__main__'])
+
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(name)s — %(message)s")
+log = logging.getLogger(__name__)
 
-DISCORD_CLIENT_ID = os.getenv('DISCORD_CLIENT_ID')
-if not DISCORD_CLIENT_ID:
-    raise ValueError("DISCORD_CLIENT_ID not found in .env file!")
+# ── Config ───────────────────────────────────────────────────────────────────
+def _require_env(name):
+    val = os.getenv(name)
+    if not val:
+        raise ValueError(f"{name} not found in .env file!")
+    return val.strip()
 
-DISCORD_CLIENT_SECRET = os.getenv('DISCORD_CLIENT_SECRET')
-if not DISCORD_CLIENT_SECRET:
-    raise ValueError("DISCORD_CLIENT_SECRET not found in .env file!")
-
-DISCORD_REDIRECT_URI = os.getenv('DISCORD_REDIRECT_URI')
-if not DISCORD_REDIRECT_URI:
-    raise ValueError("DISCORD_REDIRECT_URI not found in .env file!")
-DISCORD_REDIRECT_URI = DISCORD_REDIRECT_URI.strip()
-
+DISCORD_CLIENT_ID = _require_env('DISCORD_CLIENT_ID')
+DISCORD_CLIENT_SECRET = _require_env('DISCORD_CLIENT_SECRET')
+DISCORD_REDIRECT_URI = _require_env('DISCORD_REDIRECT_URI')
 DISCORD_API = 'https://discord.com/api'
 
-GOOGLE_CLIENT_ID = ('1039889826782-sbk3rm2io1a6r3eiu6oh1cgs7chrlkac.apps.googleusercontent.com')
-if not GOOGLE_CLIENT_ID:
-    raise ValueError("GOOGLE_CLIENT_ID not found in .env file!")
-
-GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
-if not GOOGLE_CLIENT_SECRET:
-    raise ValueError("GOOGLE_CLIENT_SECRET not found in .env file!")
-
-GOOGLE_REDIRECT_URI = ('https://rpghost.qzz.io/callback')
-if not GOOGLE_REDIRECT_URI:
-    raise ValueError("GOOGLE_REDIRECT_URI not found in .env file!")
-GOOGLE_REDIRECT_URI = GOOGLE_REDIRECT_URI.strip()
+GOOGLE_CLIENT_ID = os.getenv(
+    'GOOGLE_CLIENT_ID',
+    '1039889826782-sbk3rm2io1a6r3eiu6oh1cgs7chrlkac.apps.googleusercontent.com').strip()
+GOOGLE_CLIENT_SECRET = _require_env('GOOGLE_CLIENT_SECRET')
+# Must be the Google handler (/callback/google), NOT /callback (that's Discord's), and must match
+# the "Authorized redirect URIs" entry in the Google Cloud console exactly.
+GOOGLE_REDIRECT_URI = os.getenv('GOOGLE_REDIRECT_URI', 'https://rpghost.qzz.io/callback/google').strip()
 
 GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
 GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
 GOOGLE_USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo'
-
-RECAPTCHA_SECRET = os.getenv('RECAPTCHA_SECRET', '')
-RECAPTCHA_VERIFY_URL = 'https://www.google.com/recaptcha/api/siteverify'
-if not RECAPTCHA_SECRET:
-    log.warning("[reCAPTCHA] RECAPTCHA_SECRET not set — reCAPTCHA verification is disabled.")
 
 ADMIN_EMAIL = os.getenv('ADMIN_EMAIL')
 if not ADMIN_EMAIL:
     log.warning("[Admin] ADMIN_EMAIL not set — no account will have admin access.")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
 DATA_DIR = BASE_DIR
-DB_PATH = os.path.join(BASE_DIR, 'veyra.db')
-log.info(f"[DB] Using database at: {DB_PATH}")
+HTTP_TIMEOUT = 10
+
+# ── Database (Neon / PostgreSQL) ─────────────────────────────────────────────
+from db_pg import PGConnection, fix_sequences 
+
+def _db():
+    return PGConnection()
 
 DEFAULT_STATS = {
     'level': 1, 'gold': 100, 'gems': 10, 'special_coins': 0,
@@ -89,6 +83,53 @@ EDITABLE_STAT_FIELDS = {
     'avatar': str, 'bio': str,
 }
 
+def init_db():
+    """Create all necessary tables if they don't exist (runs once at startup)."""
+    conn = _db()
+    try:
+        for ddl in (
+            """CREATE TABLE IF NOT EXISTS users (
+                user_id BIGINT PRIMARY KEY, gold INTEGER DEFAULT 0, gems INTEGER DEFAULT 0,
+                special_coins INTEGER DEFAULT 0, xp INTEGER DEFAULT 0, level INTEGER DEFAULT 1,
+                last_daily TIMESTAMP, last_weekly TIMESTAMP, pity_counter INTEGER DEFAULT 0,
+                total_pulls INTEGER DEFAULT 0, unlocked_characters TEXT DEFAULT '[]',
+                unlocked_weapons TEXT DEFAULT '[]')""",
+            """CREATE TABLE IF NOT EXISTS players (
+                user_id BIGINT PRIMARY KEY, data TEXT, last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
+            """CREATE TABLE IF NOT EXISTS guilds (
+                name TEXT PRIMARY KEY, data TEXT, last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
+            """CREATE TABLE IF NOT EXISTS world_state (
+                id INTEGER PRIMARY KEY CHECK (id = 1), data TEXT,
+                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
+            """CREATE TABLE IF NOT EXISTS account_links (
+                discord_id TEXT PRIMARY KEY, linked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_login TIMESTAMP)""",
+            """CREATE TABLE IF NOT EXISTS activity_log (
+                id BIGSERIAL PRIMARY KEY, user_id TEXT, action TEXT, detail TEXT,
+                ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
+            """CREATE TABLE IF NOT EXISTS player_stats (
+                account_key TEXT PRIMARY KEY, data TEXT NOT NULL,
+                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
+            """CREATE TABLE IF NOT EXISTS announcements (
+                id BIGSERIAL PRIMARY KEY, message TEXT NOT NULL, author TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
+            """CREATE TABLE IF NOT EXISTS auctions (
+                id BIGSERIAL PRIMARY KEY, item_name TEXT NOT NULL, seller_id BIGINT NOT NULL,
+                current_bid INTEGER NOT NULL DEFAULT 0, highest_bidder BIGINT,
+                status TEXT NOT NULL DEFAULT 'active', end_time TIMESTAMP NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
+            """CREATE TABLE IF NOT EXISTS guild_members (
+                account_key TEXT NOT NULL, guild_name TEXT NOT NULL,
+                joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (account_key))""",
+        ):
+            conn.execute(ddl)
+        conn.commit()
+        # Rows copied over from SQLite keep their ids, but the serial counters start at 1 and would collide.
+        fix_sequences(conn, ['activity_log', 'announcements', 'auctions'])
+    finally:
+        conn.close()
+
+# ── Player stats ─────────────────────────────────────────────────────────────
 def _stats_key(auth_type, uid):
     return f"{auth_type}:{uid}"
 
@@ -112,8 +153,12 @@ def get_stats(auth_type, uid):
     finally:
         conn.close()
 
-def save_stats(auth_type, uid, updates):
-    """Merge validated `updates` into stored stats and return the result."""
+def save_stats(auth_type, uid, updates, deltas=None):
+    """Merge validated `updates` into stored stats and return the result.
+
+    Read-modify-write happens on ONE connection with the row locked (SELECT ... FOR UPDATE), so two
+    requests changing the same player can't overwrite each other. `deltas` adds to numeric fields
+    ({'gold': 50}) inside that same lock, which is what you want for "give gold"."""
     clean = {}
     for k, v in (updates or {}).items():
         caster = EDITABLE_STAT_FIELDS.get(k)
@@ -124,18 +169,26 @@ def save_stats(auth_type, uid, updates):
         except (ValueError, TypeError):
             continue
     key = _stats_key(auth_type, uid)
-    merged = {**get_stats(auth_type, uid), **clean}
     conn = _db()
     try:
+        row = conn.execute("SELECT data FROM player_stats WHERE account_key=? FOR UPDATE", (key,)).fetchone()
+        try:
+            current = {**DEFAULT_STATS, **json.loads(row['data'])} if row else dict(DEFAULT_STATS)
+        except Exception:
+            current = dict(DEFAULT_STATS)
+        merged = {**current, **clean}
+        for field, delta in (deltas or {}).items():
+            if EDITABLE_STAT_FIELDS.get(field) is int:
+                merged[field] = max(0, int(merged.get(field) or 0) + int(delta))
         conn.execute(
             "INSERT INTO player_stats (account_key, data, last_updated) VALUES (?, ?, CURRENT_TIMESTAMP) "
             "ON CONFLICT(account_key) DO UPDATE SET data=excluded.data, last_updated=CURRENT_TIMESTAMP",
             (key, json.dumps(merged)),
         )
         conn.commit()
+        return merged
     finally:
         conn.close()
-    return merged
 
 def _apply_live_stats(session_user):
     """Overlay fresh DB stats on a session user dict (fixes stale profile data)."""
@@ -148,7 +201,7 @@ def _apply_live_stats(session_user):
     session_user['bio'] = stats.get('bio', session_user.get('bio', ''))
     return session_user
 
-# ── In-memory storage (ephemeral by design — rate limits, bans, sessions) ─────
+# ── In-memory storage (ephemeral by design — rate limits, bans, sessions) ────
 _rate_limits = {}
 _session_log = {}
 _ip_connections = defaultdict(int)
@@ -156,7 +209,7 @@ _ip_banned = {}
 _global_req_count = {'n': 0}
 _req_id_counter = 0
 
-# ── DDoS Protection Settings ──────────────────────────────────────────────────
+# ── DDoS protection settings ─────────────────────────────────────────────────
 DDOS_BURST_LIMIT = 40
 DDOS_GLOBAL_CAP = 500
 DDOS_BAN_DURATION = 3600
@@ -176,182 +229,14 @@ DDOS_HONEYPOT_PATHS = [
     '/.git', '/etc/passwd', '/proc/self',
 ]
 
-# Neon PostgreSQL adapter
-DATABASE_URL = os.getenv("DATABASE_URL") or os.getenv("NEON_DATABASE_URL")
-if not DATABASE_URL:
-    raise ValueError("DATABASE_URL (Neon connection string) is missing.")
-
-class _PGCursor:
-    def __init__(self, cursor):
-        self._cursor = cursor
-        self._compat_rows = None
-
-    def execute(self, sql, params=()):
-        # SQLite PRAGMA table_info(table) -> PostgreSQL information_schema.
-        pragma_match = re.match(r"\s*PRAGMA\s+table_info\s*\(\s*([\w]+)\s*\)\s*;?\s*$", sql, re.I)
-        if pragma_match:
-            table_name = pragma_match.group(1)
-            self._cursor.execute(
-                "SELECT column_name, data_type, is_nullable, column_default "
-                "FROM information_schema.columns WHERE table_schema = current_schema() "
-                "AND table_name = %s ORDER BY ordinal_position",
-                (table_name,)
-            )
-            rows = self._cursor.fetchall()
-            # SQLite table_info row layout: cid, name, type, notnull, dflt_value, pk
-            self._compat_rows = [
-                (i, row['column_name'], row['data_type'],
-                 0 if row['is_nullable'] == 'YES' else 1,
-                 row['column_default'], 1 if i == 0 and 'primary key' in str(row['column_default']).lower() else 0)
-                for i, row in enumerate(rows)
-            ]
-            return self
-
-        # SQLite connection-tuning PRAGMAs have no PostgreSQL equivalent.
-        # Treat them as harmless no-ops so legacy route modules can share _db().
-        if re.match(r"\s*PRAGMA\b", sql, re.I):
-            self._compat_rows = []
-            return self
-
-        self._compat_rows = None
-        # Translate common SQLite syntax used by dashboard and route modules.
-        ignore = "INSERT OR IGNORE" in sql.upper()
-        sql = re.sub(
-            r"INTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT",
-            "BIGSERIAL PRIMARY KEY",
-            sql,
-            flags=re.IGNORECASE,
-        )
-        sql = re.sub(r"INSERT\s+OR\s+IGNORE\s+INTO", "INSERT INTO", sql, flags=re.IGNORECASE)
-        sql = sql.replace("?", "%s")
-        if ignore and "ON CONFLICT" not in sql.upper():
-            sql = sql.rstrip().rstrip(";") + " ON CONFLICT DO NOTHING"
-        self._cursor.execute(sql, params or ())
-        return self
-
-    def fetchone(self):
-        if self._compat_rows is not None:
-            return self._compat_rows.pop(0) if self._compat_rows else None
-        return self._cursor.fetchone()
-
-    def fetchall(self):
-        if self._compat_rows is not None:
-            rows, self._compat_rows = self._compat_rows, []
-            return rows
-        return self._cursor.fetchall()
-
-    def __iter__(self):
-        # SQLite allows iterating directly over the cursor returned by execute().
-        # Preserve that behavior for legacy route modules.
-        if self._compat_rows is not None:
-            rows, self._compat_rows = self._compat_rows, []
-            return iter(rows)
-        return iter(self._cursor.fetchall())
-
-class _PGConnection:
-    def __init__(self):
-        self.raw = psycopg2.connect(DATABASE_URL, sslmode="require", connect_timeout=10)
-    def cursor(self): return _PGCursor(self.raw.cursor(cursor_factory=RealDictCursor))
-    def execute(self, sql, params=()): return self.cursor().execute(sql, params)
-    def commit(self): self.raw.commit()
-    def close(self): self.raw.close()
-
-# ── Database Initialization ──────────────────────────────────────────────────
-def init_db():
-    """Create all necessary tables if they don't exist."""
-    conn = _PGConnection()
-
-    cur = conn.cursor()
-
-    cur.execute("""CREATE TABLE IF NOT EXISTS users (
-        user_id BIGINT PRIMARY KEY,
-        gold INTEGER DEFAULT 0,
-        gems INTEGER DEFAULT 0,
-        special_coins INTEGER DEFAULT 0,
-        xp INTEGER DEFAULT 0,
-        level INTEGER DEFAULT 1,
-        last_daily TIMESTAMP,
-        last_weekly TIMESTAMP,
-        pity_counter INTEGER DEFAULT 0,
-        total_pulls INTEGER DEFAULT 0,
-        unlocked_characters TEXT DEFAULT '[]',
-        unlocked_weapons TEXT DEFAULT '[]'
-    )""")
-
-    cur.execute("""CREATE TABLE IF NOT EXISTS players (
-        user_id BIGINT PRIMARY KEY,
-        data TEXT,
-        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )""")
-
-    cur.execute("""CREATE TABLE IF NOT EXISTS guilds (
-        name TEXT PRIMARY KEY,
-        data TEXT,
-        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )""")
-
-    cur.execute("""CREATE TABLE IF NOT EXISTS world_state (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
-        data TEXT,
-        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )""")
-
-    cur.execute("""CREATE TABLE IF NOT EXISTS account_links (
-        discord_id TEXT PRIMARY KEY,
-        linked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        last_login TIMESTAMP
-    )""")
-
-    cur.execute("""CREATE TABLE IF NOT EXISTS activity_log (
-        id BIGSERIAL PRIMARY KEY,
-        user_id TEXT,
-        action TEXT,
-        detail TEXT,
-        ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )""")
-
-    cur.execute("""CREATE TABLE IF NOT EXISTS player_stats (
-        account_key TEXT PRIMARY KEY,
-        data TEXT NOT NULL,
-        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )""")
-
-    cur.execute("""CREATE TABLE IF NOT EXISTS announcements (
-        id BIGSERIAL PRIMARY KEY,
-        message TEXT NOT NULL,
-        author TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )""")
-
-    cur.execute("""CREATE TABLE IF NOT EXISTS auctions (
-        id BIGSERIAL PRIMARY KEY,
-        item_name TEXT NOT NULL,
-        seller_id BIGINT NOT NULL,
-        current_bid INTEGER NOT NULL DEFAULT 0,
-        highest_bidder BIGINT,
-        status TEXT NOT NULL DEFAULT 'active',
-        end_time TIMESTAMP NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )""")
-
-    # ── FIX: Persist guild memberships explicitly ──────────────────────────────
-    cur.execute("""CREATE TABLE IF NOT EXISTS guild_members (
-        account_key TEXT NOT NULL,
-        guild_name TEXT NOT NULL,
-        joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (account_key)
-    )""")
-
-    conn.commit()
-    conn.close()
-
-# ── Secret Key ─────────────────────────────────────────────────────────────
+# ── Secret key ───────────────────────────────────────────────────────────────
 def _get_or_create_secret_key():
     """Use FLASK_SECRET if set, otherwise persist a generated key to disk."""
     env_secret = os.environ.get('FLASK_SECRET')
     if env_secret:
         return env_secret
-
+    log.warning("[secret_key] FLASK_SECRET is not set. A key file on a host with an ephemeral disk "
+                "(Render free tier) is regenerated on every deploy and logs everyone out — set FLASK_SECRET.")
     secret_file = os.path.join(DATA_DIR, '.flask_secret_key')
     try:
         if os.path.exists(secret_file):
@@ -361,7 +246,6 @@ def _get_or_create_secret_key():
                     return existing
     except Exception as e:
         log.warning(f"[secret_key] could not read {secret_file}: {e}")
-
     new_secret = secrets.token_hex(32)
     try:
         with open(secret_file, 'w') as f:
@@ -373,23 +257,23 @@ def _get_or_create_secret_key():
 SECRET_KEY = _get_or_create_secret_key()
 SESSION_LIFETIME_SECONDS = int(timedelta(days=30).total_seconds())
 
-UPDATE_INTERVAL = 30
+UPDATE_INTERVAL = int(os.getenv('UPDATE_INTERVAL', '60'))   # seconds; every refresh wakes the Neon compute
 cached_data = {}
 last_updated = None
 _lock = threading.Lock()
 
-def _db():
-    return _PGConnection()
-
+# ── Small helpers ────────────────────────────────────────────────────────────
 def _log_activity(user_id, action, detail=""):
     try:
         conn = _db()
-        conn.execute(
-            "INSERT INTO activity_log (user_id, action, detail) VALUES (?,?,?)",
-            (str(user_id), action, detail),
-        )
-        conn.commit()
-        conn.close()
+        try:
+            conn.execute(
+                "INSERT INTO activity_log (user_id, action, detail) VALUES (?,?,?)",
+                (str(user_id), action, detail),
+            )
+            conn.commit()
+        finally:
+            conn.close()
     except Exception as e:
         log.warning(f"[activity_log] write failed: {e}")
 
@@ -406,7 +290,7 @@ def _is_banned(ip):
     if expires is None:
         return False
     if time.time() > expires:
-        del _ip_banned[ip]
+        _ip_banned.pop(ip, None)
         return False
     return True
 
@@ -431,7 +315,8 @@ def _json(content: dict, status_code: int = 200):
 
 async def _get_json(request: Request) -> dict:
     try:
-        return await request.json()
+        b = await request.json()
+        return b if isinstance(b, dict) else {}
     except Exception:
         return {}
 
@@ -440,64 +325,93 @@ def _is_admin_email(email: str) -> bool:
         return False
     return email.strip().lower() == ADMIN_EMAIL.strip().lower()
 
-# ── Game Data Helpers ────────────────────────────────────────────────────────
+def _compute_admin(email: str, email_verified: bool) -> bool:
+    """Admin = the provider says this email is verified AND it equals ADMIN_EMAIL.
+    Without the verified check, anyone could put your admin address on a Discord account and get in."""
+    return bool(email_verified) and _is_admin_email(email)
+
+def _session_is_admin(user) -> bool:
+    return bool(user) and _compute_admin(user.get('email', ''), user.get('email_verified', False))
+
+def _split_account(raw):
+    if ':' in raw:
+        t, u = raw.split(':', 1)
+        return (t if t in ('discord', 'google') else 'discord'), u
+    return 'discord', raw
+
+def _may_access_account(user, user_id: str) -> bool:
+    """A logged-in user may read their own data (by plain id or full account key); admins may read anyone's."""
+    if not user:
+        return False
+    if _session_is_admin(user):
+        return True
+    own_id = str(user.get('discord_id', ''))
+    own_key = _stats_key(user.get('auth_type', 'discord'), own_id)
+    return user_id in (own_id, own_key)
+
+# ── Game data (leaderboard / dashboard cache) ────────────────────────────────
 def load_game_data():
-    """Load leaderboard/dashboard data from the dashboard's own tables."""
+    """Rebuild the in-memory leaderboard/guild cache from the database."""
     global cached_data, last_updated
     try:
-        init_db()
         conn = _db()
-        players = {}
-        for row in conn.execute("SELECT account_key, data FROM player_stats").fetchall():
-            try:
-                d = json.loads(row['data'])
-            except Exception:
-                continue
-            d.setdefault('name', row['account_key'])
-            players[row['account_key']] = d
+        fixes = []
+        try:
+            players = {}
+            for row in conn.execute("SELECT account_key, data FROM player_stats").fetchall():
+                try:
+                    d = json.loads(row['data'])
+                except Exception:
+                    continue
+                d.setdefault('name', row['account_key'])
+                players[row['account_key']] = d
 
-        # ── FIX: Rebuild guild membership from guild_members table, not just
-        # from the player stats blob. This ensures guilds survive restarts even
-        # if a guild route forgot to call save_stats with the updated guild field.
-        guilds = {}
-        for gm_row in conn.execute(
-            "SELECT gm.account_key, gm.guild_name, ps.data "
-            "FROM guild_members gm "
-            "LEFT JOIN player_stats ps ON gm.account_key = ps.account_key"
-        ).fetchall():
-            guild_name = gm_row['guild_name']
-            if not guild_name or guild_name == '—':
-                continue
-            try:
-                pd = json.loads(gm_row['data']) if gm_row['data'] else {}
-            except Exception:
-                pd = {}
-            member_name = pd.get('name', gm_row['account_key'])
-            guilds.setdefault(guild_name, {'members': []})['members'].append(member_name)
+            # Guild membership comes from guild_members (survives restarts); player_stats.guild is
+            # brought back in line with it.
+            guilds = {}
+            for gm_row in conn.execute(
+                "SELECT gm.account_key, gm.guild_name, ps.data "
+                "FROM guild_members gm "
+                "LEFT JOIN player_stats ps ON gm.account_key = ps.account_key"
+            ).fetchall():
+                guild_name = gm_row['guild_name']
+                if not guild_name or guild_name == '—':
+                    continue
+                try:
+                    pd = json.loads(gm_row['data']) if gm_row['data'] else {}
+                except Exception:
+                    pd = {}
+                member_name = pd.get('name', gm_row['account_key'])
+                guilds.setdefault(guild_name, {'members': []})['members'].append(member_name)
 
-            if pd.get('guild') != guild_name:
-                atype, uid = _split_account(gm_row['account_key'])
-                save_stats(atype, uid, {'guild': guild_name})
-                if gm_row['account_key'] in players:
-                    players[gm_row['account_key']]['guild'] = guild_name
+                if pd.get('guild') != guild_name:
+                    fixes.append((gm_row['account_key'], guild_name))
+                    if gm_row['account_key'] in players:
+                        players[gm_row['account_key']]['guild'] = guild_name
 
-        for pid, pd in players.items():
-            g = pd.get('guild')
-            if g and g != '—':
-                guilds.setdefault(g, {'members': []})
-                member_name = pd.get('name', pid)
-                if member_name not in guilds[g]['members']:
-                    guilds[g]['members'].append(member_name)
-                    try:
-                        conn.execute(
-                            "INSERT OR IGNORE INTO guild_members (account_key, guild_name) VALUES (?, ?)",
-                            (pid, g)
-                        )
-                    except Exception:
-                        pass
+            for pid, pd in players.items():
+                g = pd.get('guild')
+                if g and g != '—':
+                    guilds.setdefault(g, {'members': []})
+                    member_name = pd.get('name', pid)
+                    if member_name not in guilds[g]['members']:
+                        guilds[g]['members'].append(member_name)
+                        try:
+                            conn.execute(
+                                "INSERT OR IGNORE INTO guild_members (account_key, guild_name) VALUES (?, ?)",
+                                (pid, g)
+                            )
+                        except Exception:
+                            conn.rollback()
+            conn.commit()
+        finally:
+            conn.close()
 
-        conn.commit()
-        conn.close()
+        # Done after the connection above is released (never hold one pool slot while asking for another).
+        for account_key, guild_name in fixes:
+            atype, uid = _split_account(account_key)
+            save_stats(atype, uid, {'guild': guild_name})
+
         with _lock:
             cached_data = {'players': players, 'guilds': guilds, 'world_state': cached_data.get('world_state', {})}
             last_updated = datetime.now(timezone.utc)
@@ -506,16 +420,12 @@ def load_game_data():
 
 def _bg_updater():
     while True:
-        load_game_data()
         time.sleep(UPDATE_INTERVAL)
+        load_game_data()
 
-def _split_account(raw):
-    if ':' in raw:
-        t, u = raw.split(':', 1)
-        return (t if t in ('discord', 'google') else 'discord'), u
-    return 'discord', raw
+# ── Guild helpers ────────────────────────────────────────────────────────────
+from guild_routes import register_guild_routes, remove_account_from_guild  # noqa: E402
 
-# ── Guild helpers — call these from guild_routes.py ──────────────────────────
 def join_guild(auth_type: str, uid: str, guild_name: str):
     """Add a player to a guild, persisting to both player_stats and guild_members."""
     key = _stats_key(auth_type, uid)
@@ -532,21 +442,19 @@ def join_guild(auth_type: str, uid: str, guild_name: str):
         conn.close()
 
 def leave_guild(auth_type: str, uid: str):
-    """Remove a player from their guild."""
+    """Remove a player from their guild (also fixes the guild's own member list / leader)."""
     key = _stats_key(auth_type, uid)
-    save_stats(auth_type, uid, {'guild': '—'})
     conn = _db()
     try:
-        conn.execute("DELETE FROM guild_members WHERE account_key=?", (key,))
+        remove_account_from_guild(conn, key)
         conn.commit()
     finally:
         conn.close()
 
-# ── FastAPI App Setup ─────────────────────────────────────────────────────────
+# ── FastAPI app setup ────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db()
-    load_game_data()
+    await run_in_threadpool(load_game_data)
     threading.Thread(target=_bg_updater, daemon=True).start()
     yield
 
@@ -561,17 +469,20 @@ app.add_middleware(
     https_only=SESSION_HTTPS_ONLY,
 )
 
-from routes_profile import register_profile_routes
+# Tables must exist before the route modules (which also create their own) are registered.
+init_db()
+
+from routes_profile import register_profile_routes  # noqa: E402
 register_profile_routes(app)
 
-from game_engine import register_game_routes
+from game_engine import register_game_routes  # noqa: E402
 register_game_routes(app, _db)
 
-from community import register_community_routes
+from community import register_community_routes  # noqa: E402
 register_community_routes(app, _db)
 
-from guild_routes import register_guild_routes
 register_guild_routes(app, _db)
+
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, 'templates'))
 
 STATIC_DIR = os.path.join(BASE_DIR, 'static')
@@ -583,7 +494,7 @@ if not os.path.isdir(STATIC_DIR):
         log.warning(f"[static] Could not create static dir {STATIC_DIR}: {e}")
 app.mount('/static', StaticFiles(directory=STATIC_DIR), name='static')
 
-# ── DDoS Protection Middleware ──────────────────────────────────────────────
+# ── DDoS protection middleware ───────────────────────────────────────────────
 def _add_security_headers(response, req_id=None):
     if req_id:
         response.headers['X-Request-ID'] = req_id
@@ -619,39 +530,93 @@ async def ddos_guard(request: Request, call_next):
             PlainTextResponse("Service Unavailable", status_code=503, headers={'Retry-After': '5'})
         )
 
+    # From here on the counters MUST be released on every exit path (including exceptions), or they
+    # drift upward until everybody gets 503s.
     _ip_connections[ip] += 1
-    if _ip_connections[ip] > DDOS_BURST_LIMIT:
-        _ban_ip(ip, f"burst: {_ip_connections[ip]} concurrent")
-        _ip_connections[ip] = 0
-        return _add_security_headers(
-            PlainTextResponse("Too Many Requests", status_code=429, headers={'Retry-After': '60'})
-        )
-
-    cl = request.headers.get('content-length')
-    body_limit = DDOS_BODY_LIMITS.get(request.url.path, DDOS_MAX_BODY_BYTES)
-    try:
-        too_big = bool(cl) and int(cl) > body_limit
-    except Exception:
-        too_big = True
-    if too_big:
-        log.warning(f"[DDoS] Body too large from {ip}: {cl} bytes (limit {body_limit})")
-        _ip_connections[ip] = max(0, -_ip_connections.get(ip, 1) - 1)
-        return _add_security_headers(PlainTextResponse("request too big", status_code=413))
-
     _global_req_count['n'] += 1
-    _req_id_counter += 1
-    request.state.req_id = f"{_req_id_counter:08x}"
-    request.state.req_ip = ip
-    request.state.req_start = time.monotonic()
+    try:
+        if _ip_connections[ip] > DDOS_BURST_LIMIT:
+            _ban_ip(ip, f"burst: {_ip_connections[ip]} concurrent")
+            return _add_security_headers(
+                PlainTextResponse("Too Many Requests", status_code=429, headers={'Retry-After': '60'})
+            )
 
-    response = await call_next(request)
+        cl = request.headers.get('content-length')
+        body_limit = DDOS_BODY_LIMITS.get(request.url.path, DDOS_MAX_BODY_BYTES)
+        try:
+            too_big = bool(cl) and int(cl) > body_limit
+        except Exception:
+            too_big = True
+        if too_big:
+            log.warning(f"[DDoS] Body too large from {ip}: {cl} bytes (limit {body_limit})")
+            return _add_security_headers(PlainTextResponse("request too big", status_code=413))
 
-    _ip_connections[ip] = max(0, _ip_connections.get(ip, 1) - 1)
-    _global_req_count['n'] = max(0, _global_req_count['n'] - 1)
+        _req_id_counter += 1
+        request.state.req_id = f"{_req_id_counter:08x}"
+        request.state.req_ip = ip
+        request.state.req_start = time.monotonic()
+
+        response = await call_next(request)
+    finally:
+        left = _ip_connections.get(ip, 1) - 1
+        if left > 0:
+            _ip_connections[ip] = left
+        else:
+            _ip_connections.pop(ip, None)
+        _global_req_count['n'] = max(0, _global_req_count['n'] - 1)
 
     return _add_security_headers(response, req_id=getattr(request.state, 'req_id', None))
 
-# ── Discord OAuth ─────────────────────────────────────────────────────────────
+# ── Sign-in bookkeeping shared by both providers ─────────────────────────────
+def _finish_login(request, *, uid, username, email, email_verified, avatar, auth_type, ip):
+    game_data = get_stats(auth_type, uid)
+    request.session['user'] = {
+        'discord_id': str(uid),        # legacy key name — holds the account id regardless of provider
+        'username': username,
+        'email': email,
+        'email_verified': bool(email_verified),
+        'avatar': avatar,
+        'level': game_data.get('level', 1),
+        'gold': game_data.get('gold', 0),
+        'gems': game_data.get('gems', 0),
+        'special_coins': game_data.get('special_coins', 0),
+        'char_class': game_data.get('char_class', '—'),
+        'xp': game_data.get('xp', 0),
+        'xp_needed': game_data.get('xp_needed', 100),
+        'login_at': datetime.now(UTC).isoformat(),
+        'ip': ip,
+        'auth_type': auth_type,
+        'is_admin': _compute_admin(email, email_verified),
+    }
+    save_stats(auth_type, str(uid), {'name': username, 'avatar': avatar})
+
+    sid = str(uid) if auth_type == 'discord' else f'{auth_type}:{uid}'
+    _session_log.setdefault(sid, []).append({
+        'ip': ip,
+        'ua': request.headers.get('user-agent', '')[:120],
+        'at': datetime.now(UTC).isoformat(),
+    })
+    _session_log[sid] = _session_log[sid][-10:]
+
+    try:
+        conn = _db()
+        try:
+            conn.execute(
+                "INSERT INTO account_links (discord_id, last_login) VALUES (?, CURRENT_TIMESTAMP) "
+                "ON CONFLICT(discord_id) DO UPDATE SET last_login=CURRENT_TIMESTAMP",
+                (str(uid),),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:
+        log.warning(f"[login] account_links update failed: {e}")
+
+    # activity_log uses the plain account id everywhere (profile + community read it that way)
+    _log_activity(uid, "login", f"from {ip}")
+    log.info(f"[OAuth/{auth_type}] Logged in: {username} (ID: {uid})")
+
+# ── Discord OAuth ────────────────────────────────────────────────────────────
 @app.get('/login/discord')
 async def discord_login(request: Request):
     state = secrets.token_urlsafe(32)
@@ -663,11 +628,10 @@ async def discord_login(request: Request):
         'scope': 'identify email',
         'state': state,
     }
-    oauth_url = f"{DISCORD_API}/oauth2/authorize?{urlencode(params)}"
-    return RedirectResponse(oauth_url)
+    return RedirectResponse(f"{DISCORD_API}/oauth2/authorize?{urlencode(params)}")
 
 @app.get('/callback')
-async def discord_callback(request: Request):
+def discord_callback(request: Request):      # plain def: blocking HTTP + DB run in FastAPI's threadpool
     ip = _get_real_ip(request)
     code = request.query_params.get('code')
     error = request.query_params.get('error')
@@ -692,19 +656,18 @@ async def discord_callback(request: Request):
             'redirect_uri': DISCORD_REDIRECT_URI,
         },
         headers={'Content-Type': 'application/x-www-form-urlencoded'},
+        timeout=HTTP_TIMEOUT,
     )
-
     if token_res.status_code != 200:
         log.warning(f'[OAuth] Token exchange failed ({token_res.status_code}): {token_res.text}')
         return RedirectResponse('/?auth=failed')
 
     access_token = token_res.json().get('access_token')
-
     user_res = http_requests.get(
         f'{DISCORD_API}/users/@me',
         headers={'Authorization': f'Bearer {access_token}'},
+        timeout=HTTP_TIMEOUT,
     )
-
     if user_res.status_code != 200:
         log.warning(f'[OAuth] /users/@me failed ({user_res.status_code}): {user_res.text}')
         return RedirectResponse('/?auth=failed')
@@ -717,58 +680,16 @@ async def discord_callback(request: Request):
         if avatar_hash
         else f"https://cdn.discordapp.com/embed/avatars/{user_id % 5}.png"
     )
-    email = discord_user.get('email', '')
-
-    game_data = get_stats('discord', str(user_id))
-
-    is_admin = _is_admin_email(email)
-
-    request.session['user'] = {
-        'discord_id': str(user_id),
-        'username': discord_user.get('global_name') or discord_user.get('username', 'Player'),
-        'email': email,
-        'avatar': avatar_url,
-        'level': game_data.get('level', 1),
-        'gold': game_data.get('gold', 0),
-        'gems': game_data.get('gems', 0),
-        'special_coins': game_data.get('special_coins', 0),
-        'char_class': game_data.get('char_class', '—'),
-        'xp': game_data.get('xp', 0),
-        'xp_needed': game_data.get('xp_needed', 100),
-        'login_at': datetime.now(UTC).isoformat(),
-        'ip': ip,
-        'auth_type': 'discord',
-        'is_admin': is_admin
-    }
-
-    save_stats('discord', str(user_id), {'name': request.session['user']['username'], 'avatar': avatar_url})
-
-    sid = str(user_id)
-    _session_log.setdefault(sid, []).append({
-        'ip': ip,
-        'ua': request.headers.get('user-agent', '')[:120],
-        'at': datetime.now(UTC).isoformat(),
-    })
-    _session_log[sid] = _session_log[sid][-10:]
-
-    try:
-        conn = _db()
-        conn.execute(
-            "INSERT INTO account_links (discord_id, last_login) VALUES (?,?) "
-            "ON CONFLICT(discord_id) DO UPDATE SET last_login=excluded.last_login",
-            (sid, datetime.now(UTC).isoformat()),
-        )
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        log.warning(f"[login] account_links update failed: {e}")
-
-    _log_activity(user_id, "login", f"from {ip}")
-    log.info(f"[OAuth] Logged in: {request.session['user']['username']} (ID: {user_id})")
-
+    _finish_login(
+        request, uid=user_id,
+        username=discord_user.get('global_name') or discord_user.get('username', 'Player'),
+        email=discord_user.get('email') or '',
+        email_verified=discord_user.get('verified', False),
+        avatar=avatar_url, auth_type='discord', ip=ip,
+    )
     return RedirectResponse('/?auth=success')
 
-# ── Google OAuth ──────────────────────────────────────────────────────────────
+# ── Google OAuth ─────────────────────────────────────────────────────────────
 @app.get('/login/google')
 async def google_login(request: Request):
     state = secrets.token_urlsafe(32)
@@ -782,11 +703,10 @@ async def google_login(request: Request):
         'access_type': 'online',
         'prompt': 'select_account',
     }
-    oauth_url = f"{GOOGLE_AUTH_URL}?{urlencode(params)}"
-    return RedirectResponse(oauth_url)
+    return RedirectResponse(f"{GOOGLE_AUTH_URL}?{urlencode(params)}")
 
 @app.get('/callback/google')
-async def google_callback(request: Request):
+def google_callback(request: Request):
     ip = _get_real_ip(request)
     code = request.query_params.get('code')
     error = request.query_params.get('error')
@@ -811,19 +731,18 @@ async def google_callback(request: Request):
             'redirect_uri': GOOGLE_REDIRECT_URI,
         },
         headers={'Content-Type': 'application/x-www-form-urlencoded'},
+        timeout=HTTP_TIMEOUT,
     )
-
     if token_res.status_code != 200:
         log.warning(f'[OAuth/Google] Token exchange failed ({token_res.status_code}): {token_res.text}')
         return RedirectResponse('/?auth=failed')
 
     access_token = token_res.json().get('access_token')
-
     user_res = http_requests.get(
         GOOGLE_USERINFO_URL,
         headers={'Authorization': f'Bearer {access_token}'},
+        timeout=HTTP_TIMEOUT,
     )
-
     if user_res.status_code != 200:
         log.warning(f'[OAuth/Google] userinfo failed ({user_res.status_code}): {user_res.text}')
         return RedirectResponse('/?auth=failed')
@@ -837,54 +756,22 @@ async def google_callback(request: Request):
     email = google_user.get('email', '')
     name = google_user.get('name') or (email.split('@')[0] if email else 'Player')
     avatar_url = google_user.get('picture') or f"https://ui-avatars.com/api/?name={name}&background=4285F4&color=fff&size=64"
-
-    game_data = get_stats('google', user_id)
-
-    is_admin = _is_admin_email(email)
-
-    request.session['user'] = {
-        'discord_id': user_id,  # legacy key name — holds the account id regardless of provider
-        'username': name,
-        'email': email,
-        'avatar': avatar_url,
-        'level': game_data.get('level', 1),
-        'gold': game_data.get('gold', 0),
-        'gems': game_data.get('gems', 0),
-        'special_coins': game_data.get('special_coins', 0),
-        'char_class': game_data.get('char_class', '—'),
-        'xp': game_data.get('xp', 0),
-        'xp_needed': game_data.get('xp_needed', 100),
-        'login_at': datetime.now(UTC).isoformat(),
-        'ip': ip,
-        'auth_type': 'google',
-        'is_admin': is_admin
-    }
-
-    save_stats('google', user_id, {'name': name, 'avatar': avatar_url})
-
-    sid = f"google:{user_id}"
-    _session_log.setdefault(sid, []).append({
-        'ip': ip,
-        'ua': request.headers.get('user-agent', '')[:120],
-        'at': datetime.now(UTC).isoformat(),
-    })
-    _session_log[sid] = _session_log[sid][-10:]
-
-    _log_activity(sid, "login", f"from {ip}")
-    log.info(f"[OAuth/Google] Logged in: {name} ({email})")
-
+    _finish_login(
+        request, uid=user_id, username=name, email=email,
+        email_verified=google_user.get('email_verified', False),
+        avatar=avatar_url, auth_type='google', ip=ip,
+    )
     return RedirectResponse('/?auth=success')
 
-# ── Session Routes ───────────────────────────────────────────────────────────
+# ── Session routes ───────────────────────────────────────────────────────────
 @app.get('/api/me')
-async def api_me(request: Request):
+def api_me(request: Request):
     user = request.session.get('user')
     if not user:
         return {'logged_in': False}
 
-    # Re-check admin status against the current ADMIN_EMAIL env var each time,
-    # in case it was changed since login.
-    is_admin = _is_admin_email(user.get('email', ''))
+    # Re-check admin status against the current ADMIN_EMAIL each time, in case it changed since login.
+    is_admin = _session_is_admin(user)
     if is_admin != user.get('is_admin', False):
         session_user = dict(request.session['user'])
         session_user['is_admin'] = is_admin
@@ -894,14 +781,14 @@ async def api_me(request: Request):
     return {'logged_in': True, **live, 'is_admin': is_admin}
 
 @app.get('/api/check-auth')
-async def api_check_auth(request: Request):
+def api_check_auth(request: Request):
     user = request.session.get('user')
     if not user:
         return {'logged_in': False}
     return {'logged_in': True, 'user': _apply_live_stats(dict(user))}
 
 @app.get('/logout')
-async def logout(request: Request):
+def logout(request: Request):
     u = request.session.pop('user', None)
     if u:
         _log_activity(u.get('discord_id', ''), "logout")
@@ -918,49 +805,48 @@ async def api_update_profile(request: Request):
     nickname = str(data.get('nickname', '')).strip()[:50]
     bio = str(data.get('bio', '')).strip()[:500]
 
-    try:
-        auth_type = user.get('auth_type', 'discord')
-        uid = user['discord_id']
+    def work():
         updates = {}
         if nickname:
             updates['name'] = nickname
         updates['bio'] = bio
-        save_stats(auth_type, uid, updates)
+        save_stats(user.get('auth_type', 'discord'), user['discord_id'], updates)
+        _log_activity(user.get('discord_id', ''), 'profile_update')
 
+    try:
+        await run_in_threadpool(work)
         session_user = dict(request.session['user'])
         session_user['username'] = nickname or user.get('username')
         session_user['bio'] = bio
         request.session['user'] = session_user
-
-        _log_activity(user.get('discord_id', ''), 'profile_update')
         return {'ok': True, 'message': 'Profile updated.'}
     except Exception as e:
         log.error(f"[profile update] Error: {e}")
         return _json({'ok': False, 'error': 'Something went wrong.'}, 500)
 
 @app.delete('/api/delete-account')
-async def api_delete_account(request: Request):
+def api_delete_account(request: Request):
     ip = _get_real_ip(request)
     user = request.session.get('user')
     if not user:
         return _json({'ok': False, 'error': 'Not logged in'}, 401)
 
-    if user.get('is_admin', False):
+    if _session_is_admin(user):
         return _json({'ok': False, 'error': 'Admin accounts cannot self-delete.'}, 403)
 
     if _strict_rate_limit(ip, max_calls=5, window=300, scope='delete'):
         return _json({'ok': False, 'error': 'Too many attempts. Please wait a moment.'}, 429)
 
     user_id = user.get('discord_id')
-    auth_type = user.get('auth_type')
-
+    auth_type = user.get('auth_type') or 'discord'
     if not user_id:
         return _json({'ok': False, 'error': 'Invalid session.'}, 400)
 
     conn = None
     try:
         conn = _db()
-        account_key = _stats_key(auth_type or 'discord', user_id)
+        account_key = _stats_key(auth_type, user_id)
+        remove_account_from_guild(conn, account_key)      # fixes the guild's own member list first
         conn.execute("DELETE FROM player_stats WHERE account_key = ?", (account_key,))
         conn.execute("DELETE FROM guild_members WHERE account_key = ?", (account_key,))
         conn.execute("DELETE FROM account_links WHERE discord_id = ?", (str(user_id),))
@@ -969,9 +855,7 @@ async def api_delete_account(request: Request):
         _log_activity(user_id, 'account_deleted', f'self-delete from {ip}')
         log.info(f"[Account] User {user_id} deleted their own account")
 
-        request.session.pop('user', None)
         request.session.clear()
-
         return {'ok': True, 'message': 'Account deleted.'}
     except Exception as e:
         log.error(f"[delete-account] Error: {e}")
@@ -980,14 +864,19 @@ async def api_delete_account(request: Request):
         if conn:
             conn.close()
 
-# ── Admin Routes ─────────────────────────────────────────────────────────────
-@app.get('/api/admin/users')
-async def api_admin_users(request: Request):
-    """Account list for the admin panel. Accounts are now Discord/Google only —
-    there's no password table anymore, so this is built from player_stats."""
-    user = request.session.get('user')
-    if not user or not user.get('is_admin', False):
+# ── Admin routes ─────────────────────────────────────────────────────────────
+def _admin_denied(user):
+    if not _session_is_admin(user):
         return _json({'ok': False, 'error': 'Admin access required'}, 403)
+    return None
+
+@app.get('/api/admin/users')
+def api_admin_users(request: Request):
+    """Account list for the admin panel, built from player_stats (accounts are Discord/Google only)."""
+    user = request.session.get('user')
+    denied = _admin_denied(user)
+    if denied:
+        return denied
 
     conn = None
     try:
@@ -1010,10 +899,10 @@ async def api_admin_users(request: Request):
                 'id': r['account_key'],
                 'nickname': d.get('name') or uid,
                 'avatar': d.get('avatar') or 'https://api.dicebear.com/7.x/avataaars/svg?seed=default',
-                'email': '—' if atype != 'discord' else '—',  # email isn't persisted outside the session
+                'email': '—',  # email isn't persisted outside the session
                 'is_admin': False,  # computed live on login from ADMIN_EMAIL; not stored per-account
-                'created_at': links.get(sid) or r['last_updated'],
-                'last_login': links.get(sid) or 'Never',
+                'created_at': links.get(uid) or r['last_updated'],
+                'last_login': links.get(uid) or 'Never',
                 'is_online': sid in _session_log and bool(_session_log.get(sid)),
                 'provider': atype,
             })
@@ -1035,21 +924,22 @@ async def api_admin_users(request: Request):
             conn.close()
 
 @app.post('/api/admin/users/{user_id}/toggle-admin')
-async def api_admin_toggle_admin(user_id: str, request: Request):
-    user = request.session.get('user')
-    if not user or not user.get('is_admin', False):
-        return _json({'ok': False, 'error': 'Admin access required'}, 403)
+def api_admin_toggle_admin(user_id: str, request: Request):
+    denied = _admin_denied(request.session.get('user'))
+    if denied:
+        return denied
     return _json({
         'ok': False,
-        'error': 'Admin status is now set by the ADMIN_EMAIL environment variable, '
-                 'not per-account — update ADMIN_EMAIL on Render to change who has admin access.'
+        'error': 'Admin status is set by the ADMIN_EMAIL environment variable, '
+                 'not per-account — update ADMIN_EMAIL to change who has admin access.'
     }, 400)
 
 @app.delete('/api/admin/users/{user_id}')
-async def api_admin_delete_user(user_id: str, request: Request):
+def api_admin_delete_user(user_id: str, request: Request):
     user = request.session.get('user')
-    if not user or not user.get('is_admin', False):
-        return _json({'ok': False, 'error': 'Admin access required'}, 403)
+    denied = _admin_denied(user)
+    if denied:
+        return denied
 
     own_key = _stats_key(user.get('auth_type', 'discord'), user.get('discord_id', ''))
     if user_id == own_key:
@@ -1059,13 +949,13 @@ async def api_admin_delete_user(user_id: str, request: Request):
     try:
         conn = _db()
         atype, uid = _split_account(user_id)
-        conn.execute("DELETE FROM player_stats WHERE account_key = ?", (user_id,))
-        conn.execute("DELETE FROM guild_members WHERE account_key = ?", (user_id,))
-        if atype == 'discord':
-            conn.execute("DELETE FROM account_links WHERE discord_id = ?", (uid,))
+        key = _stats_key(atype, uid)
+        remove_account_from_guild(conn, key)
+        conn.execute("DELETE FROM player_stats WHERE account_key = ?", (key,))
+        conn.execute("DELETE FROM guild_members WHERE account_key = ?", (key,))
+        conn.execute("DELETE FROM account_links WHERE discord_id = ?", (uid,))
         conn.commit()
-
-        log.info(f"[Admin] Account {user_id} deleted by admin")
+        log.info(f"[Admin] Account {key} deleted by admin")
         return {'ok': True, 'message': 'Account deleted successfully'}
     except Exception as e:
         log.error(f"[Admin/delete] Error: {e}")
@@ -1077,23 +967,27 @@ async def api_admin_delete_user(user_id: str, request: Request):
 @app.post('/api/admin/announce')
 async def api_admin_announce(request: Request):
     user = request.session.get('user')
-    if not user or not user.get('is_admin'):
-        return _json({'ok': False, 'error': 'forbidden'}, 403)
+    denied = _admin_denied(user)
+    if denied:
+        return denied
     body = await _get_json(request)
     message = str(body.get('message') or '').strip()[:1000]
     if not message:
         return _json({'ok': False, 'error': 'message required'}, 400)
-    conn = _db()
-    try:
-        conn.execute("INSERT INTO announcements (message, author) VALUES (?, ?)",
-                     (message, user.get('username')))
-        conn.commit()
-    finally:
-        conn.close()
+
+    def work():
+        conn = _db()
+        try:
+            conn.execute("INSERT INTO announcements (message, author) VALUES (?, ?)",
+                         (message, user.get('username')))
+            conn.commit()
+        finally:
+            conn.close()
+    await run_in_threadpool(work)
     return {'ok': True}
 
 @app.get('/api/announcements')
-async def api_announcements():
+def api_announcements():
     conn = _db()
     try:
         rows = conn.execute(
@@ -1105,33 +999,35 @@ async def api_announcements():
 
 @app.post('/api/admin/give-gold')
 async def api_admin_give_gold(request: Request):
-    user = request.session.get('user')
-    if not user or not user.get('is_admin'):
-        return _json({'ok': False, 'error': 'forbidden'}, 403)
+    denied = _admin_denied(request.session.get('user'))
+    if denied:
+        return denied
     body = await _get_json(request)
     user_id = body.get('user_id')
     amount = body.get('amount')
-    if not user_id or not isinstance(amount, (int, float)):
+    if not user_id or isinstance(amount, bool) or not isinstance(amount, (int, float)):
         return _json({'ok': False, 'error': 'user_id and amount required'}, 400)
     atype, uid = _split_account(str(user_id))
-    stats = get_stats(atype, uid)
-    new = save_stats(atype, uid, {'gold': stats['gold'] + int(amount)})
-    load_game_data()
-    return {'ok': True, 'gold': new['gold']}
+
+    def work():
+        new = save_stats(atype, uid, {}, deltas={'gold': int(amount)})   # atomic add, no lost updates
+        load_game_data()
+        return new['gold']
+    gold = await run_in_threadpool(work)
+    return {'ok': True, 'gold': gold}
 
 @app.get('/api/admin/players')
-async def api_admin_players(request: Request):
-    user = request.session.get('user')
-    if not user or not user.get('is_admin', False):
-        return _json({'ok': False, 'error': 'Admin access required'}, 403)
-    load_game_data()
+def api_admin_players(request: Request):
+    denied = _admin_denied(request.session.get('user'))
+    if denied:
+        return denied
     with _lock:
-        data = cached_data.copy()
+        data = cached_data.copy()      # refreshed every UPDATE_INTERVAL and after every admin edit
     q = (request.query_params.get('q') or '').strip().lower()
     players = []
     for pid, pd in data.get('players', {}).items():
         name = pd.get('name', 'Unknown')
-        if q and q not in name.lower() and q not in str(pid).lower():
+        if q and q not in str(name).lower() and q not in str(pid).lower():
             continue
         players.append({
             'id': pid, 'name': name, 'level': pd.get('level', 1),
@@ -1140,59 +1036,58 @@ async def api_admin_players(request: Request):
             'xp': pd.get('xp', 0), 'guild': pd.get('guild', '—'),
             'wins': pd.get('battles_won', 0),
         })
-    players.sort(key=lambda p: (-p['level'], p['name']))
+    players.sort(key=lambda p: (-p['level'], str(p['name'])))
     return {'ok': True, 'players': players, 'total': len(players)}
 
 @app.get('/api/admin/players/{user_id}')
-async def api_admin_player_detail(user_id: str, request: Request):
-    user = request.session.get('user')
-    if not user or not user.get('is_admin', False):
-        return _json({'ok': False, 'error': 'Admin access required'}, 403)
+def api_admin_player_detail(user_id: str, request: Request):
+    denied = _admin_denied(request.session.get('user'))
+    if denied:
+        return denied
     atype, uid = _split_account(user_id)
     return {'ok': True, 'player': get_stats(atype, uid)}
 
 @app.post('/api/admin/players/{user_id}')
 async def api_admin_update_player(user_id: str, request: Request):
-    user = request.session.get('user')
-    if not user or not user.get('is_admin', False):
-        return _json({'ok': False, 'error': 'Admin access required'}, 403)
+    denied = _admin_denied(request.session.get('user'))
+    if denied:
+        return denied
     body = await _get_json(request)
     updates = body.get('updates')
     if not isinstance(updates, dict) or not updates:
         return _json({'ok': False, 'error': 'updates object required'}, 400)
     atype, uid = _split_account(user_id)
 
-    if 'guild' in updates:
-        new_guild = str(updates['guild']).strip()
-        if new_guild and new_guild != '—':
-            join_guild(atype, uid, new_guild)
-        else:
-            leave_guild(atype, uid)
-
-    merged = save_stats(atype, uid, updates)
-    load_game_data()
-    _log_activity(uid, "admin_edit_player", f"Admin updated fields: {', '.join(updates.keys())}")
+    def work():
+        if 'guild' in updates:
+            new_guild = str(updates['guild']).strip()
+            if new_guild and new_guild != '—':
+                join_guild(atype, uid, new_guild)
+            else:
+                leave_guild(atype, uid)
+        merged = save_stats(atype, uid, updates)
+        load_game_data()
+        _log_activity(uid, "admin_edit_player", f"Admin updated fields: {', '.join(updates.keys())}")
+        return merged
+    merged = await run_in_threadpool(work)
     return {'ok': True, 'player': merged}
 
 @app.get('/api/admin/stats')
-async def api_admin_stats(request: Request):
-    user = request.session.get('user')
-    if not user or not user.get('is_admin', False):
-        return _json({'ok': False, 'error': 'Admin access required'}, 403)
+def api_admin_stats(request: Request):
+    denied = _admin_denied(request.session.get('user'))
+    if denied:
+        return denied
 
+    conn = None
     try:
         conn = _db()
-        active_sessions = len(_session_log)
-
         recent_activity = conn.execute(
-            "SELECT action, detail, ts FROM activity_log ORDER BY ts DESC LIMIT 20"
+            "SELECT action, detail, ts FROM activity_log ORDER BY id DESC LIMIT 20"
         ).fetchall()
-        conn.close()
-
         return {
             'ok': True,
             'stats': {
-                'active_sessions': active_sessions,
+                'active_sessions': len(_session_log),
                 'total_requests': _global_req_count.get('n', 0),
                 'banned_ips': len([v for v in _ip_banned.values() if time.time() < v])
             },
@@ -1203,8 +1098,11 @@ async def api_admin_stats(request: Request):
         }
     except Exception as e:
         return _json({'ok': False, 'error': str(e)}, 500)
+    finally:
+        if conn:
+            conn.close()
 
-# ── Page Routes ──────────────────────────────────────────────────────────────
+# ── Page routes ──────────────────────────────────────────────────────────────
 @app.head('/')
 @app.get('/')
 @app.get('/dashboard')
@@ -1231,7 +1129,7 @@ async def index(request: Request):
             'xp_pct': round(xp / xp_needed * 100, 1),
         })
 
-    players_list.sort(key=lambda p: (-p['level'], p['name']))
+    players_list.sort(key=lambda p: (-p['level'], str(p['name'])))
 
     guilds_list = [
         {'name': g, 'member_count': len(d.get('members', []))}
@@ -1253,55 +1151,23 @@ async def index(request: Request):
         'last_updated': updated.strftime('%Y-%m-%d %H:%M:%S') if updated else 'Never',
     })
 
-@app.get('/battle-log')
-async def battle_log(request: Request):
-    return templates.TemplateResponse(request, 'battle-log.html', {})
+def _page(path, template):
+    async def handler(request: Request):
+        return templates.TemplateResponse(request, template, {})
+    handler.__name__ = 'page_' + template.replace('.html', '').replace('-', '_')
+    app.get(path)(handler)
 
-@app.get('/profile')
-async def profile_page(request: Request):
-    return templates.TemplateResponse(request, 'profile.html', {})
+for _path, _tpl in (
+    ('/battle-log', 'battle-log.html'), ('/profile', 'profile.html'),
+    ('/achievements', 'achievements.html'), ('/leaderboard', 'leaderboard.html'),
+    ('/inventory', 'inventory.html'), ('/quest-board', 'quest-board.html'),
+    ('/guild-hall', 'guild-hall.html'), ('/settings', 'settings.html'),
+    ('/hunting-grounds', 'hunting-grounds.html'), ('/tower', 'tower.html'),
+    ('/shop', 'shop.html'), ('/community', 'community.html'),
+):
+    _page(_path, _tpl)
 
-@app.get('/achievements')
-async def achievements_page(request: Request):
-    return templates.TemplateResponse(request, 'achievements.html', {})
-
-@app.get('/leaderboard')
-async def leaderboards_page(request: Request):
-    return templates.TemplateResponse(request, 'leaderboard.html', {})
-
-@app.get('/inventory')
-async def inventory(request: Request):
-    return templates.TemplateResponse(request, 'inventory.html', {})
-
-@app.get('/quest-board')
-async def quest_board(request: Request):
-    return templates.TemplateResponse(request, 'quest-board.html', {})
-
-@app.get('/guild-hall')
-async def guild_hall(request: Request):
-    return templates.TemplateResponse(request, 'guild-hall.html', {})
-
-@app.get('/settings')
-async def settings(request: Request):
-    return templates.TemplateResponse(request, 'settings.html', {})
-
-@app.get('/hunting-grounds')
-async def hunting_grounds(request: Request):
-    return templates.TemplateResponse(request, 'hunting-grounds.html', {})
-
-@app.get('/tower')
-async def tower_page(request: Request):
-    return templates.TemplateResponse(request, 'tower.html', {})
-
-@app.get('/shop')
-async def shop_page(request: Request):
-    return templates.TemplateResponse(request, 'shop.html', {})
-
-@app.get('/community')
-async def community_page(request: Request):
-    return templates.TemplateResponse(request, 'community.html', {})
-
-# ── API Routes ──────────────────────────────────────────────────────────────
+# ── API routes ───────────────────────────────────────────────────────────────
 @app.get('/api/stats')
 async def api_stats():
     with _lock:
@@ -1344,27 +1210,48 @@ async def api_leaderboard():
             'avatar': pd.get('avatar'),
         })
 
-    pl.sort(key=lambda p: (-p['level'], -p['xp'], p['name']))
+    pl.sort(key=lambda p: (-p['level'], -p['xp'], str(p['name'])))
     return {'leaderboard': pl[:50], 'total': len(pl)}
 
 @app.get('/api/activity/{user_id}')
-async def api_activity(user_id: str):
+def api_activity(user_id: str, request: Request):
+    # Contains login IPs: only the account owner (or an admin) may read it.
+    user = request.session.get('user')
+    if not user:
+        return _json({'items': []}, 401)
+    if not _may_access_account(user, user_id):
+        return _json({'items': []}, 403)
+    # activity_log is keyed by the plain account id
+    plain_id = _split_account(user_id)[1]
+    conn = None
     try:
         conn = _db()
         rows = conn.execute(
             "SELECT action, detail, ts FROM activity_log "
-            "WHERE user_id=? ORDER BY ts DESC LIMIT 30",
-            (str(user_id),),
+            "WHERE user_id=? ORDER BY id DESC LIMIT 30",
+            (str(plain_id),),
         ).fetchall()
-        conn.close()
         return {'items': [{'action': r['action'], 'detail': r['detail'], 'ts': r['ts']} for r in rows]}
     except Exception as e:
         log.error(f"[api/activity] error: {e}")
         return _json({'items': []}, 500)
+    finally:
+        if conn:
+            conn.close()
 
 @app.get('/api/inventory/{user_id}')
-async def api_inventory(user_id: str):
-    atype, uid = _split_account(user_id)
+def api_inventory(user_id: str, request: Request):
+    user = request.session.get('user')
+    if not user:
+        return _json({'items': []}, 401)
+    if not _may_access_account(user, user_id):
+        return _json({'items': []}, 403)
+
+    # A bare id means "this user's own account type"; an admin passing a bare id gets a discord account.
+    if ':' in user_id:
+        atype, uid = _split_account(user_id)
+    else:
+        atype, uid = user.get('auth_type', 'discord'), user_id
     game = get_stats(atype, uid)
     if not game:
         return _json({'items': []}, 404)
@@ -1396,18 +1283,24 @@ async def api_inventory(user_id: str):
     return {'items': items}
 
 @app.get('/api/auctions')
-async def api_auctions():
+def api_auctions():
+    conn = None
     try:
         conn = _db()
         rows = conn.execute(
             "SELECT * FROM auctions WHERE status='active' ORDER BY end_time ASC LIMIT 50"
         ).fetchall()
-        conn.close()
 
         auctions = []
+        now = datetime.now(UTC)
         for r in rows:
             try:
-                tl = max(0, int((datetime.fromisoformat(r['end_time']) - datetime.now(UTC)).total_seconds()))
+                end = r['end_time']
+                if isinstance(end, str):                 # e.g. a TEXT column left over from the migration
+                    end = datetime.fromisoformat(end)
+                if end.tzinfo is None:                   # TIMESTAMP columns come back naive (stored as UTC)
+                    end = end.replace(tzinfo=UTC)
+                tl = max(0, int((end - now).total_seconds()))
             except Exception:
                 tl = 0
 
@@ -1428,9 +1321,12 @@ async def api_auctions():
     except Exception as e:
         log.warning(f'[api/auctions] {e}')
         return _json({'auctions': []}, 200)
+    finally:
+        if conn:
+            conn.close()
 
 @app.get('/api/profile')
-async def api_profile(request: Request):
+def api_profile(request: Request):
     user = request.session.get('user')
     if not user:
         return {'logged_in': False}
@@ -1439,7 +1335,7 @@ async def api_profile(request: Request):
     nickname = stats.get('name') or user.get('username')
     avatar = stats.get('avatar') or user.get('avatar')
     bio = stats.get('bio', '')
-    is_admin = _is_admin_email(user.get('email', ''))
+    is_admin = _session_is_admin(user)
 
     return {'logged_in': True, 'nickname': nickname, 'avatar': avatar, 'bio': bio,
             'is_admin': is_admin, 'stats': stats, **{k: stats.get(k) for k in
