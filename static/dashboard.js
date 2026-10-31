@@ -26,9 +26,6 @@ const pageConfig = {
     }
 };
 
-// ════════════════════════════════════════════════════════════════════
-// DOMContentLoaded
-// ════════════════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
     // Auth UI wiring runs first and is isolated so a failure elsewhere can't break it.
     try { setupAuthUI(); } catch (e) { console.error('setupAuthUI failed:', e); }
@@ -46,6 +43,16 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('adminTabUsers')?.addEventListener('click', () => switchAdminTab('users'));
     document.getElementById('adminTabPlayers')?.addEventListener('click', () => switchAdminTab('players'));
     document.getElementById('adminTabActions')?.addEventListener('click', () => switchAdminTab('actions'));
+
+    // Ensure a nav link is active before measuring the pill, then position it.
+    // Double-rAF lets the browser complete one layout+paint cycle first, so
+    // FontAwesome icon glyph heights are factored into the link rect.
+    if (!document.querySelector('.nav-links a.active')) {
+        const first = document.querySelector('.nav-links a[data-page="overview"]')
+                   || document.querySelector('.nav-links a');
+        first?.classList.add('active');
+    }
+    requestAnimationFrame(() => requestAnimationFrame(positionNavPill));
 });
 
 // ════════════════════════════════════════════════════════════════════
@@ -142,8 +149,12 @@ function setupSidebar() {
             if (window.matchMedia('(max-width: 1100px)').matches) return;
             sidebar.classList.toggle('is-collapsed');
             container?.classList.toggle('is-collapsed');
-            document.body.classList.toggle('sidebar-is-collapsed');
-            positionNavPill();
+            // Keep the body class in sync with the actual sidebar state
+            // (previous code could desync if toggled programmatically).
+            document.body.classList.toggle('sidebar-is-collapsed', sidebar.classList.contains('is-collapsed'));
+            // Wait for the CSS width transition to settle before measuring,
+            // otherwise the pill gets a stale position/height.
+            setTimeout(positionNavPill, 320);
         });
     }
 
@@ -156,6 +167,8 @@ function setupSidebar() {
                 e.preventDefault();
                 navigateTo(page);
             }
+            // Always close the drawer — including for external/non-panel links,
+            // otherwise body.overflow stays locked to 'hidden'.
             closeDrawer();
         });
     });
@@ -164,36 +177,56 @@ function setupSidebar() {
     window.addEventListener('resize', () => {
         if (window.matchMedia('(min-width: 1101px)').matches) closeDrawer();
     });
+
+    // NOTE: Initial pill positioning is owned by the DOMContentLoaded handler
+    // (after seeding an active link + double-rAF). Do not call it here.
 }
 
+// rAF-batched so rapid resize events don't thrash layout.
+let navPillRaf = null;
 function positionNavPill() {
-    // Skip on mobile/tablet — the sidebar is an off-canvas overlay there
-    // and its rect is zero-width while translated off-screen.
-    if (window.matchMedia('(max-width: 1100px)').matches) return;
-    // Also skip while the sidebar is collapsed (icons only)
-    if (document.getElementById('sidebar')?.classList.contains('is-collapsed')) return;
+    if (navPillRaf) cancelAnimationFrame(navPillRaf);
+    navPillRaf = requestAnimationFrame(() => {
+        navPillRaf = null;
 
-    const pill       = document.getElementById('navActivePill');
-    const activeLink = document.querySelector('.nav-links a.active');
-    const list       = document.getElementById('navLinksList');
-    if (!pill || !activeLink || !list) return;
+        // Skip on mobile/tablet — the sidebar is an off-canvas overlay there
+        // and its rect is zero-width while translated off-screen.
+        if (window.matchMedia('(max-width: 1100px)').matches) return;
 
-    const listRect = list.getBoundingClientRect();
-    const linkRect = activeLink.getBoundingClientRect();
-    pill.style.height = linkRect.height + 'px';
-    pill.style.top    = (linkRect.top - listRect.top) + 'px';
-    pill.classList.add('is-active');
+        // Skip while collapsed (icons only) — the pill has no meaningful height,
+        // so hide it rather than rendering a zero-height sliver.
+        const sidebar = document.getElementById('sidebar');
+        if (sidebar?.classList.contains('is-collapsed')) {
+            document.getElementById('navActivePill')?.classList.remove('is-active');
+            return;
+        }
+
+        const pill       = document.getElementById('navActivePill');
+        const activeLink = document.querySelector('.nav-links a.active');
+        const list       = document.getElementById('navLinksList');
+        if (!pill || !activeLink || !list) return;
+
+        // getBoundingClientRect is viewport-relative; both rects shift equally
+        // with any list scroll, so the subtraction below stays correct.
+        const listRect = list.getBoundingClientRect();
+        const linkRect = activeLink.getBoundingClientRect();
+
+        // Guard against measuring mid-transition or while hidden.
+        if (linkRect.height === 0 || listRect.height === 0) return;
+
+        pill.style.height = linkRect.height + 'px';
+        pill.style.top    = (linkRect.top - listRect.top) + 'px';
+        pill.classList.add('is-active');
+    });
 }
 
+// rAF-batched resize handler instead of a raw listener.
 window.addEventListener('resize', positionNavPill);
 
 function navigateTo(page) {
     const config = pageConfig[page] || pageConfig['overview'];
 
-    // Scoped to .dashboard-grid so this can never sweep up and hide the
-    // sidebar (or anything else outside the grid) if it happens to share
-    // the .panel class for styling — only grid cards should be toggled here.
-    document.querySelectorAll('.dashboard-grid .panel').forEach(p => p.classList.add('hidden'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.add('hidden'));
 
     config.panels.forEach(cls => {
         const el = document.querySelector(`.${cls}`);
@@ -1078,8 +1111,9 @@ function updateMusicButton(btn) {
 // BOT INTRO OVERLAY
 // ════════════════════════════════════════════════════════════════════
 function maybeShowBotIntro() {
-    // Disabled — the welcome overlay no longer shows on login.
-    return;
+    if (sessionStorage.getItem('botIntroSeen') === '1') return;
+    sessionStorage.setItem('botIntroSeen', '1');
+    launchBotIntro();
 }
 
 async function launchBotIntro() {
