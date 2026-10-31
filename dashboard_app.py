@@ -69,9 +69,8 @@ if not ADMIN_EMAIL:
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-DATA_DIR = os.getenv('DATA_DIR', BASE_DIR)
-os.makedirs(DATA_DIR, exist_ok=True)
-DB_PATH = os.path.join(DATA_DIR, 'veyra.db')
+DATA_DIR = BASE_DIR
+DB_PATH = os.path.join(BASE_DIR, 'veyra.db')
 log.info(f"[DB] Using database at: {DB_PATH}")
 
 DEFAULT_STATS = {
