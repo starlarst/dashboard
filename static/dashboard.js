@@ -1,12 +1,13 @@
-const RECAPTCHA_SITE_KEY = "6LdvvT8tAAAAAKDmzCl0RaBvPr8ndJbdmFNQaqk7";
 const API_BASE = window.location.origin;
+
+// ── STATE ────────────────────────────────────────────────────────────
 let currentUser           = null;
 let isDashboardInitialized = false;
 let isShowingDashboard    = false;
-let resetEmail            = "";
-let resetOTP              = "";
 let notifications         = [];
 let cachedInventoryItems  = [];
+
+// ── SECURITY HELPERS ────────────────────────────────────────────────
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
     return String(str).replace(/[&<>"']/g, ch => ({
@@ -25,14 +26,17 @@ const pageConfig = {
     }
 };
 
+// ════════════════════════════════════════════════════════════════════
+// DOMContentLoaded
+// ════════════════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
     // Auth UI wiring runs first and is isolated so a failure elsewhere can't break it.
     try { setupAuthUI(); } catch (e) { console.error('setupAuthUI failed:', e); }
 
     checkAuth();
     setupSidebar();
-    setupOTPInputs();
     setupDiscordButtons();
+    setupGoogleButton();
     setupNotifications();
     setupListItemModal();
     setupEditPlayerModal();
@@ -48,59 +52,9 @@ document.addEventListener('DOMContentLoaded', () => {
 // AUTH UI WIRING (tabs, eye toggles, forgot / OTP / resend links)
 // The HTML has no inline onclick on these controls, so wire them here.
 // ════════════════════════════════════════════════════════════════════
-let resendCooldownTimer = null;
-
-function showAuthForm(id) {
-    document.querySelectorAll('.auth-tab').forEach(t => {
-        t.classList.remove('active');
-        t.setAttribute('aria-selected', 'false');
-    });
-    document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
-    document.getElementById(id)?.classList.add('active');
-}
-
+// Auth is social-only now (Discord + Google) — no tabs, passwords, or OTP left to wire up.
 function setupAuthUI() {
-    // Sign In / Create Account tabs
-    document.querySelectorAll('.auth-tab').forEach(tab => {
-        tab.addEventListener('click', () => switchTab(tab.dataset.tab));
-    });
-
-    // Show / hide password
-    document.querySelectorAll('.password-toggle[data-target]').forEach(btn => {
-        btn.addEventListener('click', () => togglePassword(btn.dataset.target));
-    });
-
-    // Forgot password link
-    document.getElementById('show-forgot')?.addEventListener('click', e => {
-        e.preventDefault();
-        showForgotPasswordForm();
-    });
-
-    // Back to sign in links
-    ['show-login-from-forgot', 'show-login-from-otp'].forEach(id => {
-        document.getElementById(id)?.addEventListener('click', e => {
-            e.preventDefault();
-            switchTab('login');
-        });
-    });
-
-    // Resend code
-    document.getElementById('resend-otp')?.addEventListener('click', e => {
-        e.preventDefault();
-        resendOTP();
-    });
-
-    // Allow pasting a full 6-digit code into the OTP boxes
-    const otpInputs = document.querySelectorAll('.otp-input');
-    otpInputs.forEach(input => {
-        input.addEventListener('paste', e => {
-            const digits = (e.clipboardData?.getData('text') || '').replace(/\D/g, '').slice(0, 6);
-            if (!digits) return;
-            e.preventDefault();
-            otpInputs.forEach((box, i) => { box.value = digits[i] || ''; });
-            otpInputs[Math.min(digits.length, 6) - 1]?.focus();
-        });
-    });
+    // Intentionally empty; kept so the DOMContentLoaded call site doesn't need touching.
 }
 
 async function sendAnnouncement() {
@@ -138,10 +92,10 @@ async function checkAuth() {
 
     if (authStatus === 'success') {
         window.history.replaceState({}, document.title, window.location.pathname);
-        showToast('Successfully logged in with Discord!');
+        showToast('Successfully logged in!');
     } else if (authStatus === 'failed') {
         window.history.replaceState({}, document.title, window.location.pathname);
-        showToast('Discord login failed. Please try again.', true);
+        showToast('Login failed. Please try again.', true);
         return;
     }
 
@@ -165,37 +119,24 @@ function setupSidebar() {
     const container   = document.getElementById('dashboard');
 
     const closeDrawer = () => {
-        if (window.RealmNav) { window.RealmNav.close(); return; }
         sidebar?.classList.remove('is-open');
         backdrop?.classList.remove('is-open');
         document.body.classList.remove('drawer-open');
         document.body.style.overflow = '';
-        toggle?.setAttribute('aria-expanded', 'false');
     };
 
-    // layout.js already wires the hamburger, backdrop and collapse button.
-    // Binding them a second time made every click run twice (open, then
-    // immediately close), which is why the sidebar looked dead. Only bind a
-    // control if nothing else has claimed it yet.
-    if (toggle && backdrop && sidebar && !toggle.dataset.realmNavBound) {
-        toggle.dataset.realmNavBound = '1';
-        toggle.addEventListener('click', (e) => {
-            e.preventDefault();
+    if (toggle && backdrop && sidebar) {
+        toggle.addEventListener('click', () => {
             const willOpen = !sidebar.classList.contains('is-open');
             sidebar.classList.toggle('is-open', willOpen);
             backdrop.classList.toggle('is-open', willOpen);
             document.body.classList.toggle('drawer-open', willOpen);
             document.body.style.overflow = willOpen ? 'hidden' : '';
-            toggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
         });
-    }
-    if (backdrop && !backdrop.dataset.realmNavBound) {
-        backdrop.dataset.realmNavBound = '1';
         backdrop.addEventListener('click', closeDrawer);
     }
 
-    if (collapseBtn && sidebar && !collapseBtn.dataset.realmNavBound) {
-        collapseBtn.dataset.realmNavBound = '1';
+    if (collapseBtn && sidebar) {
         collapseBtn.addEventListener('click', () => {
             // Desktop-only control
             if (window.matchMedia('(max-width: 1100px)').matches) return;
@@ -206,28 +147,14 @@ function setupSidebar() {
         });
     }
 
-    // On the dashboard, these menu items are in-page views, not separate pages.
-    const dashboardPages = ['overview', 'leaderboard', 'auction', 'admin'];
-    const scrollTargets  = { leaderboard: '.leaderboard-panel', auction: '.auction-panel', admin: '#adminPanel' };
-    const onDashboard = document.body.dataset.page === 'overview' || !!document.getElementById('dashboard-app');
+    const inPagePanels = ['overview', 'admin'];
 
     document.querySelectorAll('.nav-links a').forEach(link => {
-        if (link.dataset.dashNavBound) return;
-        link.dataset.dashNavBound = '1';
         link.addEventListener('click', (e) => {
             const page = link.dataset.page || 'overview';
-            if (onDashboard && dashboardPages.includes(page)) {
+            if (inPagePanels.includes(page)) {
                 e.preventDefault();
                 navigateTo(page);
-                closeDrawer();
-                const sel = scrollTargets[page];
-                // wait a frame so the drawer's scroll lock is released first
-                requestAnimationFrame(() => requestAnimationFrame(() => {
-                    const el = sel ? document.querySelector(sel) : null;
-                    if (el && el.offsetParent !== null) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    else window.scrollTo({ top: 0, behavior: 'smooth' });
-                }));
-                return;
             }
             closeDrawer();
         });
@@ -529,14 +456,6 @@ async function logout() {
 
     document.getElementById('dashboard-app').style.display  = 'none';
     document.getElementById('auth-screen').style.display = 'flex';
-    document.getElementById('login-form').reset();
-    document.getElementById('register-form').reset();
-    document.getElementById('forgot-form').reset();
-    document.getElementById('otp-form').reset();
-    document.querySelectorAll('.otp-input').forEach(i => i.value = '');
-    updatePasswordStrength('');
-    updatePasswordStrength('', 'otp');
-    switchTab('login');
     isDashboardInitialized = false;
     isShowingDashboard     = false;
     currentUser            = null;
@@ -544,300 +463,28 @@ async function logout() {
 }
 
 // ════════════════════════════════════════════════════════════════════
-// AUTH FUNCTIONS
+// AUTH FUNCTIONS — social-only (Discord + Google)
 // ════════════════════════════════════════════════════════════════════
-function switchTab(tab) {
-    document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
-    if (tab === 'login') {
-        document.querySelector('.auth-tab:first-child').classList.add('active');
-        document.getElementById('login-form').classList.add('active');
-    } else {
-        document.querySelector('.auth-tab:last-child').classList.add('active');
-        document.getElementById('register-form').classList.add('active');
-    }
+// Password forms, OTP reset, and strength meter removed along with
+// email/password login. If any leftover caller still needs a no-op
+// placeholder during migration, keep this stub:
+function switchTab() { /* no-op: single social login screen now */
 }
 
-function togglePassword(inputId) {
-    const input = document.getElementById(inputId);
-    const icon  = input.parentElement.querySelector('.password-toggle i');
-    if (input.type === 'password') {
-        input.type = 'text';
-        icon.classList.replace('fa-eye', 'fa-eye-slash');
-    } else {
-        input.type = 'password';
-        icon.classList.replace('fa-eye-slash', 'fa-eye');
-    }
-}
-
-function getPasswordStrength(password) {
-    if (!password) return { score: 0, label: '', color: '#666', hint: '' };
-    const hasLower  = /[a-z]/.test(password);
-    const hasUpper  = /[A-Z]/.test(password);
-    const hasNumber = /[0-9]/.test(password);
-    const hasSymbol = /[^a-zA-Z0-9]/.test(password);
-    const variety   = [hasLower, hasUpper, hasNumber, hasSymbol].filter(Boolean).length;
-    let score = 0;
-    if (password.length >= 8)  score++;
-    if (password.length >= 12) score++;
-    if (variety >= 3) score++;
-    if (variety === 4 && password.length >= 12) score++;
-    score = Math.min(4, score);
-    const levels = [
-        { label: 'Very Weak',    color: '#ef4444' },
-        { label: 'Weak',         color: '#f97316' },
-        { label: 'Fair',         color: '#f59e0b' },
-        { label: 'Strong',       color: '#22c55e' },
-        { label: 'Very Strong',  color: '#00f3ff' }
-    ];
-    const hint = password.length < 8 ? 'Use at least 8 characters'
-               : variety < 3         ? 'Add numbers, symbols, or uppercase'
-               : password.length < 12? 'Longer passwords are stronger'
-               : 'Great password!';
-    return { score, label: levels[score].label, color: levels[score].color, hint };
-}
-
-function updatePasswordStrength(password, suffix = '') {
-    const tag  = suffix ? `-${suffix}` : '';
-    const wrap  = document.getElementById(`pw-strength-wrap${tag}`);
-    const fill  = document.getElementById(`pw-strength-fill${tag}`);
-    const label = document.getElementById(`pw-strength-label${tag}`);
-    const hint  = document.getElementById(`pw-strength-hint${tag}`);
-    if (!wrap || !fill || !label || !hint) return;
-    if (!password) { wrap.style.display = 'none'; return; }
-    wrap.style.display = 'block';
-    const result = getPasswordStrength(password);
-    fill.style.width           = (result.score / 4 * 100) + '%';
-    fill.style.backgroundColor = result.color;
-    label.textContent          = result.label;
-    label.style.color          = result.color;
-    hint.textContent           = result.hint;
-}
-
-async function handleLogin(event) {
-    event.preventDefault();
-    const email    = document.getElementById('login-email').value.trim();
-    const password = document.getElementById('login-pass').value;
-    if (!email || !password) { showToast('Please fill in all fields', true); return; }
-
-    const btn = document.getElementById('login-btn');
-    btn.disabled = true; btn.textContent = 'VERIFYING...';
-
-    try {
-        const res  = await fetch(`${API_BASE}/api/login`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password })
-        });
-        const data = await res.json();
-        if (data.ok && data.logged_in) {
-            showToast('Welcome back, ' + (data.user?.username || 'Adventurer') + '!');
-            showDashboard(data.user);
-        } else {
-            showToast(data.error || 'Login failed. Check your credentials.', true);
-        }
-    } catch (err) {
-        console.error(err);
-        showToast('Cannot reach server. Check your connection.', true);
-    } finally {
-        btn.disabled = false; btn.textContent = 'SIGN IN';
-    }
-}
-
-async function handleRegister(event) {
-    event.preventDefault();
-    const username    = document.getElementById('reg-username')?.value.trim() || '';
-    const email       = document.getElementById('reg-email').value.trim();
-    const pass        = document.getElementById('reg-pass').value;
-    const confirmPass = document.getElementById('reg-confirm-pass').value;
-    const btn         = document.getElementById('register-btn');
-
-    if (pass !== confirmPass) { showToast('Passwords do not match!', true); return; }
-    if (getPasswordStrength(pass).score < 2) { showToast('Please choose a stronger password.', true); return; }
-
-    btn.disabled = true; btn.textContent = 'VERIFYING SECURITY...';
-
-    const submit = async (token) => {
-        try {
-            const res  = await fetch(`${API_BASE}/api/signup`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, nickname: username, password: pass, recaptcha_token: token })
-            });
-            const data = await res.json();
-            if (data.ok && data.logged_in) {
-                showToast('Account created! Welcome, ' + (data.user?.username || 'Adventurer') + '!');
-                showDashboard(data.user);
-            } else {
-                showToast(data.error || 'Registration failed.', true);
-            }
-        } catch (err) {
-            showToast('Cannot reach server.', true);
-        } finally {
-            btn.disabled = false; btn.textContent = 'CREATE ACCOUNT';
-        }
-    };
-
-    if (typeof grecaptcha !== 'undefined' && RECAPTCHA_SITE_KEY) {
-        grecaptcha.ready(() => {
-            grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: 'register' })
-                .then(submit).catch(() => submit(null));
-        });
-    } else {
-        submit(null);
-    }
-}
-
-function showForgotPasswordForm() {
-    document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
-    document.getElementById('forgot-form').classList.add('active');
-    document.getElementById('forgot-email').focus();
-}
-
-function showOTPForm(email) {
-    document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
-    document.getElementById('otp-form').classList.add('active');
-    document.getElementById('otp-email-display').textContent = email;
-    document.querySelectorAll('.otp-input')[0].focus();
-}
-
-async function handleForgotPassword(event) {
-    event.preventDefault();
-    const email = document.getElementById('forgot-email').value.trim();
-    const btn   = document.getElementById('forgot-btn');
-    if (!email) { showToast('Please enter your email address.', true); return; }
-    btn.disabled = true; btn.textContent = 'SENDING...';
-
-    try {
-        const res  = await fetch(`${API_BASE}/api/password/request-reset`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email })
-        });
-        const data = await res.json();
-
-        if (data.ok) {
-            // The server generates the OTP and sends it through EmailJS.
-            resetEmail = email;
-            showOTPForm(email);
-            startResendCooldown(60);
-            showToast('If that email is registered, a reset code is on its way.');
-        } else {
-            showToast(data.error || 'Could not request a reset code.', true);
-        }
-    } catch (err) {
-        showToast(err.message || 'Cannot reach server.', true);
-    } finally {
-        btn.disabled = false; btn.textContent = 'SEND RESET CODE';
-    }
-}
-
-async function handleOTPSubmit(event) {
-    event.preventDefault();
-    let otp = '';
-    document.querySelectorAll('.otp-input').forEach(i => otp += i.value);
-    const newPassword = document.getElementById('otp-new-pass').value;
-    const btn         = document.getElementById('otp-btn');
-
-    if (otp.length !== 6)        { showToast('Please enter the complete 6-digit code.', true); return; }
-    if (!newPassword || newPassword.length < 6) { showToast('Password must be at least 6 characters.', true); return; }
-
-    btn.disabled = true; btn.textContent = 'VERIFYING...';
-
-    try {
-        const res  = await fetch(`${API_BASE}/api/password/verify-reset`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: resetEmail, otp, new_password: newPassword })
-        });
-        const data = await res.json();
-        if (data.ok) {
-            showToast('Password updated successfully!');
-            document.getElementById('otp-form').reset();
-            document.querySelectorAll('.otp-input').forEach(i => i.value = '');
-            updatePasswordStrength('', 'otp');
-            switchTab('login');
-        } else {
-            showToast(data.error || 'Invalid or expired code.', true);
-        }
-    } catch (err) {
-        showToast(err.message || 'Cannot reach server.', true);
-    } finally {
-        btn.disabled = false; btn.textContent = 'RESET PASSWORD';
-    }
-}
-
-function startResendCooldown(seconds) {
-    const link = document.getElementById('resend-otp');
-    if (!link) return;
-    clearInterval(resendCooldownTimer);
-    let left = seconds;
-    link.style.pointerEvents = 'none';
-    link.style.opacity = '0.5';
-    link.textContent = `Resend (${left}s)`;
-    resendCooldownTimer = setInterval(() => {
-        left--;
-        if (left <= 0) {
-            clearInterval(resendCooldownTimer);
-            link.style.pointerEvents = '';
-            link.style.opacity = '';
-            link.textContent = 'Resend';
-        } else {
-            link.textContent = `Resend (${left}s)`;
-        }
-    }, 1000);
-}
-
-async function resendOTP() {
-    if (!resetEmail) {
-        showToast('Enter your email first.', true);
-        showForgotPasswordForm();
-        return;
-    }
-    showToast('Requesting new code...');
-    try {
-        const res  = await fetch(`${API_BASE}/api/password/request-reset`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: resetEmail })
-        });
-        const data = await res.json();
-        if (data.ok) {
-            showToast('A new code has been sent.');
-            startResendCooldown(60);
-        } else {
-            showToast(data.error || 'Could not resend the code.', true);
-        }
-    } catch (err) {
-        showToast('Cannot reach server.', true);
-    }
-}
-
-function setupOTPInputs() {
-    const inputs = document.querySelectorAll('.otp-input');
-    inputs.forEach((input, idx) => {
-        input.addEventListener('input', e => {
-            e.target.value = e.target.value.replace(/[^0-9]/g, '');
-            if (e.target.value.length === 1 && idx < inputs.length - 1) inputs[idx + 1].focus();
-        });
-        input.addEventListener('keydown', e => {
-            if (e.key === 'Backspace' && !e.target.value && idx > 0) inputs[idx - 1].focus();
-            if (e.key === 'Enter') document.getElementById('otp-btn')?.click();
+// The login buttons are plain <a href> links, so the browser navigates on its own.
+// This only adds a toast + loading look; it never blocks or delays the navigation.
+function setupSocialLoginButtons() {
+    [['discordLoginBtn', 'Discord'], ['googleLoginBtn', 'Google']].forEach(([id, name]) => {
+        document.getElementById(id)?.addEventListener('click', () => {
+            try { showToast('Redirecting to ' + name + '...'); } catch (e) { /* ignore */ }
+            document.getElementById(id)?.classList.add('is-loading');
+            // If the page is restored from back/forward cache, make the button usable again.
+            window.addEventListener('pageshow', () => document.getElementById(id)?.classList.remove('is-loading'), { once: true });
         });
     });
 }
-
-function setupDiscordButtons() {
-    document.querySelectorAll('.social-btn.discord').forEach(btn => {
-        btn.addEventListener('click', e => {
-            e.preventDefault();
-            showToast('Redirecting to Discord...');
-            setTimeout(() => { window.location.href = '/login/discord'; }, 500);
-        });
-    });
-}
+function setupDiscordButtons() { setupSocialLoginButtons(); }
+function setupGoogleButton() { /* handled by setupSocialLoginButtons() */ }
 
 // ════════════════════════════════════════════════════════════════════
 // DATA LOADERS
@@ -1845,40 +1492,4 @@ function setEl(id, value) {
     const el = document.getElementById(id);
     if (el) el.textContent = value;
 }
-// FIX: Forgot Password click handler
-document.addEventListener("click", function (event) {
-    const element = event.target.closest(
-        'a, button, [role="button"]'
-    );
-
-    if (!element) return;
-
-    const text = (
-        element.textContent ||
-        element.getAttribute("aria-label") ||
-        ""
-    ).trim();
-
-    if (!/forgot\s*password/i.test(text)) return;
-
-    event.preventDefault();
-
-    const forgotForm = document.getElementById("forgot-form");
-    const emailInput = document.getElementById("forgot-email");
-
-    if (!forgotForm || !emailInput) {
-        console.error(
-            "Forgot Password: #forgot-form or #forgot-email is missing."
-        );
-        return;
-    }
-
-    document.querySelectorAll(".auth-tab, .auth-form")
-        .forEach(function (item) {
-            item.classList.remove("active");
-        });
-
-    forgotForm.classList.add("active");
-    emailInput.focus();
-}, true);
 document.getElementById('logoutBtn')?.addEventListener('click', logout);
