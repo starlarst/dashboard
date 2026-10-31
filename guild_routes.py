@@ -1,9 +1,23 @@
+"""
+Guild Hall routes: my-guild, guild browse/create/join/edit/leave, guild chat, and bot-info.
+Uses the existing `guilds` and `player_stats` tables plus `guild_members`, and adds `guild_messages`.
+
+guilds.data (JSON): tag, description, motd, leader_key, leader_name, created_at, max_members,
+treasury, level, members {account_key: {name, role, joined_at}}.
+
+An account_key is "<auth_type>:<id>" (same as dashboard_app._stats_key). Membership is mirrored in
+player_stats.guild AND guild_members, because dashboard_app.load_game_data() rebuilds guilds from
+guild_members every cycle: if a route only cleared player_stats.guild, the next refresh would put the
+player back in their old guild.
+"""
+import os
 import json
 import logging
 from datetime import datetime, timezone
-from dashboard_app import join_guild, leave_guild
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 log = logging.getLogger(__name__)
 
@@ -17,13 +31,14 @@ def _json(content: dict, status_code: int = 200):
 
 async def _get_json(request: Request) -> dict:
     try:
-        return await request.json()
+        b = await request.json()
+        return b if isinstance(b, dict) else {}
     except Exception:
         return {}
 
 
 def _account_key(user: dict) -> str:
-    return f"{user.get('auth_type', 'email')}:{user['discord_id']}"
+    return f"{user.get('auth_type', 'discord')}:{user['discord_id']}"
 
 
 def _init_guild_tables(db):
@@ -41,6 +56,11 @@ def _init_guild_tables(db):
             "CREATE INDEX IF NOT EXISTS idx_guild_messages_guild ON guild_messages(guild_name, id)"
         )
         conn.commit()
+        try:
+            from db_pg import fix_sequences
+            fix_sequences(conn, ['guild_messages'])
+        except Exception:
+            log.warning('[guild] could not fix sequences', exc_info=True)
     finally:
         conn.close()
 
@@ -102,10 +122,23 @@ def _player_level(conn, account_key):
     return 1
 
 
+def _sync_guild_member(conn, account_key, guild_name):
+    """Mirror membership into guild_members (the table load_game_data() rebuilds guilds from)."""
+    if guild_name and guild_name != '—':
+        conn.execute(
+            "INSERT INTO guild_members (account_key, guild_name) VALUES (?, ?) "
+            "ON CONFLICT(account_key) DO UPDATE SET guild_name=excluded.guild_name, joined_at=CURRENT_TIMESTAMP",
+            (account_key, guild_name),
+        )
+    else:
+        conn.execute("DELETE FROM guild_members WHERE account_key=?", (account_key,))
+
+
 def _set_player_guild(conn, account_key, guild_name):
-    """Keep player_stats.guild in sync so the leaderboard/dashboard (which
-    already read this field) reflect guild membership without changes there."""
-    row = conn.execute("SELECT data FROM player_stats WHERE account_key=?", (account_key,)).fetchone()
+    """Keep player_stats.guild and guild_members in sync with guild membership."""
+    row = conn.execute(
+        "SELECT data FROM player_stats WHERE account_key=? FOR UPDATE", (account_key,)
+    ).fetchone()
     try:
         data = json.loads(row['data']) if row else {}
     except Exception:
@@ -116,6 +149,43 @@ def _set_player_guild(conn, account_key, guild_name):
         "ON CONFLICT(account_key) DO UPDATE SET data=excluded.data, last_updated=CURRENT_TIMESTAMP",
         (account_key, json.dumps(data)),
     )
+    _sync_guild_member(conn, account_key, guild_name)
+
+
+def remove_account_from_guild(conn, account_key):
+    """Take an account out of its guild (promoting a new leader / disbanding if needed).
+    Does NOT commit. Returns the guild name it left, or None if it was in no guild.
+    Also used by dashboard_app when an account is deleted."""
+    name, data = _find_member_guild(conn, account_key)
+    if not name:
+        _sync_guild_member(conn, account_key, None)      # clear any stale guild_members row
+        return None
+
+    members = data.get('members', {})
+    my_role = members.get(account_key, {}).get('role', 'Member')
+    members.pop(account_key, None)
+
+    if not members:
+        # last member leaving disbands the guild
+        conn.execute("DELETE FROM guilds WHERE name=?", (name,))
+        conn.execute("DELETE FROM guild_messages WHERE guild_name=?", (name,))
+    else:
+        if my_role == 'Leader':
+            # promote the longest-tenured officer (or member, if no officers)
+            def _succession_key(item):
+                _key, info = item
+                rank = 0 if info.get('role') == 'Officer' else 1
+                return (rank, info.get('joined_at', ''))
+
+            next_key, next_info = sorted(members.items(), key=_succession_key)[0]
+            next_info['role'] = 'Leader'
+            data['leader_key'] = next_key
+            data['leader_name'] = next_info.get('name', 'Unknown')
+        data['members'] = members
+        _save_guild(conn, name, data)
+
+    _set_player_guild(conn, account_key, '—')
+    return name
 
 
 def _guild_summary(name, data):
@@ -133,12 +203,17 @@ def _guild_summary(name, data):
 
 
 def register_guild_routes(app: FastAPI, db):
-    """db: the same `_db` connection-factory callable used elsewhere in main.py."""
-    _init_guild_tables(db)
+    """db: the same `_db` connection-factory callable used elsewhere. Routes that only read the session
+    are plain `def` (FastAPI runs them in its threadpool); routes that read a body await it first and then
+    do the blocking database work in the threadpool, so Neon's network latency never stalls the event loop."""
+    try:
+        _init_guild_tables(db)
+    except Exception:
+        log.exception('[guild] could not create tables')
 
     # ── my-guild ─────────────────────────────────────────────────────────
     @app.get('/api/my-guild')
-    async def api_my_guild(request: Request):
+    def api_my_guild(request: Request):
         user = request.session.get('user')
         if not user:
             return {'guild': None}
@@ -185,7 +260,7 @@ def register_guild_routes(app: FastAPI, db):
 
     # ── browse ───────────────────────────────────────────────────────────
     @app.get('/api/guilds')
-    async def api_guilds_list():
+    def api_guilds_list():
         conn = db()
         try:
             rows = conn.execute("SELECT name, data FROM guilds ORDER BY name").fetchall()
@@ -202,13 +277,7 @@ def register_guild_routes(app: FastAPI, db):
             conn.close()
 
     # ── create ───────────────────────────────────────────────────────────
-    @app.post('/api/guild/create')
-    async def api_guild_create(request: Request):
-        user = request.session.get('user')
-        if not user:
-            return _json({'success': False, 'error': 'Not logged in'}, 401)
-
-        body = await _get_json(request)
+    def _create(user, body):
         name = str(body.get('name', '')).strip()[:32]
         description = str(body.get('description', '')).strip()[:200]
         tag = str(body.get('tag', '')).strip()[:5]
@@ -252,14 +321,16 @@ def register_guild_routes(app: FastAPI, db):
         finally:
             conn.close()
 
-    # ── join ─────────────────────────────────────────────────────────────
-    @app.post('/api/guild/join')
-    async def api_guild_join(request: Request):
+    @app.post('/api/guild/create')
+    async def api_guild_create(request: Request):
         user = request.session.get('user')
         if not user:
             return _json({'success': False, 'error': 'Not logged in'}, 401)
-
         body = await _get_json(request)
+        return await run_in_threadpool(_create, user, body)
+
+    # ── join ─────────────────────────────────────────────────────────────
+    def _join(user, body):
         guild_id = str(body.get('guild_id', '')).strip()
         if not guild_id:
             return _json({'success': False, 'error': 'Missing guild.'}, 400)
@@ -294,13 +365,16 @@ def register_guild_routes(app: FastAPI, db):
         finally:
             conn.close()
 
-    # ── edit (leader only) ──────────────────────────────────────────────
-    @app.post('/api/guild/edit')
-    async def api_guild_edit(request: Request):
+    @app.post('/api/guild/join')
+    async def api_guild_join(request: Request):
         user = request.session.get('user')
         if not user:
             return _json({'success': False, 'error': 'Not logged in'}, 401)
+        body = await _get_json(request)
+        return await run_in_threadpool(_join, user, body)
 
+    # ── edit (leader only) ──────────────────────────────────────────────
+    def _edit(user, body):
         account_key = _account_key(user)
         conn = db()
         try:
@@ -309,8 +383,6 @@ def register_guild_routes(app: FastAPI, db):
                 return _json({'success': False, 'error': 'You are not in a guild.'}, 400)
             if data.get('members', {}).get(account_key, {}).get('role') != 'Leader':
                 return _json({'success': False, 'error': 'Only the guild leader can edit the guild.'}, 403)
-
-            body = await _get_json(request)
 
             new_name = str(body.get('name', '')).strip()[:32]
             if new_name and new_name != name:
@@ -323,7 +395,7 @@ def register_guild_routes(app: FastAPI, db):
                     "UPDATE guild_messages SET guild_name=? WHERE guild_name=?", (new_name, name)
                 )
                 for key in data.get('members', {}):
-                    _set_player_guild(conn, key, new_name)
+                    _set_player_guild(conn, key, new_name)      # also updates guild_members
                 name = new_name
 
             if 'description' in body:
@@ -344,9 +416,17 @@ def register_guild_routes(app: FastAPI, db):
         finally:
             conn.close()
 
+    @app.post('/api/guild/edit')
+    async def api_guild_edit(request: Request):
+        user = request.session.get('user')
+        if not user:
+            return _json({'success': False, 'error': 'Not logged in'}, 401)
+        body = await _get_json(request)
+        return await run_in_threadpool(_edit, user, body)
+
     # ── leave ────────────────────────────────────────────────────────────
     @app.post('/api/guild/leave')
-    async def api_guild_leave(request: Request):
+    def api_guild_leave(request: Request):
         user = request.session.get('user')
         if not user:
             return _json({'success': False, 'error': 'Not logged in'}, 401)
@@ -354,34 +434,10 @@ def register_guild_routes(app: FastAPI, db):
         account_key = _account_key(user)
         conn = db()
         try:
-            name, data = _find_member_guild(conn, account_key)
+            name = remove_account_from_guild(conn, account_key)
             if not name:
+                conn.commit()           # persists the stale guild_members cleanup, if any
                 return _json({'success': False, 'error': 'You are not in a guild.'}, 400)
-
-            members = data.get('members', {})
-            my_role = members.get(account_key, {}).get('role', 'Member')
-            members.pop(account_key, None)
-
-            if not members:
-                # last member leaving disbands the guild
-                conn.execute("DELETE FROM guilds WHERE name=?", (name,))
-                conn.execute("DELETE FROM guild_messages WHERE guild_name=?", (name,))
-            else:
-                if my_role == 'Leader':
-                    # promote the longest-tenured officer (or member, if no officers)
-                    def _succession_key(item):
-                        key, info = item
-                        rank = 0 if info.get('role') == 'Officer' else 1
-                        return (rank, info.get('joined_at', ''))
-
-                    next_key, next_info = sorted(members.items(), key=_succession_key)[0]
-                    next_info['role'] = 'Leader'
-                    data['leader_key'] = next_key
-                    data['leader_name'] = next_info.get('name', 'Unknown')
-                data['members'] = members
-                _save_guild(conn, name, data)
-
-            _set_player_guild(conn, account_key, '—')
             conn.commit()
             log.info(f"[Guild] {account_key} left '{name}'")
             return {'success': True}
@@ -390,7 +446,7 @@ def register_guild_routes(app: FastAPI, db):
 
     # ── chat ─────────────────────────────────────────────────────────────
     @app.get('/api/chat/messages')
-    async def api_chat_messages(request: Request):
+    def api_chat_messages(request: Request):
         user = request.session.get('user')
         if not user:
             return {'messages': []}
@@ -415,24 +471,16 @@ def register_guild_routes(app: FastAPI, db):
         finally:
             conn.close()
 
-    @app.post('/api/chat/send')
-    async def api_chat_send(request: Request):
-        user = request.session.get('user')
-        if not user:
-            return _json({'ok': False, 'error': 'Not logged in'}, 401)
-
+    def _send(user, body):
         account_key = _account_key(user)
+        text = str(body.get('text', '')).strip()[:200]
+        if not text:
+            return _json({'ok': False, 'error': 'Message is empty.'}, 400)
         conn = db()
         try:
             name, _ = _find_member_guild(conn, account_key)
             if not name:
                 return _json({'ok': False, 'error': 'You are not in a guild.'}, 400)
-
-            body = await _get_json(request)
-            text = str(body.get('text', '')).strip()[:200]
-            if not text:
-                return _json({'ok': False, 'error': 'Message is empty.'}, 400)
-
             conn.execute(
                 "INSERT INTO guild_messages (guild_name, account_key, username, text, created_at) "
                 "VALUES (?, ?, ?, ?, ?)",
@@ -444,19 +492,21 @@ def register_guild_routes(app: FastAPI, db):
         finally:
             conn.close()
 
+    @app.post('/api/chat/send')
+    async def api_chat_send(request: Request):
+        user = request.session.get('user')
+        if not user:
+            return _json({'ok': False, 'error': 'Not logged in'}, 401)
+        body = await _get_json(request)
+        return await run_in_threadpool(_send, user, body)
+
     # ── bot intro overlay ────────────────────────────────────────────────
     @app.get('/api/bot-info')
-    async def api_bot_info():
-        conn = db()
-        try:
-            row = conn.execute(
-                "SELECT nickname FROM auth_users WHERE is_admin=1 ORDER BY auth_id ASC LIMIT 1"
-            ).fetchone()
-        finally:
-            conn.close()
+    def api_bot_info():
+        # The old email-account table (auth_users) is gone, so the owner name comes from the environment.
         return {
             'name': 'RPG Ghost',
-            'owner_username': (row['nickname'] if row and row['nickname'] else 'the bot owner'),
+            'owner_username': os.getenv('BOT_OWNER_NAME') or 'the bot owner',
             'description': (
                 "I'm RPG Ghost, a text-based adventure bot for Discord — battle monsters, "
                 "loot gear, trade in the auction house, and rise up the leaderboard with your guild."
