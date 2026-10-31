@@ -190,7 +190,10 @@ window.addEventListener('resize', positionNavPill);
 function navigateTo(page) {
     const config = pageConfig[page] || pageConfig['overview'];
 
-    document.querySelectorAll('.panel').forEach(p => p.classList.add('hidden'));
+    // Scoped to .dashboard-grid so this can never sweep up and hide the
+    // sidebar (or anything else outside the grid) if it happens to share
+    // the .panel class for styling — only grid cards should be toggled here.
+    document.querySelectorAll('.dashboard-grid .panel').forEach(p => p.classList.add('hidden'));
 
     config.panels.forEach(cls => {
         const el = document.querySelector(`.${cls}`);
@@ -471,20 +474,21 @@ async function logout() {
 function switchTab() { /* no-op: single social login screen now */
 }
 
-// The login buttons are plain <a href> links, so the browser navigates on its own.
-// This only adds a toast + loading look; it never blocks or delays the navigation.
-function setupSocialLoginButtons() {
-    [['discordLoginBtn', 'Discord'], ['googleLoginBtn', 'Google']].forEach(([id, name]) => {
-        document.getElementById(id)?.addEventListener('click', () => {
-            try { showToast('Redirecting to ' + name + '...'); } catch (e) { /* ignore */ }
-            document.getElementById(id)?.classList.add('is-loading');
-            // If the page is restored from back/forward cache, make the button usable again.
-            window.addEventListener('pageshow', () => document.getElementById(id)?.classList.remove('is-loading'), { once: true });
-        });
+function setupDiscordButtons() {
+    document.getElementById('discordLoginBtn')?.addEventListener('click', e => {
+        e.preventDefault();
+        showToast('Redirecting to Discord...');
+        setTimeout(() => { window.location.href = '/login/discord'; }, 500);
     });
 }
-function setupDiscordButtons() { setupSocialLoginButtons(); }
-function setupGoogleButton() { /* handled by setupSocialLoginButtons() */ }
+
+function setupGoogleButton() {
+    document.getElementById('googleLoginBtn')?.addEventListener('click', e => {
+        e.preventDefault();
+        showToast('Redirecting to Google...');
+        setTimeout(() => { window.location.href = '/login/google'; }, 500);
+    });
+}
 
 // ════════════════════════════════════════════════════════════════════
 // DATA LOADERS
@@ -1074,9 +1078,8 @@ function updateMusicButton(btn) {
 // BOT INTRO OVERLAY
 // ════════════════════════════════════════════════════════════════════
 function maybeShowBotIntro() {
-    if (sessionStorage.getItem('botIntroSeen') === '1') return;
-    sessionStorage.setItem('botIntroSeen', '1');
-    launchBotIntro();
+    // Disabled — the welcome overlay no longer shows on login.
+    return;
 }
 
 async function launchBotIntro() {
