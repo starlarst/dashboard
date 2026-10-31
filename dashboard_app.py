@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import urllib.request
 import urllib.error
@@ -183,8 +184,15 @@ if not DATABASE_URL:
 class _PGCursor:
     def __init__(self, cursor): self._cursor = cursor
     def execute(self, sql, params=()):
+        # Translate common SQLite syntax used by dashboard and route modules.
         ignore = "INSERT OR IGNORE" in sql.upper()
-        sql = sql.replace("INSERT OR IGNORE INTO", "INSERT INTO").replace("INSERT OR IGNORE", "INSERT")
+        sql = re.sub(
+            r"INTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT",
+            "BIGSERIAL PRIMARY KEY",
+            sql,
+            flags=re.IGNORECASE,
+        )
+        sql = re.sub(r"INSERT\s+OR\s+IGNORE\s+INTO", "INSERT INTO", sql, flags=re.IGNORECASE)
         sql = sql.replace("?", "%s")
         if ignore and "ON CONFLICT" not in sql.upper():
             sql = sql.rstrip().rstrip(";") + " ON CONFLICT DO NOTHING"
