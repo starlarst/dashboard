@@ -9,7 +9,7 @@ import os
 import re
 import secrets
 import shutil
-import sqlite3
+import psycopg2
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -36,7 +36,7 @@ KEEP_LOUNGE = 1000
 SEND_INTERVAL = 1.0
 TYPING_TTL = 5.0               # seconds a "typing" signal stays alive
 REACTIONS = ('👍', '❤️', '😂', '😮', '😢', '🔥', '🎉', '⚔️')
-KEY_RE = re.compile(r'^(email|discord):[0-9]{1,20}$')
+KEY_RE = re.compile(r'^(email|discord|google):[0-9]{1,30}$')   # Google ids are up to 21 digits
 MAX_PINS = 25                  # pinned messages kept per channel
 
 # ── where data lives ───────────────────────────────────────────────────────
@@ -169,7 +169,7 @@ def _ident(request: Request):
     su = request.session.get('user') if hasattr(request, 'session') else None
     if not su or su.get('discord_id') is None:
         return None
-    auth_type = su.get('auth_type', 'email')
+    auth_type = su.get('auth_type', 'discord')
     uid = str(su['discord_id'])
     key = f'{auth_type}:{uid}'
     if not KEY_RE.match(key):
@@ -190,13 +190,9 @@ def _init_tables():
             id INTEGER PRIMARY KEY AUTOINCREMENT, channel TEXT NOT NULL, sender_key TEXT NOT NULL,
             sender_name TEXT, kind TEXT NOT NULL DEFAULT 'text', body TEXT NOT NULL,
             created_at TEXT NOT NULL, deleted INTEGER NOT NULL DEFAULT 0)""")
-        cols = {r[1] for r in conn.execute("PRAGMA table_info(community_messages)")}
-        if 'reply_to' not in cols:
-            conn.execute("ALTER TABLE community_messages ADD COLUMN reply_to INTEGER")
-        if 'edited_at' not in cols:
-            conn.execute("ALTER TABLE community_messages ADD COLUMN edited_at TEXT")
-        if 'pinned_at' not in cols:
-            conn.execute("ALTER TABLE community_messages ADD COLUMN pinned_at TEXT")
+        conn.execute("ALTER TABLE community_messages ADD COLUMN IF NOT EXISTS reply_to INTEGER")
+        conn.execute("ALTER TABLE community_messages ADD COLUMN IF NOT EXISTS edited_at TEXT")
+        conn.execute("ALTER TABLE community_messages ADD COLUMN IF NOT EXISTS pinned_at TEXT")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_cm_channel ON community_messages(channel, id)")
         # Lounge messages that scrolled out of the live window are moved here, not deleted.
         conn.execute("""CREATE TABLE IF NOT EXISTS community_messages_archive (
@@ -246,7 +242,21 @@ def _init_tables():
         conn.execute("""CREATE TABLE IF NOT EXISTS community_mutes (
             account_key TEXT NOT NULL, channel TEXT NOT NULL, created_at TEXT NOT NULL,
             PRIMARY KEY (account_key, channel))""")
+        # --- Postgres-specific follow-ups -------------------------------------------------
+        # Emoji names were UNIQUE COLLATE NOCASE in SQLite; keep them case-insensitive here.
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_ce_name_ci ON community_emojis (LOWER(name))")
+        # Reactions are listed in the order they were added (SQLite used rowid).
+        conn.execute("ALTER TABLE community_reactions ADD COLUMN IF NOT EXISTS id BIGSERIAL")
+        # REAL is a 4-byte float in Postgres: it cannot hold a unix timestamp. Make sure these are doubles.
+        for tbl, col in (('community_profiles', 'last_seen'), ('community_profiles', 'last_active'),
+                         ('community_sanctions', 'until')):
+            conn.execute(f"ALTER TABLE {tbl} ALTER COLUMN {col} TYPE DOUBLE PRECISION")
         conn.commit()
+        # Rows copied over from SQLite keep their ids; move the serial counters past them.
+        from db_pg import fix_sequences
+        fix_sequences(conn, ['community_messages', 'community_message_edits', 'community_gift_log',
+                             'community_emojis', 'community_uploads', 'community_reports',
+                             'community_admin_log'])
     finally:
         conn.close()
 
@@ -260,7 +270,7 @@ def _touch(conn, ident, active=True):
         "avatar=CASE WHEN excluded.avatar != '' THEN excluded.avatar ELSE community_profiles.avatar END, "
         "last_seen=excluded.last_seen, "
         "last_active=CASE WHEN ? THEN excluded.last_active ELSE community_profiles.last_active END",
-        (ident['key'], ident['name'], ident['avatar'], now, now, _now_iso(), 1 if active else 0))
+        (ident['key'], ident['name'], ident['avatar'], now, now, _now_iso(), bool(active)))
     return conn.execute("SELECT * FROM community_profiles WHERE account_key=?", (ident['key'],)).fetchone()
 
 
@@ -280,7 +290,7 @@ def _reactions_for(conn, ids, me_key):
     agg = {}
     for r in conn.execute(
             f"SELECT message_id, emoji, account_key FROM community_reactions "
-            f"WHERE message_id IN ({ph}) ORDER BY rowid", ids):
+            f"WHERE message_id IN ({ph}) ORDER BY id", ids):
         per_msg = agg.setdefault(r['message_id'], {})
         item = per_msg.setdefault(r['emoji'], {'emoji': r['emoji'], 'count': 0, 'mine': False})
         item['count'] += 1
@@ -366,15 +376,7 @@ def _can_access(ident, channel):
 
 
 def _is_admin(conn, ident):
-    if ident['is_admin']:
-        return True
-    if ident['auth_type'] == 'email':
-        try:
-            r = conn.execute("SELECT is_admin FROM auth_users WHERE auth_id=?", (int(ident['uid']),)).fetchone()
-            return bool(r and r['is_admin'])
-        except Exception:
-            return False
-    return False
+    return bool(ident['is_admin'])
 
 
 def _parse_channel(conn, ident, raw):
@@ -702,7 +704,7 @@ def _post_message(conn, chan, ident, kind, payload, reply_id=None):
         _archive_lounge(conn)
     if chan.startswith('dm:'):   # my own message counts as read
         conn.execute("INSERT INTO community_reads (account_key, channel, last_id) VALUES (?,?,?) "
-                     "ON CONFLICT(account_key, channel) DO UPDATE SET last_id=MAX(community_reads.last_id, excluded.last_id)",
+                     "ON CONFLICT(account_key, channel) DO UPDATE SET last_id=GREATEST(community_reads.last_id, excluded.last_id)",
                      (ident['key'], chan, new_id))
     r = conn.execute("SELECT m.*, p.avatar AS avatar FROM community_messages m "
                      "LEFT JOIN community_profiles p ON p.account_key=m.sender_key WHERE m.id=?", (new_id,)).fetchone()
@@ -900,8 +902,9 @@ def _file_response(path, mime, request, headers):
 
 
 # ───────────────────────────── gift helpers (read/write the dashboard's player_stats store)
-def _load_stats(conn, key):
-    r = conn.execute("SELECT data FROM player_stats WHERE account_key=?", (key,)).fetchone()
+def _load_stats(conn, key, lock=False):
+    r = conn.execute("SELECT data FROM player_stats WHERE account_key=?" + (" FOR UPDATE" if lock else ""),
+                     (key,)).fetchone()
     if not r:
         return None
     try:
@@ -1045,45 +1048,36 @@ def _inv_give(inv, item_id, qty, template):
 
 # ───────────────────────────── transaction runner
 def _exec(ident, fn):
-    """Run fn(conn, ident, profile_row) inside ONE database transaction taken with BEGIN IMMEDIATE.
-    Everything fn writes either all commits or none of it does, and no other writer (including the
-    game engine, which uses the same lock) can change the rows it read in between."""
-    conn = _DB()
+    """Run fn(conn, ident, profile_row) inside ONE Postgres transaction (psycopg2 opens it implicitly).
+    Everything fn writes either all commits or none of it does. Rows that must not change underneath
+    us (the gift code's player_stats rows) are locked with SELECT ... FOR UPDATE."""
+    conn = None
     _prune_state()
-    conn.isolation_level = None            # we control BEGIN / COMMIT / ROLLBACK ourselves
     _tls.pending = []
     try:
-        try:
-            conn.execute('PRAGMA busy_timeout=8000')
-        except sqlite3.Error:
-            pass
-        with _lock:
-            conn.execute('BEGIN IMMEDIATE')
-            try:
-                row = _touch(conn, ident, active=False)
-                result = _ban_block(conn, ident) or fn(conn, ident, row)
-                conn.execute('COMMIT')
-            except BaseException:
-                if conn.in_transaction:
-                    conn.execute('ROLLBACK')
-                _tls.pending = []
-                raise
+        conn = _DB()
+        row = _touch(conn, ident, active=False)
+        result = _ban_block(conn, ident) or fn(conn, ident, row)
+        conn.commit()
         for upload_id in _tls.pending:     # only now that the commit succeeded
             _remove_file(upload_id)
         _tls.pending = []
         return result
-    except sqlite3.OperationalError as e:
-        msg = str(e).lower()
-        if 'locked' in msg or 'busy' in msg:
-            log.warning('[community] database busy: %s', e)
-            return _err('The server is busy right now. Please try again in a moment.', 503)
-        log.exception('[community] database error')
-        return _err('Server error. Please try again.', 500)
+    except psycopg2.OperationalError:
+        if conn:
+            conn.rollback()
+        _tls.pending = []
+        log.exception('[community] database unavailable')
+        return _err('The server is busy right now. Please try again in a moment.', 503)
     except Exception:
+        if conn:
+            conn.rollback()
+        _tls.pending = []
         log.exception('[community] request failed')
         return _err('Server error. Please try again.', 500)
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 # ───────────────────────────── routes
@@ -1170,7 +1164,7 @@ def register_community_routes(app, db_factory):
         def go(conn, ident, row):
             now = time.time()
             conn.execute("UPDATE community_profiles SET last_seen=?, last_active=CASE WHEN ? THEN ? ELSE last_active END "
-                         "WHERE account_key=?", (now, 1 if active else 0, now, ident['key']))
+                         "WHERE account_key=?", (now, bool(active), now, ident['key']))
             return {'ok': True}
         return await _with_conn(request, go)
 
@@ -1185,7 +1179,7 @@ def register_community_routes(app, db_factory):
             if q_clean:
                 sql += " AND lower(name) LIKE ? ESCAPE '\\'"
                 args.append('%' + q_clean.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '%')
-            sql += " ORDER BY name COLLATE NOCASE LIMIT 300"
+            sql += " ORDER BY LOWER(name) LIMIT 300"
             rows = conn.execute(sql, args).fetchall()
             mine_blocked, _theirs = _blocks(conn, ident['key'])
             unread = {}
@@ -1289,7 +1283,7 @@ def register_community_routes(app, db_factory):
                     top = conn.execute("SELECT COALESCE(MAX(id),0) FROM community_messages WHERE channel=?",
                                        (chan,)).fetchone()[0]
                     conn.execute("INSERT INTO community_reads (account_key, channel, last_id) VALUES (?,?,?) "
-                                 "ON CONFLICT(account_key, channel) DO UPDATE SET last_id=MAX(community_reads.last_id, excluded.last_id)",
+                                 "ON CONFLICT(account_key, channel) DO UPDATE SET last_id=GREATEST(community_reads.last_id, excluded.last_id)",
                                  (ident['key'], chan, top))
             if other:
                 prow = conn.execute("SELECT * FROM community_profiles WHERE account_key=?", (other,)).fetchone()
@@ -1686,16 +1680,21 @@ def register_community_routes(app, db_factory):
         ident = _ident(request)
         if not ident:
             return Response(status_code=401)
-        conn = _DB()
-        try:
-            u = conn.execute("SELECT id, uploader_key, mime, kind FROM community_uploads WHERE id=?",
-                             (upload_id,)).fetchone()
-            if not u:
-                return Response(status_code=404)
-            m = conn.execute("SELECT channel FROM community_messages WHERE kind='upload' AND deleted=0 "
-                             "AND body=? ORDER BY id DESC LIMIT 1", (f"{u['kind']}:{u['id']}",)).fetchone()
-        finally:
-            conn.close()
+        def lookup():
+            conn = _DB()
+            try:
+                u = conn.execute("SELECT id, uploader_key, mime, kind FROM community_uploads WHERE id=?",
+                                 (upload_id,)).fetchone()
+                if not u:
+                    return None, None
+                m = conn.execute("SELECT channel FROM community_messages WHERE kind='upload' AND deleted=0 "
+                                 "AND body=? ORDER BY id DESC LIMIT 1", (f"{u['kind']}:{u['id']}",)).fetchone()
+                return u, m
+            finally:
+                conn.close()
+        u, m = await asyncio.to_thread(lookup)
+        if not u:
+            return Response(status_code=404)
         if m:
             if not _can_access(ident, m['channel']):    # a sent upload follows the privacy of its channel
                 return Response(status_code=404)
@@ -1753,8 +1752,11 @@ def register_community_routes(app, db_factory):
             if to in theirs:
                 return _err('You cannot gift this adventurer.', 403)
 
-            sender = _load_stats(conn, ident['key'])
-            receiver = _load_stats(conn, to)
+            # Lock both rows in a fixed order so two gifts (or a gift and a battle) can't overwrite each other.
+            first, second = sorted([ident['key'], to])
+            locked = {first: _load_stats(conn, first, lock=True)}
+            locked[second] = _load_stats(conn, second, lock=True)
+            sender, receiver = locked[ident['key']], locked[to]
             if sender is None:
                 return _err('You do not have a character yet.', 404)
             if receiver is None:
@@ -1837,11 +1839,14 @@ def register_community_routes(app, db_factory):
                 (_now_iso(), ident['key'], to, ledger['kind'], ledger['amount'], ledger['item_id'],
                  ledger['item_name'], ledger['qty'], note or None, message['id']))
             try:
+                conn.execute("SAVEPOINT gift_log")
                 conn.execute("INSERT INTO activity_log (user_id, action, detail) VALUES (?,?,?)",
                              (ident['uid'], 'gift_sent', f'{log_detail} to {to}'))
                 conn.execute("INSERT INTO activity_log (user_id, action, detail) VALUES (?,?,?)",
                              (to.split(':', 1)[1], 'gift_received', f'{log_detail} from {ident["key"]}'))
-            except sqlite3.Error:
+                conn.execute("RELEASE SAVEPOINT gift_log")
+            except psycopg2.Error:
+                conn.execute("ROLLBACK TO SAVEPOINT gift_log")
                 log.warning('[community] could not write gift activity log', exc_info=True)
             return {'ok': True, 'message': message, 'gold': int(sender.get('gold', 0) or 0)}
         return await _with_conn(request, go)
@@ -1854,7 +1859,7 @@ def register_community_routes(app, db_factory):
             rows = conn.execute(
                 "SELECT e.id, e.name, e.animated, e.owner_key, p.name AS owner_name FROM community_emojis e "
                 "LEFT JOIN community_profiles p ON p.account_key=e.owner_key "
-                "ORDER BY e.name COLLATE NOCASE LIMIT 500").fetchall()
+                "ORDER BY LOWER(e.name) LIMIT 500").fetchall()
             return {'ok': True,
                     'limit': MAX_EMOJIS_ADMIN if admin else MAX_EMOJIS_PER_USER,
                     'max_kb': MAX_EMOJI_BYTES // 1024,
@@ -1937,11 +1942,13 @@ def register_community_routes(app, db_factory):
     async def community_emoji_img(emoji_id: int, request: Request):
         if not _ident(request):
             return Response(status_code=401)
-        conn = _DB()
-        try:
-            r = conn.execute("SELECT mime, data FROM community_emojis WHERE id=?", (emoji_id,)).fetchone()
-        finally:
-            conn.close()
+        def lookup():
+            conn = _DB()
+            try:
+                return conn.execute("SELECT mime, data FROM community_emojis WHERE id=?", (emoji_id,)).fetchone()
+            finally:
+                conn.close()
+        r = await asyncio.to_thread(lookup)
         if not r:
             return Response(status_code=404)
         return Response(content=bytes(r['data']), media_type=r['mime'], headers={
@@ -2069,8 +2076,8 @@ def register_community_routes(app, db_factory):
                 "WHERE r.sender_key=? AND r.created_at>=? AND p.created_at<=?",
                 (m['sender_key'], _iso_ago(hours=24), _iso_ago(days=NEW_ACCOUNT_DAYS))).fetchone()[0]
             if n_rep >= AUTO_MUTE_REPORTS and not _sanction(conn, m['sender_key']):
-                conn.execute("INSERT OR REPLACE INTO community_sanctions (account_key, kind, until, reason, by_key, created_at) "
-                             "VALUES (?,?,?,?,?,?)",
+                conn.execute("INSERT INTO community_sanctions (account_key, kind, until, reason, by_key, created_at) "
+                             "VALUES (?,?,?,?,?,?) ON CONFLICT (account_key) DO UPDATE SET kind=excluded.kind, until=excluded.until, reason=excluded.reason, by_key=excluded.by_key, created_at=excluded.created_at",
                              (m['sender_key'], 'mute', time.time() + AUTO_MUTE_HOURS * 3600,
                               'Auto-muted after several reports. A moderator will review.', 'system', _now_iso()))
                 _audit(conn, 'system', 'auto_mute', m['sender_key'], f'{n_rep} different reporters')
@@ -2168,8 +2175,8 @@ def register_community_routes(app, db_factory):
                 hours = 24
             _audit(conn, ident['key'], kind, key,
                    (f'{hours}h' if hours else 'permanent') + ': ' + _clean_text(body.get('reason', ''))[:150])
-            conn.execute("INSERT OR REPLACE INTO community_sanctions (account_key, kind, until, reason, by_key, created_at) "
-                         "VALUES (?,?,?,?,?,?)",
+            conn.execute("INSERT INTO community_sanctions (account_key, kind, until, reason, by_key, created_at) "
+                             "VALUES (?,?,?,?,?,?) ON CONFLICT (account_key) DO UPDATE SET kind=excluded.kind, until=excluded.until, reason=excluded.reason, by_key=excluded.by_key, created_at=excluded.created_at",
                          (key, kind, time.time() + hours * 3600 if hours else 0,
                           _clean_text(body.get('reason', ''))[:200], ident['key'], _now_iso()))
             return {'ok': True}
