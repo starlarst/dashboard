@@ -240,6 +240,14 @@ class _PGCursor:
             return rows
         return self._cursor.fetchall()
 
+    def __iter__(self):
+        # SQLite allows iterating directly over the cursor returned by execute().
+        # Preserve that behavior for legacy route modules.
+        if self._compat_rows is not None:
+            rows, self._compat_rows = self._compat_rows, []
+            return iter(rows)
+        return iter(self._cursor.fetchall())
+
 class _PGConnection:
     def __init__(self):
         self.raw = psycopg2.connect(DATABASE_URL, sslmode="require", connect_timeout=10)
