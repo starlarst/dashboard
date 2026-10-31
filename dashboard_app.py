@@ -12,17 +12,13 @@ from starlette.middleware.sessions import SessionMiddleware
 from dotenv import load_dotenv
 import json, os, threading, time, secrets, hashlib, hmac
 from urllib.parse import urlencode
-from datetime import datetime, timedelta, timezone, UTC
+from datetime import datetime, timedelta, timezone,UTC
 from collections import defaultdict
+import sqlite3
 import requests as http_requests
 import logging
 import socket
 import uvicorn
-
-# Swap sqlite3 for psycopg2
-import psycopg2
-import psycopg2.extras
-from psycopg2 import pool
 
 load_dotenv()
 
@@ -72,14 +68,10 @@ if not ADMIN_EMAIL:
     log.warning("[Admin] ADMIN_EMAIL not set — no account will have admin access.")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = BASE_DIR
 
-# Retrieve Neon connection string
-DATABASE_URL = os.getenv('DATABASE_URL')
-if not DATABASE_URL:
-    log.warning("[DB] DATABASE_URL not set. Falling back to local SQLite (data will be ephemeral on Render).")
-else:
-    log.info("[DB] Using PostgreSQL (Neon) database.")
+DATA_DIR = BASE_DIR
+DB_PATH = os.path.join(BASE_DIR, 'veyra.db')
+log.info(f"[DB] Using database at: {DB_PATH}")
 
 DEFAULT_STATS = {
     'level': 1, 'gold': 100, 'gems': 10, 'special_coins': 0,
@@ -102,16 +94,14 @@ def get_stats(auth_type, uid):
     key = _stats_key(auth_type, uid)
     conn = _db()
     try:
-        cur = conn.cursor()
-        cur.execute("SELECT data FROM player_stats WHERE account_key=%s", (key,))
-        row = cur.fetchone()
+        row = conn.execute("SELECT data FROM player_stats WHERE account_key=?", (key,)).fetchone()
         if row:
             try:
                 return {**DEFAULT_STATS, **json.loads(row['data'])}
             except Exception:
                 pass
-        cur.execute(
-            "INSERT INTO player_stats (account_key, data) VALUES (%s, %s) ON CONFLICT(account_key) DO NOTHING",
+        conn.execute(
+            "INSERT OR IGNORE INTO player_stats (account_key, data) VALUES (?, ?)",
             (key, json.dumps(DEFAULT_STATS)),
         )
         conn.commit()
@@ -134,9 +124,8 @@ def save_stats(auth_type, uid, updates):
     merged = {**get_stats(auth_type, uid), **clean}
     conn = _db()
     try:
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO player_stats (account_key, data, last_updated) VALUES (%s, %s, CURRENT_TIMESTAMP) "
+        conn.execute(
+            "INSERT INTO player_stats (account_key, data, last_updated) VALUES (?, ?, CURRENT_TIMESTAMP) "
             "ON CONFLICT(account_key) DO UPDATE SET data=excluded.data, last_updated=CURRENT_TIMESTAMP",
             (key, json.dumps(merged)),
         )
@@ -184,166 +173,101 @@ DDOS_HONEYPOT_PATHS = [
     '/.git', '/etc/passwd', '/proc/self',
 ]
 
-# ── Database Connection Pool ──────────────────────────────────────────────────
-_db_pool = None
-
-def _get_pool():
-    global _db_pool
-    if _db_pool is None:
-        if DATABASE_URL:
-            # Use a simple connection pool for PostgreSQL (Neon)
-            _db_pool = pool.SimpleConnectionPool(1, 10, dsn=DATABASE_URL)
-        else:
-            # Fallback to sqlite for local testing
-            import sqlite3
-            _db_pool = "sqlite"
-    return _db_pool
-
-class SQLiteWrapper:
-    """Fallback wrapper for local SQLite testing"""
-    def __init__(self):
-        import sqlite3
-        self.conn = sqlite3.connect('veyra.db', check_same_thread=False)
-        self.conn.row_factory = sqlite3.Row
-    def execute(self, query, params=()):
-        # Convert %s to ? for sqlite
-        query = query.replace('%s', '?')
-        return self.conn.execute(query, params)
-    def cursor(self):
-        return self
-    def fetchone(self):
-        return None
-    def fetchall(self):
-        return []
-    def commit(self):
-        self.conn.commit()
-    def close(self):
-        pass # Pool handles closing
-
-class PostgresWrapper:
-    """Wrapper to allow `conn.execute(...)` and `?` placeholders (mimicking sqlite)"""
-    def __init__(self, conn):
-        self._conn = conn
-        self._cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    def execute(self, query, params=()):
-        # Replace sqlite '?' placeholders with postgres '%s'
-        query = query.replace('?', '%s')
-        self._cur.execute(query, params)
-        return self._cur
-    def cursor(self):
-        return self
-    def fetchone(self):
-        return self._cur.fetchone()
-    def fetchall(self):
-        return self._cur.fetchall()
-    def commit(self):
-        self._conn.commit()
-    def close(self):
-        self._cur.close()
-        _get_pool().putconn(self._conn)
-
-def _db():
-    p = _get_pool()
-    if p == "sqlite":
-        return SQLiteWrapper()
-    else:
-        return PostgresWrapper(p.getconn())
-
 # ── Database Initialization ──────────────────────────────────────────────────
 def init_db():
     """Create all necessary tables if they don't exist."""
-    conn = _db()
-    try:
-        cur = conn.cursor()
-        
-        # PostgreSQL syntax (SERIAL instead of AUTOINCREMENT)
-        cur.execute("""CREATE TABLE IF NOT EXISTS users (
-            user_id BIGINT PRIMARY KEY,
-            gold INTEGER DEFAULT 0,
-            gems INTEGER DEFAULT 0,
-            special_coins INTEGER DEFAULT 0,
-            xp INTEGER DEFAULT 0,
-            level INTEGER DEFAULT 1,
-            last_daily TIMESTAMP,
-            last_weekly TIMESTAMP,
-            pity_counter INTEGER DEFAULT 0,
-            total_pulls INTEGER DEFAULT 0,
-            unlocked_characters TEXT DEFAULT '[]',
-            unlocked_weapons TEXT DEFAULT '[]'
-        )""")
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA synchronous=NORMAL;")
+    conn.execute("PRAGMA foreign_keys=ON;")
 
-        cur.execute("""CREATE TABLE IF NOT EXISTS players (
-            user_id BIGINT PRIMARY KEY,
-            data TEXT,
-            last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )""")
+    cur = conn.cursor()
 
-        cur.execute("""CREATE TABLE IF NOT EXISTS guilds (
-            name TEXT PRIMARY KEY,
-            data TEXT,
-            last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS users (
+        user_id INTEGER PRIMARY KEY,
+        gold INTEGER DEFAULT 0,
+        gems INTEGER DEFAULT 0,
+        special_coins INTEGER DEFAULT 0,
+        xp INTEGER DEFAULT 0,
+        level INTEGER DEFAULT 1,
+        last_daily TIMESTAMP,
+        last_weekly TIMESTAMP,
+        pity_counter INTEGER DEFAULT 0,
+        total_pulls INTEGER DEFAULT 0,
+        unlocked_characters TEXT DEFAULT '[]',
+        unlocked_weapons TEXT DEFAULT '[]'
+    )""")
 
-        cur.execute("""CREATE TABLE IF NOT EXISTS world_state (
-            id INTEGER PRIMARY KEY CHECK (id = 1),
-            data TEXT,
-            last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS players (
+        user_id INTEGER PRIMARY KEY,
+        data TEXT,
+        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""")
 
-        cur.execute("""CREATE TABLE IF NOT EXISTS account_links (
-            discord_id TEXT PRIMARY KEY,
-            linked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            last_login TIMESTAMP
-        )""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS guilds (
+        name TEXT PRIMARY KEY,
+        data TEXT,
+        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""")
 
-        cur.execute("""CREATE TABLE IF NOT EXISTS activity_log (
-            id SERIAL PRIMARY KEY,
-            user_id TEXT,
-            action TEXT,
-            detail TEXT,
-            ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS world_state (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        data TEXT,
+        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""")
 
-        cur.execute("""CREATE TABLE IF NOT EXISTS player_stats (
-            account_key TEXT PRIMARY KEY,
-            data TEXT NOT NULL,
-            last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS account_links (
+        discord_id TEXT PRIMARY KEY,
+        linked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        last_login TIMESTAMP
+    )""")
 
-        cur.execute("""CREATE TABLE IF NOT EXISTS announcements (
-            id SERIAL PRIMARY KEY,
-            message TEXT NOT NULL,
-            author TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS activity_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT,
+        action TEXT,
+        detail TEXT,
+        ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""")
 
-        cur.execute("""CREATE TABLE IF NOT EXISTS auctions (
-            id SERIAL PRIMARY KEY,
-            item_name TEXT NOT NULL,
-            seller_id BIGINT NOT NULL,
-            current_bid INTEGER NOT NULL DEFAULT 0,
-            highest_bidder BIGINT,
-            status TEXT NOT NULL DEFAULT 'active',
-            end_time TIMESTAMP NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS player_stats (
+        account_key TEXT PRIMARY KEY,
+        data TEXT NOT NULL,
+        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""")
 
-        cur.execute("""CREATE TABLE IF NOT EXISTS guild_members (
-            account_key TEXT NOT NULL,
-            guild_name TEXT NOT NULL,
-            joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (account_key)
-        )""")
+    cur.execute("""CREATE TABLE IF NOT EXISTS announcements (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        message TEXT NOT NULL,
+        author TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""")
 
-        conn.commit()
-    except Exception as e:
-        log.error(f"[init_db] Error creating tables: {e}")
-        raise e
-    finally:
-        conn.close()
+    cur.execute("""CREATE TABLE IF NOT EXISTS auctions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        item_name TEXT NOT NULL,
+        seller_id INTEGER NOT NULL,
+        current_bid INTEGER NOT NULL DEFAULT 0,
+        highest_bidder INTEGER,
+        status TEXT NOT NULL DEFAULT 'active',
+        end_time TIMESTAMP NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""")
+
+    # ── FIX: Persist guild memberships explicitly ──────────────────────────────
+    cur.execute("""CREATE TABLE IF NOT EXISTS guild_members (
+        account_key TEXT NOT NULL,
+        guild_name TEXT NOT NULL,
+        joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (account_key)
+    )""")
+
+    conn.commit()
+    conn.close()
 
 # ── Secret Key ─────────────────────────────────────────────────────────────
 def _get_or_create_secret_key():
+    """Use FLASK_SECRET if set, otherwise persist a generated key to disk."""
     env_secret = os.environ.get('FLASK_SECRET')
     if env_secret:
         return env_secret
@@ -373,6 +297,12 @@ UPDATE_INTERVAL = 30
 cached_data = {}
 last_updated = None
 _lock = threading.Lock()
+
+def _db():
+    c = sqlite3.connect(DB_PATH, check_same_thread=False)
+    c.execute("PRAGMA journal_mode=WAL;")
+    c.row_factory = sqlite3.Row
+    return c
 
 def _log_activity(user_id, action, detail=""):
     try:
@@ -441,10 +371,7 @@ def load_game_data():
         init_db()
         conn = _db()
         players = {}
-        
-        cur = conn.cursor()
-        cur.execute("SELECT account_key, data FROM player_stats")
-        for row in cur.fetchall():
+        for row in conn.execute("SELECT account_key, data FROM player_stats").fetchall():
             try:
                 d = json.loads(row['data'])
             except Exception:
@@ -452,13 +379,15 @@ def load_game_data():
             d.setdefault('name', row['account_key'])
             players[row['account_key']] = d
 
+        # ── FIX: Rebuild guild membership from guild_members table, not just
+        # from the player stats blob. This ensures guilds survive restarts even
+        # if a guild route forgot to call save_stats with the updated guild field.
         guilds = {}
-        cur.execute(
+        for gm_row in conn.execute(
             "SELECT gm.account_key, gm.guild_name, ps.data "
             "FROM guild_members gm "
             "LEFT JOIN player_stats ps ON gm.account_key = ps.account_key"
-        )
-        for gm_row in cur.fetchall():
+        ).fetchall():
             guild_name = gm_row['guild_name']
             if not guild_name or guild_name == '—':
                 continue
@@ -484,7 +413,7 @@ def load_game_data():
                     guilds[g]['members'].append(member_name)
                     try:
                         conn.execute(
-                            "INSERT INTO guild_members (account_key, guild_name) VALUES (?, ?) ON CONFLICT DO NOTHING",
+                            "INSERT OR IGNORE INTO guild_members (account_key, guild_name) VALUES (?, ?)",
                             (pid, g)
                         )
                     except Exception:
@@ -511,6 +440,7 @@ def _split_account(raw):
 
 # ── Guild helpers — call these from guild_routes.py ──────────────────────────
 def join_guild(auth_type: str, uid: str, guild_name: str):
+    """Add a player to a guild, persisting to both player_stats and guild_members."""
     key = _stats_key(auth_type, uid)
     save_stats(auth_type, uid, {'guild': guild_name})
     conn = _db()
@@ -525,6 +455,7 @@ def join_guild(auth_type: str, uid: str, guild_name: str):
         conn.close()
 
 def leave_guild(auth_type: str, uid: str):
+    """Remove a player from their guild."""
     key = _stats_key(auth_type, uid)
     save_stats(auth_type, uid, {'guild': '—'})
     conn = _db()
@@ -564,7 +495,6 @@ register_community_routes(app, _db)
 
 from guild_routes import register_guild_routes
 register_guild_routes(app, _db)
-
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, 'templates'))
 
 STATIC_DIR = os.path.join(BASE_DIR, 'static')
