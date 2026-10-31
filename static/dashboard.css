@@ -5,7 +5,10 @@
         transition-duration: 0.001ms !important;
     }
 }
+
+/* ── 1. DESIGN TOKENS ── */
 :root {
+    /* Brand identity — preserved exactly */
     --void-black:#0a0a0f;
     --void-light:       #11111f;
     --spectral-teal:#00f3ff;
@@ -2425,8 +2428,7 @@ body.sidebar-is-collapsed .main-content {
     .auth-foot { margin-top: 0.9rem; }
     .social-btns-full { gap: 0.6rem; }
     .social-btn-full { min-height: 48px; }
-}
-/* ══════════════════════════════════════════════════════════════════
+}/* ══════════════════════════════════════════════════════════════════
    SIDEBAR FIX — prevents fixed sidebar bleeding over auth screen
 ══════════════════════════════════════════════════════════════════ */
 
@@ -2436,9 +2438,17 @@ body.sidebar-is-collapsed .main-content {
     display: none !important;
 }
 
-/* 2. Hide sidebar when auth screen is visible (:has() — Chrome 105+, Safari 15.4+, FF 121+) */
-body:has(#auth-screen[style*="flex"]) .sidebar,
-body:has(.auth-screen[style*="flex"]) .sidebar {
+/* 2. Hide sidebar when auth screen is visible.
+   IMPORTANT: match the actual "display: flex" declaration, not just the
+   substring "flex" — a bare [style*="flex"] also matches unrelated inline
+   properties like "align-items: flex-start" or "justify-content: flex-end"
+   that can be present even while the auth screen is hidden, which was
+   wiping out the sidebar everywhere, on every page and viewport.
+   (:has() — Chrome 105+, Safari 15.4+, FF 121+) */
+body:has(#auth-screen[style*="display:flex"]) .sidebar,
+body:has(#auth-screen[style*="display: flex"]) .sidebar,
+body:has(.auth-screen[style*="display:flex"]) .sidebar,
+body:has(.auth-screen[style*="display: flex"]) .sidebar {
     display: none !important;
     pointer-events: none !important;
 }
