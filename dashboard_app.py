@@ -26,71 +26,6 @@ load_dotenv()
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(name)s — %(message)s")
 
-
-
-EMAILJS_SERVICE_ID  = os.getenv("EMAILJS_SERVICE_ID",  "service_miabeqg")
-EMAILJS_TEMPLATE_ID = os.getenv("EMAILJS_TEMPLATE_ID", "template_tntozpq")
-EMAILJS_PUBLIC_KEY  = os.getenv("EMAILJS_PUBLIC_KEY",  "eMQUadu5q-_pONmwc")
-EMAILJS_PRIVATE_KEY = os.getenv("EMAILJS_PRIVATE_KEY", "4buatakEvr4OCHJz37e4g")
-
-def _emailjs_configured() -> bool:
-    return not any(
-        v.startswith("YOUR_") or not v.strip()
-        for v in (EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID,
-                  EMAILJS_PUBLIC_KEY, EMAILJS_PRIVATE_KEY)
-    )
-
-
-def send_reset_email(email: str, otp: str):
-    email = email.strip().lower()
-
-    if not email:
-        raise ValueError("Cannot send reset email: recipient is empty")
-
-    if not _emailjs_configured():
-        raise RuntimeError(
-            "EmailJS is not configured. Set EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, "
-            "EMAILJS_PUBLIC_KEY and EMAILJS_PRIVATE_KEY in your .env file."
-        )
-
-    payload = {
-        "service_id": EMAILJS_SERVICE_ID,
-        "template_id": EMAILJS_TEMPLATE_ID,
-        "user_id": EMAILJS_PUBLIC_KEY,
-        "accessToken": EMAILJS_PRIVATE_KEY,
-        "template_params": {
-            "to_email": email,
-            "otp_code": otp,
-            "from_name": "RPG Ghost",
-        },
-    }
-
-    request = urllib.request.Request(
-        "https://api.emailjs.com/api/v1.0/email/send",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (compatible; RPGGhostDashboard/1.0)",
-            "Origin": "http://localhost",
-        },
-        method="POST",
-    )
-
-    try:
-        with urllib.request.urlopen(request, timeout=15) as response:
-            result = response.read().decode("utf-8", errors="replace")
-            log.info("[EmailJS] HTTP %s: %s", response.status, result)
-
-    except urllib.error.HTTPError as exc:
-        details = exc.read().decode("utf-8", errors="replace")
-        log.error("[EmailJS] HTTP %s: %s", exc.code, details)
-        log.info("[EmailJS] Recipient provided: %s", bool(email.strip()))
-        raise RuntimeError(
-            f"EmailJS failed ({exc.code}): {details[:500]}"
-        ) from exc
-
-
-# ── Load Configuration from .env ──────────────────────────────────────────────
 DISCORD_CLIENT_ID = os.getenv('DISCORD_CLIENT_ID')
 if not DISCORD_CLIENT_ID:
     raise ValueError("DISCORD_CLIENT_ID not found in .env file!")
@@ -105,31 +40,51 @@ if not DISCORD_REDIRECT_URI:
 DISCORD_REDIRECT_URI = DISCORD_REDIRECT_URI.strip()
 
 DISCORD_API = 'https://discord.com/api'
+
+GOOGLE_CLIENT_ID = ('1039889826782-sbk3rm2io1a6r3eiu6oh1cgs7chrlkac.apps.googleusercontent.com')
+if not GOOGLE_CLIENT_ID:
+    raise ValueError("GOOGLE_CLIENT_ID not found in .env file!")
+
+GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
+if not GOOGLE_CLIENT_SECRET:
+    raise ValueError("GOOGLE_CLIENT_SECRET not found in .env file!")
+
+GOOGLE_REDIRECT_URI = ('https://rpghost.qzz.io/callback')
+if not GOOGLE_REDIRECT_URI:
+    raise ValueError("GOOGLE_REDIRECT_URI not found in .env file!")
+GOOGLE_REDIRECT_URI = GOOGLE_REDIRECT_URI.strip()
+
+GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
+GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
+GOOGLE_USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo'
+
 RECAPTCHA_SECRET = os.getenv('RECAPTCHA_SECRET', '')
 RECAPTCHA_VERIFY_URL = 'https://www.google.com/recaptcha/api/siteverify'
 if not RECAPTCHA_SECRET:
     log.warning("[reCAPTCHA] RECAPTCHA_SECRET not set — reCAPTCHA verification is disabled.")
 
+ADMIN_EMAIL = os.getenv('ADMIN_EMAIL')
+if not ADMIN_EMAIL:
+    log.warning("[Admin] ADMIN_EMAIL not set — no account will have admin access.")
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# ── FIX: Use a persistent data directory so the DB survives Render restarts.
-# On Render, mount a Disk at /data and set DATA_DIR=/data in env vars.
-# Locally it falls back to BASE_DIR so nothing changes for dev.
 DATA_DIR = os.getenv('DATA_DIR', BASE_DIR)
 os.makedirs(DATA_DIR, exist_ok=True)
 DB_PATH = os.path.join(DATA_DIR, 'veyra.db')
 log.info(f"[DB] Using database at: {DB_PATH}")
 
-# ── Standalone stats store ─────────────────────────────────────────────────────
 DEFAULT_STATS = {
     'level': 1, 'gold': 100, 'gems': 10, 'special_coins': 0,
     'xp': 0, 'xp_needed': 100, 'char_class': 'Adventurer',
     'battles_won': 0, 'prestige_level': 0, 'guild': '—',
+    'name': None, 'avatar': None, 'bio': '',
 }
 EDITABLE_STAT_FIELDS = {
     'level': int, 'gold': int, 'gems': int, 'special_coins': int,
     'xp': int, 'xp_needed': int, 'char_class': str,
     'battles_won': int, 'prestige_level': int, 'guild': str, 'name': str,
+    'avatar': str, 'bio': str,
 }
 
 def _stats_key(auth_type, uid):
@@ -163,7 +118,7 @@ def save_stats(auth_type, uid, updates):
         if not caster:
             continue
         try:
-            clean[k] = max(0, caster(v)) if caster is int else str(v)[:60]
+            clean[k] = max(0, caster(v)) if caster is int else str(v)[:500]
         except (ValueError, TypeError):
             continue
     key = _stats_key(auth_type, uid)
@@ -182,79 +137,22 @@ def save_stats(auth_type, uid, updates):
 
 def _apply_live_stats(session_user):
     """Overlay fresh DB stats on a session user dict (fixes stale profile data)."""
-    stats = get_stats(session_user.get('auth_type', 'email'), session_user['discord_id'])
+    stats = get_stats(session_user.get('auth_type', 'discord'), session_user['discord_id'])
     for k in ('level', 'gold', 'gems', 'special_coins', 'xp', 'xp_needed', 'char_class'):
         session_user[k] = stats.get(k, session_user.get(k))
     session_user['battles_won'] = stats.get('battles_won', 0)
     session_user['prestige_level'] = stats.get('prestige_level', 0)
     session_user['guild'] = stats.get('guild', '—')
+    session_user['bio'] = stats.get('bio', session_user.get('bio', ''))
     return session_user
 
 # ── In-memory storage (ephemeral by design — rate limits, bans, sessions) ─────
-_link_tokens = {}
 _rate_limits = {}
 _session_log = {}
 _ip_connections = defaultdict(int)
 _ip_banned = {}
 _global_req_count = {'n': 0}
 _req_id_counter = 0
-
-# ── FIX: Persist password reset tokens in the DB so they survive restarts ─────
-# (In-memory _reset_tokens is kept as a fast cache; DB is the source of truth)
-_reset_tokens = {}
-
-def _store_reset_token(email: str, otp: str, expires_at: datetime):
-    """Persist a reset token to the DB."""
-    conn = _db()
-    try:
-        conn.execute(
-            "INSERT INTO password_reset_tokens (email, otp, expires_at) VALUES (?, ?, ?) "
-            "ON CONFLICT(email) DO UPDATE SET otp=excluded.otp, expires_at=excluded.expires_at",
-            (email, otp, expires_at.isoformat())
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-def _load_reset_token(email: str):
-    """Load a reset token from the DB."""
-    conn = _db()
-    try:
-        row = conn.execute(
-            "SELECT otp, expires_at FROM password_reset_tokens WHERE email=?", (email,)
-        ).fetchone()
-        if row:
-            return {
-                'otp': row['otp'],
-                'expires_at': datetime.fromisoformat(row['expires_at'])
-            }
-        return None
-    finally:
-        conn.close()
-
-def _delete_reset_token(email: str):
-    """Remove a used/expired reset token from the DB."""
-    conn = _db()
-    try:
-        conn.execute("DELETE FROM password_reset_tokens WHERE email=?", (email,))
-        conn.commit()
-    finally:
-        conn.close()
-
-def _purge_reset_tokens():
-    """Remove expired password-reset tokens from DB and memory cache."""
-    now = datetime.now(timezone.utc)
-    # Purge memory cache
-    expired_mem = [k for k, v in _reset_tokens.items() if now > v['expires_at']]
-    for k in expired_mem:
-        del _reset_tokens[k]
-    # Purge DB
-    conn = _db()
-    try:
-        conn.execute("DELETE FROM password_reset_tokens WHERE expires_at < ?", (now.isoformat(),))
-        conn.commit()
-    finally:
-        conn.close()
 
 # ── DDoS Protection Settings ──────────────────────────────────────────────────
 DDOS_BURST_LIMIT = 40
@@ -333,33 +231,6 @@ def init_db():
         ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )""")
 
-    cur.execute("""CREATE TABLE IF NOT EXISTS auth_users (
-        auth_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        email TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        nickname TEXT,
-        avatar TEXT,
-        bio TEXT,
-        is_admin INTEGER DEFAULT 0,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        last_login TIMESTAMP
-    )""")
-
-    # Migrate older auth_users tables
-    existing_cols = {row[1] for row in cur.execute("PRAGMA table_info(auth_users)").fetchall()}
-    required_cols = {
-        'nickname': "TEXT",
-        'avatar': "TEXT",
-        'bio': "TEXT",
-        'is_admin': "INTEGER DEFAULT 0",
-        'created_at': "TIMESTAMP",
-        'last_login': "TIMESTAMP",
-    }
-    for col_name, col_type in required_cols.items():
-        if col_name not in existing_cols:
-            cur.execute(f"ALTER TABLE auth_users ADD COLUMN {col_name} {col_type}")
-            log.info(f"[DB Migration] Added missing column '{col_name}' to auth_users")
-
     cur.execute("""CREATE TABLE IF NOT EXISTS player_stats (
         account_key TEXT PRIMARY KEY,
         data TEXT NOT NULL,
@@ -384,17 +255,7 @@ def init_db():
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )""")
 
-    # ── FIX: Persist password reset tokens so they survive restarts ────────────
-    cur.execute("""CREATE TABLE IF NOT EXISTS password_reset_tokens (
-        email TEXT PRIMARY KEY,
-        otp TEXT NOT NULL,
-        expires_at TIMESTAMP NOT NULL
-    )""")
-
     # ── FIX: Persist guild memberships explicitly ──────────────────────────────
-    # Guild membership is the source of truth here; player_stats.guild is
-    # kept in sync on every join/leave via save_stats so load_game_data()
-    # always rebuilds correctly after a restart.
     cur.execute("""CREATE TABLE IF NOT EXISTS guild_members (
         account_key TEXT NOT NULL,
         guild_name TEXT NOT NULL,
@@ -412,9 +273,6 @@ def _get_or_create_secret_key():
     if env_secret:
         return env_secret
 
-    # ── FIX: Store secret key in DATA_DIR so it persists across restarts.
-    # If the key changes every restart, all existing sessions are invalidated
-    # and logged-out users have to sign in again unnecessarily.
     secret_file = os.path.join(DATA_DIR, '.flask_secret_key')
     try:
         if os.path.exists(secret_file):
@@ -440,30 +298,6 @@ UPDATE_INTERVAL = 30
 cached_data = {}
 last_updated = None
 _lock = threading.Lock()
-
-# ── Password Helpers ──────────────────────────────────────────────────────────
-def _hash_password(password, salt=None):
-    if salt is None:
-        salt = secrets.token_hex(16)
-    iterations = 260_000
-    derived = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), iterations)
-    return f"pbkdf2${iterations}${salt}${derived.hex()}"
-
-def _verify_password(password, stored):
-    try:
-        if stored.startswith('pbkdf2$'):
-            _, iterations, salt, hex_digest = stored.split('$', 3)
-            iterations = int(iterations)
-            derived = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), iterations)
-            return hmac.compare_digest(derived.hex(), hex_digest)
-        if ':' in stored:
-            salt, hash_value = stored.split(':', 1)
-            computed = hashlib.sha256((salt + password).encode()).hexdigest()
-            return hmac.compare_digest(computed, hash_value)
-        return hmac.compare_digest(hashlib.sha256(password.encode()).hexdigest(), stored)
-    except Exception as e:
-        log.warning(f"[auth] password verify error: {e}")
-        return False
 
 def _db():
     c = sqlite3.connect(DB_PATH, check_same_thread=False)
@@ -525,48 +359,10 @@ async def _get_json(request: Request) -> dict:
     except Exception:
         return {}
 
-ADMIN_EMAIL = os.getenv('ADMIN_EMAIL')
-_ADMIN_PASSWORD_ENV = os.getenv('ADMIN_PASSWORD')
-_ADMIN_PASSWORD_GENERATED = False
-if not _ADMIN_PASSWORD_ENV:
-    _ADMIN_PASSWORD_ENV = secrets.token_urlsafe(18)
-    _ADMIN_PASSWORD_GENERATED = True
-ADMIN_PASSWORD = _ADMIN_PASSWORD_ENV
-ADMIN_PASSWORD_HASH = _hash_password(ADMIN_PASSWORD) if ADMIN_EMAIL else None
-
-def ensure_admin_user():
-    if not ADMIN_EMAIL:
-        log.warning("[Admin] ADMIN_EMAIL not set — skipping admin account bootstrap.")
-        return
-
-    conn = None
-    try:
-        conn = _db()
-        existing = conn.execute(
-            "SELECT auth_id FROM auth_users WHERE email = ?", (ADMIN_EMAIL,)
-        ).fetchone()
-
-        if not existing:
-            conn.execute(
-                """INSERT INTO auth_users (email, password_hash, nickname, avatar, bio, is_admin, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (ADMIN_EMAIL, ADMIN_PASSWORD_HASH, "Admin",
-                 "https://api.dicebear.com/7.x/avataaars/svg?seed=Admin&backgroundColor=bc13fe",
-                 "System Administrator", 1, datetime.now(timezone.utc).isoformat())
-            )
-            conn.commit()
-            log.info(f"[Admin] Admin account created with email: {ADMIN_EMAIL}")
-            if _ADMIN_PASSWORD_GENERATED:
-                log.warning(
-                    "[Admin] ADMIN_PASSWORD was not set — generated a random one-time "
-                    f"password for {ADMIN_EMAIL}: {ADMIN_PASSWORD}  "
-                    "Log in now and change it, then set ADMIN_PASSWORD/remove this from logs."
-                )
-    except Exception as e:
-        log.error(f"[Admin] Failed to create admin account: {e}")
-    finally:
-        if conn:
-            conn.close()
+def _is_admin_email(email: str) -> bool:
+    if not ADMIN_EMAIL or not email:
+        return False
+    return email.strip().lower() == ADMIN_EMAIL.strip().lower()
 
 # ── Game Data Helpers ────────────────────────────────────────────────────────
 def load_game_data():
@@ -576,17 +372,12 @@ def load_game_data():
         init_db()
         conn = _db()
         players = {}
-        for row in conn.execute(
-            "SELECT ps.account_key, ps.data, a.nickname, a.avatar "
-            "FROM player_stats ps "
-            "LEFT JOIN auth_users a ON ps.account_key = 'email:' || a.auth_id"
-        ).fetchall():
+        for row in conn.execute("SELECT account_key, data FROM player_stats").fetchall():
             try:
                 d = json.loads(row['data'])
             except Exception:
                 continue
-            d.setdefault('name', row['nickname'] or row['account_key'])
-            d['avatar'] = row['avatar']
+            d.setdefault('name', row['account_key'])
             players[row['account_key']] = d
 
         # ── FIX: Rebuild guild membership from guild_members table, not just
@@ -608,15 +399,12 @@ def load_game_data():
             member_name = pd.get('name', gm_row['account_key'])
             guilds.setdefault(guild_name, {'members': []})['members'].append(member_name)
 
-            # Keep player_stats in sync — if the guild field drifted, fix it
             if pd.get('guild') != guild_name:
                 atype, uid = _split_account(gm_row['account_key'])
                 save_stats(atype, uid, {'guild': guild_name})
                 if gm_row['account_key'] in players:
                     players[gm_row['account_key']]['guild'] = guild_name
 
-        # Also pick up guilds from player_stats for players not in guild_members
-        # (backwards-compat: data created before the guild_members table existed)
         for pid, pd in players.items():
             g = pd.get('guild')
             if g and g != '—':
@@ -624,7 +412,6 @@ def load_game_data():
                 member_name = pd.get('name', pid)
                 if member_name not in guilds[g]['members']:
                     guilds[g]['members'].append(member_name)
-                    # Back-fill guild_members so future restarts are covered
                     try:
                         conn.execute(
                             "INSERT OR IGNORE INTO guild_members (account_key, guild_name) VALUES (?, ?)",
@@ -649,8 +436,8 @@ def _bg_updater():
 def _split_account(raw):
     if ':' in raw:
         t, u = raw.split(':', 1)
-        return (t if t in ('email', 'discord') else 'email'), u
-    return 'email', raw
+        return (t if t in ('discord', 'google') else 'discord'), u
+    return 'discord', raw
 
 # ── Guild helpers — call these from guild_routes.py ──────────────────────────
 def join_guild(auth_type: str, uid: str, guild_name: str):
@@ -683,7 +470,6 @@ def leave_guild(auth_type: str, uid: str):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    ensure_admin_user()
     load_game_data()
     threading.Thread(target=_bg_updater, daemon=True).start()
     yield
@@ -855,13 +641,16 @@ async def discord_callback(request: Request):
         if avatar_hash
         else f"https://cdn.discordapp.com/embed/avatars/{user_id % 5}.png"
     )
+    email = discord_user.get('email', '')
 
     game_data = get_stats('discord', str(user_id))
+
+    is_admin = _is_admin_email(email)
 
     request.session['user'] = {
         'discord_id': str(user_id),
         'username': discord_user.get('global_name') or discord_user.get('username', 'Player'),
-        'email': discord_user.get('email', ''),
+        'email': email,
         'avatar': avatar_url,
         'level': game_data.get('level', 1),
         'gold': game_data.get('gold', 0),
@@ -873,8 +662,10 @@ async def discord_callback(request: Request):
         'login_at': datetime.now(UTC).isoformat(),
         'ip': ip,
         'auth_type': 'discord',
-        'is_admin': False
+        'is_admin': is_admin
     }
+
+    save_stats('discord', str(user_id), {'name': request.session['user']['username'], 'avatar': avatar_url})
 
     sid = str(user_id)
     _session_log.setdefault(sid, []).append({
@@ -901,209 +692,123 @@ async def discord_callback(request: Request):
 
     return RedirectResponse('/?auth=success')
 
-# ── Auth Routes ──────────────────────────────────────────────────────────────
-@app.post('/api/signup')
-async def api_signup(request: Request):
+# ── Google OAuth ──────────────────────────────────────────────────────────────
+@app.get('/login/google')
+async def google_login(request: Request):
+    state = secrets.token_urlsafe(32)
+    request.session['oauth_state'] = state
+    params = {
+        'client_id': GOOGLE_CLIENT_ID,
+        'redirect_uri': GOOGLE_REDIRECT_URI,
+        'response_type': 'code',
+        'scope': 'openid email profile',
+        'state': state,
+        'access_type': 'online',
+        'prompt': 'select_account',
+    }
+    oauth_url = f"{GOOGLE_AUTH_URL}?{urlencode(params)}"
+    return RedirectResponse(oauth_url)
+
+@app.get('/callback/google')
+async def google_callback(request: Request):
     ip = _get_real_ip(request)
+    code = request.query_params.get('code')
+    error = request.query_params.get('error')
+    state = request.query_params.get('state', '')
 
-    if _strict_rate_limit(ip, max_calls=8, window=600, scope='signup'):
-        return _json({'ok': False, 'error': 'Too many signup attempts. Please wait a few minutes.'}, 429)
+    expected_state = request.session.pop('oauth_state', None)
+    if not expected_state or not hmac.compare_digest(state, expected_state):
+        log.warning(f"[OAuth/Google] state mismatch/missing from {ip} — possible CSRF, rejecting callback")
+        return RedirectResponse('/?auth=failed')
 
-    data = await _get_json(request)
-    email = str(data.get('email', '')).strip().lower()
-    password = str(data.get('password', '')).strip()
-    nickname = str(data.get('nickname', '')).strip() or email.split('@')[0]
+    if error or not code:
+        log.warning(f"[OAuth/Google] callback error param={error} code_present={bool(code)}")
+        return RedirectResponse('/?auth=failed')
 
-    if not email or '@' not in email:
-        return _json({'ok': False, 'error': 'Please enter a valid email address.'}, 400)
+    token_res = http_requests.post(
+        GOOGLE_TOKEN_URL,
+        data={
+            'client_id': GOOGLE_CLIENT_ID,
+            'client_secret': GOOGLE_CLIENT_SECRET,
+            'grant_type': 'authorization_code',
+            'code': code,
+            'redirect_uri': GOOGLE_REDIRECT_URI,
+        },
+        headers={'Content-Type': 'application/x-www-form-urlencoded'},
+    )
 
-    if not password or len(password) < 6:
-        return _json({'ok': False, 'error': 'Password must be at least 6 characters.'}, 400)
+    if token_res.status_code != 200:
+        log.warning(f'[OAuth/Google] Token exchange failed ({token_res.status_code}): {token_res.text}')
+        return RedirectResponse('/?auth=failed')
 
-    if len(password) > 128:
-        return _json({'ok': False, 'error': 'Password is too long.'}, 400)
+    access_token = token_res.json().get('access_token')
 
-    common_passwords = ['password', 'password1', '12345678', '123456789', 'qwerty123',
-                        'letmein', 'iloveyou', 'admin123', 'welcome1', 'monkey123']
-    if password.lower() in common_passwords:
-        return _json({'ok': False, 'error': 'That password is too common.'}, 400)
+    user_res = http_requests.get(
+        GOOGLE_USERINFO_URL,
+        headers={'Authorization': f'Bearer {access_token}'},
+    )
 
-    conn = None
-    try:
-        conn = _db()
-        existing = conn.execute(
-            "SELECT auth_id FROM auth_users WHERE email = ?", (email,)
-        ).fetchone()
+    if user_res.status_code != 200:
+        log.warning(f'[OAuth/Google] userinfo failed ({user_res.status_code}): {user_res.text}')
+        return RedirectResponse('/?auth=failed')
 
-        if existing:
-            return _json({'ok': False, 'error': 'This email is already registered.'}, 400)
+    google_user = user_res.json()
+    user_id = google_user.get('sub')
+    if not user_id:
+        log.warning('[OAuth/Google] userinfo response missing sub (unique id)')
+        return RedirectResponse('/?auth=failed')
 
-        password_hash = _hash_password(password)
-        avatar_url = f"https://ui-avatars.com/api/?name={nickname}&background=5865F2&color=fff&size=64"
+    email = google_user.get('email', '')
+    name = google_user.get('name') or (email.split('@')[0] if email else 'Player')
+    avatar_url = google_user.get('picture') or f"https://ui-avatars.com/api/?name={name}&background=4285F4&color=fff&size=64"
 
-        cursor = conn.execute(
-            """INSERT INTO auth_users (email, password_hash, nickname, avatar, created_at)
-               VALUES (?, ?, ?, ?, ?)""",
-            (email, password_hash, nickname, avatar_url, datetime.now(UTC).isoformat())
-        )
-        auth_id = cursor.lastrowid
-        conn.commit()
+    game_data = get_stats('google', user_id)
 
-        _log_activity(auth_id, 'signup', f'email={email}')
-        log.info(f"[Signup] New account created: {email} (ID: {auth_id})")
+    is_admin = _is_admin_email(email)
 
-        get_stats('email', auth_id)
-        request.session['user'] = {
-            'discord_id': str(auth_id),
-            'username': nickname,
-            'email': email,
-            'avatar': avatar_url,
-            'level': 1,
-            'gold': 100,
-            'gems': 10,
-            'special_coins': 0,
-            'char_class': 'Adventurer',
-            'xp': 0,
-            'xp_needed': 100,
-            'login_at': datetime.now(UTC).isoformat(),
-            'ip': ip,
-            'auth_type': 'email',
-            'is_admin': False
-        }
-        _apply_live_stats(request.session['user'])
+    request.session['user'] = {
+        'discord_id': user_id,  # legacy key name — holds the account id regardless of provider
+        'username': name,
+        'email': email,
+        'avatar': avatar_url,
+        'level': game_data.get('level', 1),
+        'gold': game_data.get('gold', 0),
+        'gems': game_data.get('gems', 0),
+        'special_coins': game_data.get('special_coins', 0),
+        'char_class': game_data.get('char_class', '—'),
+        'xp': game_data.get('xp', 0),
+        'xp_needed': game_data.get('xp_needed', 100),
+        'login_at': datetime.now(UTC).isoformat(),
+        'ip': ip,
+        'auth_type': 'google',
+        'is_admin': is_admin
+    }
 
-        sid = str(auth_id)
-        _session_log.setdefault(sid, []).append({
-            'ip': ip,
-            'ua': request.headers.get('user-agent', '')[:120],
-            'at': datetime.now(UTC).isoformat(),
-        })
-        _session_log[sid] = _session_log[sid][-10:]
+    save_stats('google', user_id, {'name': name, 'avatar': avatar_url})
 
-        return _json({
-            'ok': True,
-            'logged_in': True,
-            'message': 'Welcome to RPG Ghost! 🎮',
-            'user': request.session['user'],
-            'is_admin': False
-        }, 201)
+    sid = f"google:{user_id}"
+    _session_log.setdefault(sid, []).append({
+        'ip': ip,
+        'ua': request.headers.get('user-agent', '')[:120],
+        'at': datetime.now(UTC).isoformat(),
+    })
+    _session_log[sid] = _session_log[sid][-10:]
 
-    except Exception as e:
-        log.error(f"[Signup] Database error: {e}")
-        return _json({'ok': False, 'error': 'Something went wrong. Please try again.'}, 500)
-    finally:
-        if conn:
-            conn.close()
+    _log_activity(sid, "login", f"from {ip}")
+    log.info(f"[OAuth/Google] Logged in: {name} ({email})")
 
-@app.post('/api/login')
-async def api_login(request: Request):
-    ip = _get_real_ip(request)
+    return RedirectResponse('/?auth=success')
 
-    if _strict_rate_limit(ip, max_calls=10, window=300, scope='login'):
-        return _json({'ok': False, 'error': 'Too many login attempts. Please wait a moment.'}, 429)
-
-    data = await _get_json(request)
-    email = str(data.get('email', '')).strip().lower()
-    password = str(data.get('password', '')).strip()
-    keep_signed_in = bool(data.get('keep_signed_in', False))  # noqa: F841
-
-    if not email or not password:
-        return _json({'ok': False, 'error': 'Please fill in all fields.'}, 400)
-
-    conn = None
-    try:
-        conn = _db()
-        user = conn.execute(
-            "SELECT auth_id, email, password_hash, nickname, avatar, bio, is_admin, created_at, last_login "
-            "FROM auth_users WHERE lower(email) = ?",
-            (email,)
-        ).fetchone()
-
-        if not user:
-            return _json({'ok': False, 'error': 'Invalid email or password.'}, 401)
-
-        if not _verify_password(password, user['password_hash']):
-            return _json({'ok': False, 'error': 'Invalid email or password.'}, 401)
-
-        conn.execute(
-            "UPDATE auth_users SET last_login = ? WHERE auth_id = ?",
-            (datetime.now(UTC).isoformat(), user['auth_id'])
-        )
-        conn.commit()
-
-        nickname = user['nickname'] or email.split('@')[0]
-        avatar_url = user['avatar'] or f"https://ui-avatars.com/api/?name={nickname}&background=5865F2&color=fff&size=64"
-
-        request.session['user'] = {
-            'discord_id': str(user['auth_id']),
-            'username': nickname,
-            'email': user['email'],
-            'avatar': avatar_url,
-            'bio': user['bio'] or '',
-            'level': 1,
-            'gold': 100,
-            'gems': 10,
-            'special_coins': 0,
-            'char_class': 'Adventurer',
-            'xp': 0,
-            'xp_needed': 100,
-            'login_at': datetime.now(UTC).isoformat(),
-            'ip': ip,
-            'auth_type': 'email',
-            'is_admin': bool(user['is_admin'])
-        }
-        _apply_live_stats(request.session['user'])
-
-        sid = str(user['auth_id'])
-        _session_log.setdefault(sid, []).append({
-            'ip': ip,
-            'ua': request.headers.get('user-agent', '')[:120],
-            'at': datetime.now(UTC).isoformat(),
-        })
-        _session_log[sid] = _session_log[sid][-10:]
-
-        _log_activity(user['auth_id'], 'login', f'from {ip}')
-        log.info(f"[Login] {email} logged in successfully")
-
-        return _json({
-            'ok': True,
-            'logged_in': True,
-            'message': f'Welcome back, {nickname}! 🎉',
-            'user': request.session['user'],
-            'is_admin': bool(user['is_admin'])
-        })
-
-    except Exception as e:
-        log.error(f"[Login] Error: {e}")
-        return _json({'ok': False, 'error': 'Something went wrong. Please try again.'}, 500)
-    finally:
-        if conn:
-            conn.close()
-
-@app.post('/api/register')
-async def api_register_alias(request: Request):
-    return await api_signup(request)
-
+# ── Session Routes ───────────────────────────────────────────────────────────
 @app.get('/api/me')
 async def api_me(request: Request):
     user = request.session.get('user')
     if not user:
         return {'logged_in': False}
 
-    is_admin = bool(user.get('is_admin', False))
-    if user.get('auth_type') == 'email':
-        try:
-            conn = _db()
-            row = conn.execute(
-                "SELECT is_admin FROM auth_users WHERE auth_id = ?",
-                (int(user['discord_id']),)
-            ).fetchone()
-            conn.close()
-            if row is not None:
-                is_admin = bool(row['is_admin'])
-        except Exception as e:
-            log.warning(f"[api/me] is_admin re-check failed: {e}")
-
+    # Re-check admin status against the current ADMIN_EMAIL env var each time,
+    # in case it was changed since login.
+    is_admin = _is_admin_email(user.get('email', ''))
     if is_admin != user.get('is_admin', False):
         session_user = dict(request.session['user'])
         session_user['is_admin'] = is_admin
@@ -1137,15 +842,14 @@ async def api_update_profile(request: Request):
     nickname = str(data.get('nickname', '')).strip()[:50]
     bio = str(data.get('bio', '')).strip()[:500]
 
-    conn = None
     try:
-        conn = _db()
-        if user.get('auth_type') == 'email':
-            conn.execute(
-                "UPDATE auth_users SET nickname = ?, bio = ? WHERE auth_id = ?",
-                (nickname or None, bio or None, int(user['discord_id']))
-            )
-            conn.commit()
+        auth_type = user.get('auth_type', 'discord')
+        uid = user['discord_id']
+        updates = {}
+        if nickname:
+            updates['name'] = nickname
+        updates['bio'] = bio
+        save_stats(auth_type, uid, updates)
 
         session_user = dict(request.session['user'])
         session_user['username'] = nickname or user.get('username')
@@ -1157,9 +861,6 @@ async def api_update_profile(request: Request):
     except Exception as e:
         log.error(f"[profile update] Error: {e}")
         return _json({'ok': False, 'error': 'Something went wrong.'}, 500)
-    finally:
-        if conn:
-            conn.close()
 
 @app.delete('/api/delete-account')
 async def api_delete_account(request: Request):
@@ -1174,8 +875,6 @@ async def api_delete_account(request: Request):
     if _strict_rate_limit(ip, max_calls=5, window=300, scope='delete'):
         return _json({'ok': False, 'error': 'Too many attempts. Please wait a moment.'}, 429)
 
-    data = await _get_json(request)
-    password = str(data.get('password', ''))
     user_id = user.get('discord_id')
     auth_type = user.get('auth_type')
 
@@ -1185,18 +884,7 @@ async def api_delete_account(request: Request):
     conn = None
     try:
         conn = _db()
-
-        if auth_type == 'email':
-            row = conn.execute(
-                "SELECT password_hash FROM auth_users WHERE auth_id = ?", (int(user_id),)
-            ).fetchone()
-            if not row:
-                return _json({'ok': False, 'error': 'Account not found.'}, 404)
-            if not password or not _verify_password(password, row['password_hash']):
-                return _json({'ok': False, 'error': 'Incorrect password.'}, 401)
-            conn.execute("DELETE FROM auth_users WHERE auth_id = ?", (int(user_id),))
-
-        account_key = _stats_key(auth_type or 'email', user_id)
+        account_key = _stats_key(auth_type or 'discord', user_id)
         conn.execute("DELETE FROM player_stats WHERE account_key = ?", (account_key,))
         conn.execute("DELETE FROM guild_members WHERE account_key = ?", (account_key,))
         conn.execute("DELETE FROM account_links WHERE discord_id = ?", (str(user_id),))
@@ -1216,147 +904,42 @@ async def api_delete_account(request: Request):
         if conn:
             conn.close()
 
-
-@app.post('/api/password/request-reset')
-async def api_password_request_reset(request: Request):
-    ip = _get_real_ip(request)
-
-    if _strict_rate_limit(ip, max_calls=5, window=600, scope='reset-request'):
-        return _json({'ok': False, 'error': 'Too many requests. Please wait a few minutes.'}, 429)
-
-    data = await _get_json(request)
-    email = str(data.get('email', '')).strip().lower()
-
-    if not email or '@' not in email:
-        return _json({'ok': False, 'error': 'Please enter a valid email address.'}, 400)
-
-    _purge_reset_tokens()
-
-    conn = None
-    try:
-        conn = _db()
-        account = conn.execute(
-            "SELECT auth_id FROM auth_users WHERE lower(email) = ?", (email,)
-        ).fetchone()
-    except Exception:
-        log.exception("[Password Reset] Database lookup failed")
-        return _json({'ok': False, 'error': 'Unable to process the request right now.'}, 500)
-    finally:
-        if conn:
-            conn.close()
-
-    generic_response = {
-        'ok': True,
-        'message': 'If that email is registered, you will receive a reset code.'
-    }
-
-    if not account:
-        return generic_response
-
-    otp = str(secrets.randbelow(900000) + 100000)
-
-    try:
-        await asyncio.to_thread(send_reset_email, email, otp)
-    except Exception:
-        log.exception("[Password Reset] EmailJS delivery failed")
-        return _json({'ok': False, 'error': 'Unable to send the reset email. Please try again later.'}, 500)
-
-    # ── FIX: Persist OTP to DB (not just memory) so it survives a restart
-    expires_at = datetime.now(UTC) + timedelta(minutes=5)
-    _reset_tokens[email] = {'otp': otp, 'expires_at': expires_at}
-    _store_reset_token(email, otp, expires_at)
-
-    log.info("[Password Reset] Reset email accepted by EmailJS")
-    return generic_response
-
-@app.post('/api/password/verify-reset')
-async def api_password_reset(request: Request):
-    ip = _get_real_ip(request)
-
-    if _strict_rate_limit(ip, max_calls=8, window=300, scope='reset-verify'):
-        return _json({'ok': False, 'error': 'Too many attempts. Please wait a moment.'}, 429)
-
-    data = await _get_json(request)
-    email = str(data.get('email', '')).strip().lower()
-    otp = str(data.get('otp', '')).strip()
-    new_password = str(data.get('new_password', '')).strip()
-
-    if not email:
-        return _json({'ok': False, 'error': 'Email address is required.'}, 400)
-    if not otp or len(otp) != 6:
-        return _json({'ok': False, 'error': 'Please enter the 6-digit code.'}, 400)
-    if len(new_password) < 6:
-        return _json({'ok': False, 'error': 'Password must be at least 6 characters.'}, 400)
-
-    _purge_reset_tokens()
-
-    # ── FIX: Check memory cache first, fall back to DB ────────────────────────
-    record = _reset_tokens.get(email) or _load_reset_token(email)
-    if not record:
-        return _json({'ok': False, 'error': 'No reset request found.'}, 400)
-
-    if datetime.now(UTC) > record['expires_at']:
-        _reset_tokens.pop(email, None)
-        _delete_reset_token(email)
-        return _json({'ok': False, 'error': 'The code has expired.'}, 400)
-
-    if not hmac.compare_digest(record['otp'], otp):
-        return _json({'ok': False, 'error': 'Incorrect code.'}, 400)
-
-    conn = None
-    try:
-        conn = _db()
-        existing = conn.execute("SELECT auth_id FROM auth_users WHERE lower(email) = ?", (email,)).fetchone()
-        if not existing:
-            return _json({'ok': False, 'error': 'No account found for that email.'}, 404)
-
-        new_hash = _hash_password(new_password)
-        conn.execute("UPDATE auth_users SET password_hash = ? WHERE auth_id = ?", (new_hash, existing['auth_id']))
-        conn.commit()
-
-        _reset_tokens.pop(email, None)
-        _delete_reset_token(email)
-        _log_activity(existing['auth_id'], 'password_reset')
-
-        return {'ok': True, 'message': 'Password updated successfully!'}
-
-    except Exception as e:
-        log.error(f"[Password Reset] Error: {e}")
-        return _json({'ok': False, 'error': 'Something went wrong.'}, 500)
-    finally:
-        if conn:
-            conn.close()
-
 # ── Admin Routes ─────────────────────────────────────────────────────────────
 @app.get('/api/admin/users')
 async def api_admin_users(request: Request):
+    """Account list for the admin panel. Accounts are now Discord/Google only —
+    there's no password table anymore, so this is built from player_stats."""
     user = request.session.get('user')
-    if not user:
-        return _json({'ok': False, 'error': 'Not logged in'}, 401)
-    if not user.get('is_admin', False):
+    if not user or not user.get('is_admin', False):
         return _json({'ok': False, 'error': 'Admin access required'}, 403)
 
     conn = None
     try:
         conn = _db()
-        users = conn.execute(
-            """SELECT auth_id, email, nickname, avatar, bio, is_admin,
-                      created_at, last_login
-               FROM auth_users ORDER BY auth_id DESC"""
-        ).fetchall()
+        rows = conn.execute("SELECT account_key, data, last_updated FROM player_stats").fetchall()
+        links = {
+            r['discord_id']: r['last_login']
+            for r in conn.execute("SELECT discord_id, last_login FROM account_links").fetchall()
+        }
 
         user_list = []
-        for u in users:
+        for r in rows:
+            try:
+                d = json.loads(r['data'])
+            except Exception:
+                d = {}
+            atype, uid = _split_account(r['account_key'])
+            sid = uid if atype == 'discord' else f'google:{uid}'
             user_list.append({
-                'id': u['auth_id'],
-                'email': u['email'],
-                'nickname': u['nickname'] or '—',
-                'avatar': u['avatar'] or 'https://api.dicebear.com/7.x/avataaars/svg?seed=default',
-                'bio': u['bio'] or '—',
-                'is_admin': bool(u['is_admin']),
-                'created_at': u['created_at'],
-                'last_login': u['last_login'] or 'Never',
-                'is_online': str(u['auth_id']) in _session_log and bool(_session_log.get(str(u['auth_id'])))
+                'id': r['account_key'],
+                'nickname': d.get('name') or uid,
+                'avatar': d.get('avatar') or 'https://api.dicebear.com/7.x/avataaars/svg?seed=default',
+                'email': '—' if atype != 'discord' else '—',  # email isn't persisted outside the session
+                'is_admin': False,  # computed live on login from ADMIN_EMAIL; not stored per-account
+                'created_at': links.get(sid) or r['last_updated'],
+                'last_login': links.get(sid) or 'Never',
+                'is_online': sid in _session_log and bool(_session_log.get(sid)),
+                'provider': atype,
             })
 
         return {
@@ -1365,10 +948,9 @@ async def api_admin_users(request: Request):
             'stats': {
                 'total': len(user_list),
                 'online': sum(1 for u in user_list if u.get('is_online')),
-                'admins': sum(1 for u in user_list if u['is_admin'])
+                'admins': 1 if ADMIN_EMAIL else 0,
             }
         }
-
     except Exception as e:
         log.error(f"[Admin/users] Error: {e}")
         return _json({'ok': False, 'error': str(e)}, 500)
@@ -1376,35 +958,39 @@ async def api_admin_users(request: Request):
         if conn:
             conn.close()
 
+@app.post('/api/admin/users/{user_id}/toggle-admin')
+async def api_admin_toggle_admin(user_id: str, request: Request):
+    user = request.session.get('user')
+    if not user or not user.get('is_admin', False):
+        return _json({'ok': False, 'error': 'Admin access required'}, 403)
+    return _json({
+        'ok': False,
+        'error': 'Admin status is now set by the ADMIN_EMAIL environment variable, '
+                 'not per-account — update ADMIN_EMAIL on Render to change who has admin access.'
+    }, 400)
+
 @app.delete('/api/admin/users/{user_id}')
-async def api_admin_delete_user(user_id: int, request: Request):
+async def api_admin_delete_user(user_id: str, request: Request):
     user = request.session.get('user')
     if not user or not user.get('is_admin', False):
         return _json({'ok': False, 'error': 'Admin access required'}, 403)
 
-    if str(user_id) == user.get('discord_id'):
+    own_key = _stats_key(user.get('auth_type', 'discord'), user.get('discord_id', ''))
+    if user_id == own_key:
         return _json({'ok': False, 'error': 'Cannot delete your own account'}, 400)
 
     conn = None
     try:
         conn = _db()
-        existing = conn.execute(
-            "SELECT auth_id, is_admin FROM auth_users WHERE auth_id = ?", (user_id,)
-        ).fetchone()
-
-        if not existing:
-            return _json({'ok': False, 'error': 'User not found'}, 404)
-        if existing['is_admin']:
-            return _json({'ok': False, 'error': 'Cannot delete admin accounts'}, 403)
-
-        conn.execute("DELETE FROM auth_users WHERE auth_id = ?", (user_id,))
-        # ── FIX: Also clean up guild membership on admin delete ────────────────
-        conn.execute("DELETE FROM guild_members WHERE account_key LIKE ?", (f'email:{user_id}',))
+        atype, uid = _split_account(user_id)
+        conn.execute("DELETE FROM player_stats WHERE account_key = ?", (user_id,))
+        conn.execute("DELETE FROM guild_members WHERE account_key = ?", (user_id,))
+        if atype == 'discord':
+            conn.execute("DELETE FROM account_links WHERE discord_id = ?", (uid,))
         conn.commit()
 
-        log.info(f"[Admin] User {user_id} deleted by admin")
-        return {'ok': True, 'message': 'User deleted successfully'}
-
+        log.info(f"[Admin] Account {user_id} deleted by admin")
+        return {'ok': True, 'message': 'Account deleted successfully'}
     except Exception as e:
         log.error(f"[Admin/delete] Error: {e}")
         return _json({'ok': False, 'error': str(e)}, 500)
@@ -1457,42 +1043,6 @@ async def api_admin_give_gold(request: Request):
     load_game_data()
     return {'ok': True, 'gold': new['gold']}
 
-@app.post('/api/admin/users/{user_id}/toggle-admin')
-async def api_admin_toggle_admin(user_id: int, request: Request):
-    user = request.session.get('user')
-    if not user or not user.get('is_admin', False):
-        return _json({'ok': False, 'error': 'Admin access required'}, 403)
-
-    if str(user_id) == user.get('discord_id'):
-        return _json({'ok': False, 'error': 'Cannot modify your own admin status'}, 400)
-
-    conn = None
-    try:
-        conn = _db()
-        existing = conn.execute(
-            "SELECT auth_id, is_admin FROM auth_users WHERE auth_id = ?", (user_id,)
-        ).fetchone()
-
-        if not existing:
-            return _json({'ok': False, 'error': 'User not found'}, 404)
-
-        new_status = 0 if existing['is_admin'] else 1
-        conn.execute("UPDATE auth_users SET is_admin = ? WHERE auth_id = ?", (new_status, user_id))
-        conn.commit()
-
-        return {
-            'ok': True,
-            'is_admin': bool(new_status),
-            'message': f"Admin status {'granted' if new_status else 'revoked'}"
-        }
-
-    except Exception as e:
-        log.error(f"[Admin/toggle-admin] Error: {e}")
-        return _json({'ok': False, 'error': str(e)}, 500)
-    finally:
-        if conn:
-            conn.close()
-
 @app.get('/api/admin/players')
 async def api_admin_players(request: Request):
     user = request.session.get('user')
@@ -1536,7 +1086,6 @@ async def api_admin_update_player(user_id: str, request: Request):
         return _json({'ok': False, 'error': 'updates object required'}, 400)
     atype, uid = _split_account(user_id)
 
-    # ── FIX: If admin changes guild via the player editor, sync guild_members too
     if 'guild' in updates:
         new_guild = str(updates['guild']).strip()
         if new_guild and new_guild != '—':
@@ -1557,7 +1106,6 @@ async def api_admin_stats(request: Request):
 
     try:
         conn = _db()
-        total_users = conn.execute("SELECT COUNT(*) FROM auth_users").fetchone()[0]
         active_sessions = len(_session_log)
 
         recent_activity = conn.execute(
@@ -1568,7 +1116,6 @@ async def api_admin_stats(request: Request):
         return {
             'ok': True,
             'stats': {
-                'total_users': total_users,
                 'active_sessions': active_sessions,
                 'total_requests': _global_req_count.get('n', 0),
                 'banned_ips': len([v for v in _ip_banned.values() if time.time() < v])
@@ -1812,28 +1359,12 @@ async def api_profile(request: Request):
     if not user:
         return {'logged_in': False}
 
-    nickname = user.get('username')
-    avatar = user.get('avatar')
-    bio = user.get('bio', '')
-    is_admin = bool(user.get('is_admin', False))
+    stats = get_stats(user.get('auth_type', 'discord'), user['discord_id'])
+    nickname = stats.get('name') or user.get('username')
+    avatar = stats.get('avatar') or user.get('avatar')
+    bio = stats.get('bio', '')
+    is_admin = _is_admin_email(user.get('email', ''))
 
-    if user.get('auth_type') == 'email':
-        try:
-            conn = _db()
-            row = conn.execute(
-                "SELECT nickname, avatar, bio, is_admin FROM auth_users WHERE auth_id = ?",
-                (int(user['discord_id']),)
-            ).fetchone()
-            conn.close()
-            if row:
-                nickname = row['nickname'] or nickname
-                avatar = row['avatar'] or avatar
-                bio = row['bio'] or bio
-                is_admin = bool(row['is_admin'])
-        except Exception as e:
-            log.warning(f"[profile] lookup failed: {e}")
-
-    stats = get_stats(user.get('auth_type', 'email'), user['discord_id'])
     return {'logged_in': True, 'nickname': nickname, 'avatar': avatar, 'bio': bio,
             'is_admin': is_admin, 'stats': stats, **{k: stats.get(k) for k in
             ('level', 'gold', 'gems', 'special_coins', 'xp', 'xp_needed', 'char_class')}}
