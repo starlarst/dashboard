@@ -47,10 +47,13 @@ def _iter_pets(game):
 def register_profile_routes(app):
     # Import here (not at module top) to avoid circular imports — this module
     # is imported by dashboard_app.py after the app is created.
-    from dashboard_app import _db, cached_data, _lock, get_stats, _stats_key
+    # cached_data is re-assigned by load_game_data(), so read it through the module at call time
+    # (importing the name here would freeze a reference to the original empty dict).
+    import dashboard_app as da
+    from dashboard_app import _db, _lock, get_stats, _stats_key
 
     @app.get('/api/profile/{discord_id}/extended')
-    async def api_profile_extended(discord_id: str, request: Request):
+    def api_profile_extended(discord_id: str, request: Request):
         """
         Extended profile for the logged-in user. Response shape matches
         profile.html:
@@ -78,7 +81,7 @@ def register_profile_routes(app):
         if str(session_user.get('discord_id')) != str(discord_id):
             return JSONResponse({"error": "unauthorized"}, status_code=403)
 
-        auth_type = session_user.get('auth_type', 'email')
+        auth_type = session_user.get('auth_type', 'discord')
         uid = discord_id  # keep as string; get_stats accepts either
 
         try:
@@ -110,7 +113,7 @@ def register_profile_routes(app):
         guild_name = game.get('guild') or game.get('guild_name')
         if guild_name and guild_name != '—':
             with _lock:
-                cached_guilds = dict(cached_data.get('guilds', {}))
+                cached_guilds = dict(da.cached_data.get('guilds', {}))
             doc = cached_guilds.get(guild_name)
             if isinstance(doc, dict):
                 guild = {"id": guild_name, "name": guild_name}
@@ -143,7 +146,7 @@ def register_profile_routes(app):
             my_xp = _coerce_int(game.get('xp', 0))
             my_key = _stats_key(auth_type, uid)
             with _lock:
-                players = dict(cached_data.get('players', {}))
+                players = dict(da.cached_data.get('players', {}))
             higher = 0
             for pid, pd in players.items():
                 if str(pid) == my_key:
@@ -252,22 +255,7 @@ def register_profile_routes(app):
 
         # ── Joined date ─────────────────────────────────────────
         joined_at = None
-        if auth_type == 'email':
-            conn = None
-            try:
-                conn = _db()
-                row = conn.execute(
-                    "SELECT created_at FROM auth_users WHERE auth_id = ?",
-                    (_coerce_int(uid),),
-                ).fetchone()
-                if row and row['created_at']:
-                    joined_at = row['created_at']
-            except Exception:
-                joined_at = None
-            finally:
-                if conn is not None:
-                    conn.close()
-        else:
+        if True:  # email accounts (auth_users) no longer exist; every account has an account_links row
             conn = None
             try:
                 conn = _db()
