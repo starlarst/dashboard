@@ -1034,10 +1034,7 @@ async function deleteUser(userId) {
     } catch { showToast('Server error', true); }
 }
 
-// ════════════════════════════════════════════════════════════════════
-// BACKGROUND MUSIC
-// ════════════════════════════════════════════════════════════════════
-const YT_MUSIC_VIDEO_ID = 'dQw4w9WgXcQ';
+const YT_MUSIC_VIDEO_ID = 'VeTQswpgr6o';
 let musicEnabled  = localStorage.getItem('rpgGhostMusic') === 'on';
 let ytPlayer      = null;
 let ytPlayerReady = false;
