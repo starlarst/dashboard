@@ -182,8 +182,38 @@ if not DATABASE_URL:
     raise ValueError("DATABASE_URL (Neon connection string) is missing.")
 
 class _PGCursor:
-    def __init__(self, cursor): self._cursor = cursor
+    def __init__(self, cursor):
+        self._cursor = cursor
+        self._compat_rows = None
+
     def execute(self, sql, params=()):
+        # SQLite PRAGMA table_info(table) -> PostgreSQL information_schema.
+        pragma_match = re.match(r"\s*PRAGMA\s+table_info\s*\(\s*([\w]+)\s*\)\s*;?\s*$", sql, re.I)
+        if pragma_match:
+            table_name = pragma_match.group(1)
+            self._cursor.execute(
+                "SELECT column_name, data_type, is_nullable, column_default "
+                "FROM information_schema.columns WHERE table_schema = current_schema() "
+                "AND table_name = %s ORDER BY ordinal_position",
+                (table_name,)
+            )
+            rows = self._cursor.fetchall()
+            # SQLite table_info row layout: cid, name, type, notnull, dflt_value, pk
+            self._compat_rows = [
+                (i, row['column_name'], row['data_type'],
+                 0 if row['is_nullable'] == 'YES' else 1,
+                 row['column_default'], 1 if i == 0 and 'primary key' in str(row['column_default']).lower() else 0)
+                for i, row in enumerate(rows)
+            ]
+            return self
+
+        # SQLite connection-tuning PRAGMAs have no PostgreSQL equivalent.
+        # Treat them as harmless no-ops so legacy route modules can share _db().
+        if re.match(r"\s*PRAGMA\b", sql, re.I):
+            self._compat_rows = []
+            return self
+
+        self._compat_rows = None
         # Translate common SQLite syntax used by dashboard and route modules.
         ignore = "INSERT OR IGNORE" in sql.upper()
         sql = re.sub(
@@ -198,8 +228,17 @@ class _PGCursor:
             sql = sql.rstrip().rstrip(";") + " ON CONFLICT DO NOTHING"
         self._cursor.execute(sql, params or ())
         return self
-    def fetchone(self): return self._cursor.fetchone()
-    def fetchall(self): return self._cursor.fetchall()
+
+    def fetchone(self):
+        if self._compat_rows is not None:
+            return self._compat_rows.pop(0) if self._compat_rows else None
+        return self._cursor.fetchone()
+
+    def fetchall(self):
+        if self._compat_rows is not None:
+            rows, self._compat_rows = self._compat_rows, []
+            return rows
+        return self._cursor.fetchall()
 
 class _PGConnection:
     def __init__(self):
