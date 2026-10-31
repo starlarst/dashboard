@@ -308,8 +308,7 @@ body {
 }
 .social-btn-full:active { transform: translateY(0) scale(0.985); transition-duration: 0.08s; }
 .social-btn-full:focus-visible { outline: 2px solid var(--spectral-teal); outline-offset: 3px; }
-.social-btn-full:disabled { opacity: 0.65; cursor: not-allowed; transform: none; }
-.social-btn-full.is-loading { opacity: 0.75; cursor: progress; }   /* stays clickable so a failed redirect can be retried */
+.social-btn-full:disabled, .social-btn-full.is-loading { opacity: 0.65; cursor: progress; transform: none; pointer-events: none; }
 
 .recaptcha-notice {
     text-align: center; font-size: 0.7rem; color: #333;
@@ -2426,4 +2425,32 @@ body.sidebar-is-collapsed .main-content {
     .auth-foot { margin-top: 0.9rem; }
     .social-btns-full { gap: 0.6rem; }
     .social-btn-full { min-height: 48px; }
+}
+/* ══════════════════════════════════════════════════════════════════
+   SIDEBAR FIX — prevents fixed sidebar bleeding over auth screen
+══════════════════════════════════════════════════════════════════ */
+
+/* 1. Hide sidebar whenever the dashboard wrapper is hidden via class */
+#dashboard-app.hidden .sidebar,
+.dashboard-app.hidden .sidebar {
+    display: none !important;
+}
+
+/* 2. Hide sidebar when auth screen is visible (:has() — Chrome 105+, Safari 15.4+, FF 121+) */
+body:has(#auth-screen[style*="flex"]) .sidebar,
+body:has(.auth-screen[style*="flex"]) .sidebar {
+    display: none !important;
+    pointer-events: none !important;
+}
+
+/* 3. Raise auth screen above any fixed sidebar stacking context */
+#auth-screen,
+.auth-screen {
+    z-index: 99999 !important;
+    isolation: isolate;
+}
+@media (max-width: 1100px) {
+    .dashboard-container {
+        margin-left: 0 !important;
+    }
 }
