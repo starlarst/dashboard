@@ -221,57 +221,7 @@
                             <span style="font-size:0.65rem;font-family:Inter;font-weight:400;color:var(--dash-text-faint);" id="inventory-count">0 items</span>
                         </div>
                         <div class="inv-container" id="inventory-container"></div>
-                        <div style="margin-top:12px;text-align:right;">
-                            <button class="btn-bid" onclick="openListItemModal()" style="font-size:0.7rem;padding:4px 14px;">
-                                <i class="fa-solid fa-plus"></i> List Item
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- ==========================================
-                    STATS WIDGETS ROW
-                    ========================================== -->
-                    <div class="panel stats-row hidden">
-                        <div class="stats-inner">
-                            <div class="stat-widget"><div class="stat-widget-icon gold"><i class="fa-solid fa-coins"></i></div><div class="stat-widget-value" id="stat-gold">0</div><div class="stat-widget-label">Gold</div></div>
-                            <div class="stat-widget"><div class="stat-widget-icon purple"><i class="fa-solid fa-gem"></i></div><div class="stat-widget-value" id="stat-gems">0</div><div class="stat-widget-label">Gems</div></div>
-                            <div class="stat-widget"><div class="stat-widget-icon teal"><i class="fa-solid fa-trophy"></i></div><div class="stat-widget-value" id="stat-rank">#0</div><div class="stat-widget-label">Rank</div></div>
-                            <div class="stat-widget"><div class="stat-widget-icon emerald"><i class="fa-solid fa-swords"></i></div><div class="stat-widget-value" id="stat-wins">0</div><div class="stat-widget-label">Battles Won</div></div>
-                            <div class="stat-widget"><div class="stat-widget-icon red"><i class="fa-solid fa-skull"></i></div><div class="stat-widget-value" id="stat-losses">0</div><div class="stat-widget-label">Defeats</div></div>
-                            <div class="stat-widget"><div class="stat-widget-icon teal"><i class="fa-solid fa-clock"></i></div><div class="stat-widget-value" id="stat-playtime">0h</div><div class="stat-widget-label">Playtime</div></div>
-                        </div>
-                    </div>
-
-                    <!-- ==========================================
-                    LEADERBOARD
-                    ========================================== -->
-                    <div class="panel leaderboard-panel hidden">
-                        <div class="panel-header"><span><i class="fa-solid fa-trophy" style="color:var(--gold)"></i> Leaderboard</span></div>
-                        <div class="lb-podium" id="lb-podium"></div>
-                        <div style="overflow-x:auto;">
-                            <table class="lb-table">
-                                <thead><tr><th>Rank</th><th>Player</th><th>Class</th><th style="text-align:right;">XP</th></tr></thead>
-                                <tbody id="lb-tbody"></tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <!-- ==========================================
-                    AUCTION HOUSE
-                    ========================================== -->
-                    <div class="panel auction-panel hidden">
-                        <div class="panel-header">
-                            <span><i class="fa-solid fa-gavel" style="color:var(--gold)"></i> Auction House</span>
-                            <span style="font-size:0.65rem;font-family:Inter;font-weight:400;color:var(--dash-text-faint);"><span id="items-listed">0</span> listings</span>
-                        </div>
-                        <div class="auction-grid">
-                            <div class="auction-items" id="auction-items"></div>
-                            <div class="auction-sidebar">
-                                <div class="auction-stat"><div class="auction-stat-label">Active Bids</div><div class="auction-stat-value" id="active-bids">0</div></div>
-                                <div class="auction-stat"><div class="auction-stat-label">Your Balance</div><div class="auction-stat-value gold" id="auction-balance">0 Gold</div></div>
-                                <button class="btn-bid" onclick="openListItemModal()" style="width:100%;padding:10px;font-size:0.8rem;"><i class="fa-solid fa-plus"></i> List Item</button>
-                            </div>
-                        </div>
+                        
                     </div>
 
                     <!-- ==========================================
@@ -379,42 +329,6 @@
     </div>
 
     <!-- ============================================
-    LIST ITEM MODAL
-    ============================================ -->
-    <div class="modal-backdrop" id="listItemModal">
-        <div class="modal-card">
-            <div class="modal-head">
-                <h3><i class="fa-solid fa-gavel" style="color:var(--gold)"></i> List Item on Auction House</h3>
-                <button class="modal-close" id="listItemClose">&times;</button>
-            </div>
-            <form id="listItemForm">
-                <div class="modal-field">
-                    <label>Select Item</label>
-                    <select id="listItemSelect" class="admin-search-input" style="width:100%;"><option value="">Loading items...</option></select>
-                </div>
-                <div class="modal-field">
-                    <label>Starting Bid (Gold)</label>
-                    <input type="number" id="listItemStartBid" class="admin-search-input" style="width:100%;" placeholder="Enter bid amount" min="1">
-                </div>
-                <div class="modal-field">
-                    <label>Duration</label>
-                    <select id="listItemDuration" class="admin-search-input" style="width:100%;">
-                        <option value="6">6 Hours</option>
-                        <option value="12">12 Hours</option>
-                        <option value="24" selected>24 Hours</option>
-                        <option value="48">48 Hours</option>
-                        <option value="72">72 Hours</option>
-                    </select>
-                </div>
-                <div class="modal-actions">
-                    <button type="button" class="modal-btn-cancel" id="listItemCancel">Cancel</button>
-                    <button type="submit" class="btn-bid" id="listItemSubmit" style="flex:2;padding:12px;font-size:0.85rem;"><i class="fa-solid fa-gavel"></i> List Item</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- ============================================
     EDIT PLAYER MODAL
     ============================================ -->
     <div class="modal-backdrop" id="editPlayerModal">
@@ -478,5 +392,6 @@
     <div id="ytMusicPlayer" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;"></div>
     <script src="https://www.youtube.com/iframe_api"></script>
     <script src="/static/dashboard.js"></script>
+    <script src="/static/insights.js" defer></script>
 </body>
 </html>
