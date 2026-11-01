@@ -71,13 +71,8 @@
         <details class="ah-sell" id="ahSell" open>
             <summary><i class="fa-solid fa-plus"></i>List an Item for Auction</summary>
             <form class="ah-sell-form" id="ahSellForm">
-                <select id="sellItem" class="admin-search-input" style="display:none" aria-label="Item from inventory"></select>
-                <input type="text" id="sellName" class="admin-search-input" placeholder="Item name" maxlength="60" required>
-                <select id="sellRarity" class="admin-search-input" style="flex:0 0 auto" aria-label="Rarity">
-                    <option value="common">Common</option>
-                    <option value="rare">Rare</option>
-                    <option value="epic">Epic</option>
-                    <option value="legendary">Legendary</option>
+                <select id="sellItem" class="admin-search-input" style="min-width:200px" aria-label="Item from inventory" required>
+                    <option value="">Loading your inventory...</option>
                 </select>
                 <input type="number" id="sellStart" class="admin-search-input" style="flex:0 0 130px" min="1" value="100" placeholder="Starting bid" aria-label="Starting bid" required>
                 <select id="sellHours" class="admin-search-input" style="flex:0 0 auto" aria-label="Duration">
@@ -133,7 +128,9 @@
         }
 
         function minBid(a) {
-            return (Number(a.current_bid) || 0) + 1;
+            const cur = Number(a.current_bid) || 0;
+            // No bids yet: current_bid is the seller's starting price and may be matched.
+            return a.top_bidder ? cur + 1 : Math.max(cur, 1);
         }
 
         function render() {
@@ -203,49 +200,41 @@
 
         let inventory = [];
 
-        function fillInventory(state) {
-            const inv = state && (state.inventory || state.items);
+        async function loadInventory() {
             const sel = $('sellItem');
-            if (!Array.isArray(inv) || !inv.length) return;
-            inventory = inv.map(i => typeof i === 'string' ? { id: i, name: i } : i);
-            sel.innerHTML = '<option value="">Pick from inventory...</option>' +
-                inventory.map((i, n) => `<option value="${n}">${esc(i.name || i.id)}${i.rarity ? ' (' + esc(i.rarity) + ')' : ''}</option>`).join('');
-            sel.style.display = '';
-            sel.onchange = () => {
-                const it = inventory[parseInt(sel.value, 10)];
-                if (!it) return;
-                $('sellName').value = it.name || it.id || '';
-                if (it.rarity) $('sellRarity').value = String(it.rarity).toLowerCase();
-            };
+            try {
+                const res = await fetch('/api/inventory/' + encodeURIComponent(me.discord_id), { credentials: 'same-origin' });
+                const d = await res.json();
+                inventory = (d.items || []).filter(i => i && i.name);
+            } catch (e) { console.error(e); inventory = []; }
+            if (!inventory.length) {
+                sel.innerHTML = '<option value="">Your inventory is empty</option>';
+                return;
+            }
+            sel.innerHTML = '<option value="">Pick an item to sell...</option>' +
+                inventory.map((i, n) => `<option value="${n}">${esc(i.name)} x${Number(i.quantity) || 1} (${esc(i.rarity || 'common')})</option>`).join('');
         }
 
         async function listItem(e) {
             e.preventDefault();
             if (busy) return;
-            const name = $('sellName').value.trim();
+            const picked = inventory[parseInt($('sellItem').value, 10)];
             const start = parseInt($('sellStart').value, 10);
             const hours = parseInt($('sellHours').value, 10);
-            const rarity = $('sellRarity').value;
-            const picked = inventory[parseInt($('sellItem').value, 10)];
-            if (!name) return toast('Enter an item name.', true);
+            if (!picked) return toast('Pick an item from your inventory.', true);
             if (!start || start < 1) return toast('Starting bid must be at least 1 gold.', true);
             busy = true; $('sellBtn').disabled = true;
             try {
                 const res = await fetch('/api/auctions/create', {
                     method: 'POST', credentials: 'same-origin',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        item_id: picked ? (picked.id ?? null) : null,
-                        name, rarity, starting_bid: start, duration_hours: hours
-                    })
+                    body: JSON.stringify({ name: picked.name, starting_bid: start, duration_hours: hours })
                 });
                 const d = await res.json().catch(() => ({}));
                 if (res.status === 401) { toast('Session expired. Please log in again.', true); return; }
-                if (res.status === 404) { toast('Server has no /api/auctions/create endpoint yet.', true); return; }
                 if (!d.ok) { toast(d.error || 'Could not list item.', true); return; }
-                toast('Listed ' + name + ' for ' + start.toLocaleString() + ' gold!');
-                $('sellName').value = '';
-                await Promise.all([load(), loadGold()]);
+                toast('Listed ' + picked.name + ' for ' + start.toLocaleString() + ' gold!');
+                await Promise.all([load(), loadInventory()]);
             } catch (err) {
                 console.error(err);
                 toast('Could not reach the server.', true);
@@ -268,7 +257,7 @@
             try {
                 const res = await fetch('/api/game/state', { credentials: 'same-origin' });
                 const d = await res.json();
-                if (d.ok) { gold = Number(d.state.gold) || 0; $('gold-display').textContent = gold.toLocaleString(); fillInventory(d.state); }
+                if (d.ok) { gold = Number(d.state.gold) || 0; $('gold-display').textContent = gold.toLocaleString(); }
             } catch (e) { console.error(e); }
         }
 
@@ -280,6 +269,11 @@
                 me = d;
             } catch (e) { window.location.href = '/'; return; }
             $('ahSellForm').addEventListener('submit', listItem);
+            if ((me.auth_type || 'discord') !== 'discord') {
+                $('ahSell').innerHTML = '<summary><i class="fa-solid fa-plus"></i>List an Item for Auction</summary><p class="ah-meta" style="margin-top:.75rem">Auctions are only available for Discord accounts right now.</p>';
+            } else {
+                loadInventory();
+            }
             $('ahSearch').addEventListener('input', render);
             $('ahRarity').addEventListener('change', render);
             $('ahRefresh').addEventListener('click', () => { load(); loadGold(); });
