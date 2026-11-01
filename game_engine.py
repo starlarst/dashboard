@@ -786,16 +786,16 @@ def register_game_routes(app, db_factory):
             return _unauth()
         with _state_lock:
             conn = _DB()
-            conn.isolation_level = None
             try:
-                if write:
-                    conn.execute('BEGIN IMMEDIATE')
+                # PostgreSQL opens a transaction implicitly on the first statement, so there is no
+                # BEGIN IMMEDIATE / isolation_level here (those are SQLite-only). _state_lock already
+                # serialises writers inside this process; commit()/rollback() end the transaction.
                 try:
                     st = _load(conn, ident)
                     result = fn(conn, ident, st)
                     if isinstance(result, JSONResponse):
                         if write:
-                            conn.execute('ROLLBACK')
+                            conn.rollback()
                         return result
                     if write and save:
                         _save(conn, ident, st)
@@ -803,11 +803,13 @@ def register_game_routes(app, db_factory):
                     result['ok'] = True
                     result['logged_in'] = True
                     if write:
-                        conn.execute('COMMIT')
+                        conn.commit()
                     return result
                 except Exception:
-                    if conn.in_transaction:
-                        conn.execute('ROLLBACK')
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
                     raise
             except Exception:
                 log.exception('[game_engine] action failed')
