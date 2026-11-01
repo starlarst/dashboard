@@ -261,6 +261,7 @@ UPDATE_INTERVAL = int(os.getenv('UPDATE_INTERVAL', '60'))   # seconds; every ref
 cached_data = {}
 last_updated = None
 _lock = threading.Lock()
+_bid_lock = threading.Lock()   # serialises auction bids (single-process server)
 
 # ── Small helpers ────────────────────────────────────────────────────────────
 def _log_activity(user_id, action, detail=""):
@@ -1164,6 +1165,7 @@ for _path, _tpl in (
     ('/guild-hall', 'guild-hall.html'), ('/settings', 'settings.html'),
     ('/hunting-grounds', 'hunting-grounds.html'), ('/tower', 'tower.html'),
     ('/shop', 'shop.html'), ('/community', 'community.html'),
+    ('/auction', 'auction.html'),
 ):
     _page(_path, _tpl)
 
@@ -1282,6 +1284,23 @@ def api_inventory(user_id: str, request: Request):
 
     return {'items': items}
 
+def _player_name(pid):
+    """Display name for a Discord account id, from the leaderboard cache."""
+    with _lock:
+        players = cached_data.get('players', {})
+    pd = players.get(f'discord:{pid}') or players.get(str(pid)) or {}
+    return pd.get('name') or str(pid)
+
+def _auction_seconds_left(end):
+    try:
+        if isinstance(end, str):                 # e.g. a TEXT column left over from the migration
+            end = datetime.fromisoformat(end)
+        if end.tzinfo is None:                   # TIMESTAMP columns come back naive (stored as UTC)
+            end = end.replace(tzinfo=UTC)
+        return max(0, int((end - datetime.now(UTC)).total_seconds()))
+    except Exception:
+        return 0
+
 @app.get('/api/auctions')
 def api_auctions():
     conn = None
@@ -1290,40 +1309,102 @@ def api_auctions():
         rows = conn.execute(
             "SELECT * FROM auctions WHERE status='active' ORDER BY end_time ASC LIMIT 50"
         ).fetchall()
-
-        auctions = []
-        now = datetime.now(UTC)
-        for r in rows:
-            try:
-                end = r['end_time']
-                if isinstance(end, str):                 # e.g. a TEXT column left over from the migration
-                    end = datetime.fromisoformat(end)
-                if end.tzinfo is None:                   # TIMESTAMP columns come back naive (stored as UTC)
-                    end = end.replace(tzinfo=UTC)
-                tl = max(0, int((end - now).total_seconds()))
-            except Exception:
-                tl = 0
-
-            auctions.append({
-                'id': r['id'],
-                'name': r['item_name'],
-                'icon': '⚔️',
-                'rarity': 'common',
-                'category': 'weapon',
-                'seller': str(r['seller_id']),
-                'current_bid': r['current_bid'],
-                'bids': 0,
-                'time_left': tl,
-                'top_bidder': str(r['highest_bidder']) if r['highest_bidder'] else None,
-                'bid_history': [],
-            })
-        return {'auctions': auctions}
     except Exception as e:
         log.warning(f'[api/auctions] {e}')
         return _json({'auctions': []}, 200)
     finally:
         if conn:
             conn.close()
+
+    auctions = []
+    for r in rows:
+        top = r['highest_bidder']
+        auctions.append({
+            'id': r['id'],
+            'name': r['item_name'],
+            'icon': '⚔️',
+            'rarity': 'common',
+            'category': 'weapon',
+            'seller': str(r['seller_id']),
+            'seller_name': _player_name(r['seller_id']),
+            'current_bid': r['current_bid'],
+            'bids': 0,
+            'time_left': _auction_seconds_left(r['end_time']),
+            'top_bidder': str(top) if top else None,
+            'top_bidder_name': _player_name(top) if top else None,
+            'bid_history': [],
+        })
+    return {'auctions': auctions}
+
+@app.post('/api/auctions/bid')
+async def api_auction_bid(request: Request):
+    user = request.session.get('user')
+    if not user:
+        return _json({'ok': False, 'error': 'Not logged in'}, 401)
+    if _strict_rate_limit(_get_real_ip(request), max_calls=30, window=60, scope='bid'):
+        return _json({'ok': False, 'error': 'Too many bids. Slow down.'}, 429)
+    # auctions.seller_id / highest_bidder are BIGINT, which fits Discord ids but not Google's 21-digit ids.
+    if (user.get('auth_type') or 'discord') != 'discord':
+        return _json({'ok': False, 'error': 'Bidding is only available for Discord accounts right now.'}, 403)
+
+    body = await _get_json(request)
+    try:
+        auction_id = int(body.get('auction_id'))
+        amount = int(body.get('amount'))
+        bidder = int(user['discord_id'])
+    except (TypeError, ValueError, KeyError):
+        return _json({'ok': False, 'error': 'auction_id and amount required'}, 400)
+    if amount < 1:
+        return _json({'ok': False, 'error': 'Invalid bid amount'}, 400)
+
+    def work():
+        with _bid_lock:
+            conn = _db()
+            try:
+                row = conn.execute("SELECT * FROM auctions WHERE id=?", (auction_id,)).fetchone()
+            finally:
+                conn.close()
+            if not row or row['status'] != 'active':
+                return {'ok': False, 'error': 'This auction is no longer active.'}, 404
+            if _auction_seconds_left(row['end_time']) <= 0:
+                return {'ok': False, 'error': 'This auction has ended.'}, 400
+            if int(row['seller_id']) == bidder:
+                return {'ok': False, 'error': "You can't bid on your own listing."}, 400
+
+            old_bid = int(row['current_bid'] or 0)
+            prev = row['highest_bidder']
+            if prev is not None and int(prev) == bidder:
+                return {'ok': False, 'error': "You're already the highest bidder."}, 400
+            if amount <= old_bid:
+                return {'ok': False, 'error': f'Bid must be higher than {old_bid:,} gold.'}, 400
+            if int(get_stats('discord', str(bidder)).get('gold') or 0) < amount:
+                return {'ok': False, 'error': 'Not enough gold.'}, 400
+
+            # Escrow the bid, record it, then refund the previous top bidder.
+            merged = save_stats('discord', str(bidder), {}, deltas={'gold': -amount})
+            try:
+                conn = _db()
+                try:
+                    conn.execute(
+                        "UPDATE auctions SET current_bid=?, highest_bidder=? WHERE id=? AND status='active'",
+                        (amount, bidder, auction_id))
+                    conn.commit()
+                finally:
+                    conn.close()
+            except Exception:
+                save_stats('discord', str(bidder), {}, deltas={'gold': amount})   # undo the escrow
+                raise
+            if prev is not None and old_bid > 0:
+                save_stats('discord', str(int(prev)), {}, deltas={'gold': old_bid})
+            _log_activity(bidder, 'auction_bid', f'auction {auction_id}: {amount} gold')
+            return {'ok': True, 'gold': merged['gold']}, 200
+
+    try:
+        payload, status = await run_in_threadpool(work)
+        return _json(payload, status)
+    except Exception as e:
+        log.error(f'[auction bid] {e}')
+        return _json({'ok': False, 'error': 'Something went wrong. Please try again.'}, 500)
 
 @app.get('/api/profile')
 def api_profile(request: Request):
