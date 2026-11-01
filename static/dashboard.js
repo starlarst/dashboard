@@ -133,7 +133,66 @@ async function checkAuth() {
 // ════════════════════════════════════════════════════════════════════
 // SIDEBAR & NAVIGATION
 // ════════════════════════════════════════════════════════════════════
+function isAuctionLink(link) {
+    const page = (link.dataset.page || '').toLowerCase();
+    const href = (link.getAttribute('href') || '').toLowerCase();
+    return page.includes('auction') || href.includes('auction') || /auction/i.test(link.textContent || '');
+}
+
+// Make sure the sidebar has an Auction House entry that opens /auction. layout.js builds the sidebar,
+// so reuse an existing auction link if it has one, otherwise clone an existing item as a template.
+function ensureAuctionNavLink() {
+    const list = document.querySelector('.nav-links');
+    if (!list) return;
+
+    const existing = Array.from(list.querySelectorAll('a')).find(isAuctionLink);
+    if (existing) {
+        existing.setAttribute('href', '/auction');
+        existing.dataset.page = 'auction';
+        return;
+    }
+
+    const template = list.querySelector('li');
+    const tplLink = template && template.querySelector('a');
+    if (!tplLink) return;
+
+    const li = template.cloneNode(true);
+    const a = li.querySelector('a');
+    a.setAttribute('href', '/auction');
+    a.dataset.page = 'auction';
+    a.classList.remove('active');
+    a.removeAttribute('aria-current');
+
+    const icon = a.querySelector('i');
+    if (icon) icon.className = 'fa-solid fa-gavel';
+    a.querySelectorAll('.nav-badge').forEach(b => b.remove());
+
+    let labeled = false;
+    a.childNodes.forEach(n => {
+        if (labeled) return;
+        if (n.nodeType === 3 && n.textContent.trim()) { n.textContent = ' Auction House'; labeled = true; }
+        else if (n.nodeType === 1 && !n.classList.contains('nav-icon') && n.textContent.trim()) {
+            n.textContent = 'Auction House'; labeled = true;
+        }
+    });
+    if (!labeled) a.appendChild(document.createTextNode(' Auction House'));
+
+    list.appendChild(li);
+}
+
+// Works for links added after page load too.
+document.addEventListener('click', e => {
+    const link = e.target.closest && e.target.closest('.nav-links a');
+    if (link && isAuctionLink(link)) {
+        e.preventDefault();
+        window.location.href = '/auction';
+    }
+}, true);
+
 function setupSidebar() {
+    ensureAuctionNavLink();
+    setTimeout(ensureAuctionNavLink, 400);
+    setTimeout(ensureAuctionNavLink, 1500);
     const sidebar     = document.getElementById('sidebar');
     const backdrop    = document.getElementById('navBackdrop');
     const toggle      = document.getElementById('navToggle');
@@ -177,6 +236,7 @@ function setupSidebar() {
 
     document.querySelectorAll('.nav-links a').forEach(link => {
         link.addEventListener('click', (e) => {
+            if (isAuctionLink(link)) { e.preventDefault(); closeDrawer(); window.location.href = '/auction'; return; }
             const page = link.dataset.page || 'overview';
             if (inPagePanels.includes(page)) {
                 e.preventDefault();
@@ -1049,7 +1109,7 @@ async function deleteUser(userId) {
     } catch { showToast('Server error', true); }
 }
 
-const YT_MUSIC_VIDEO_ID = 'dQw4w9WgXcQ';
+const YT_MUSIC_VIDEO_ID = 'VeTQswpgr6o';
 let musicEnabled  = localStorage.getItem('rpgGhostMusic') === 'on';
 let ytPlayer      = null;
 let ytPlayerReady = false;
