@@ -4,15 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Realm of Valor - Dashboard</title>
+    <script>try{if(localStorage.getItem('rpgGhostSession')==='1')document.documentElement.classList.add('has-session');}catch(e){}</script>
     <link rel="stylesheet" href="/static/dashboard.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700&family=Inter:wght@400;500;600;700" rel="stylesheet">
 </head>
 <body data-page="overview">
 
-    <!-- ============================================
-    AUTH SCREEN
-    ============================================ -->
     <section id="auth-screen" class="auth-screen" role="region" aria-label="Login">
         <div class="auth-bg-effects">
             <div class="auth-particle auth-particle-1"></div>
@@ -69,6 +67,7 @@
                 </div>
 
                 <div class="header-actions">
+                    <a class="admin-btn" href="/auction" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;"><i class="fa-solid fa-gavel"></i> Auction House</a>
                     <button class="music-toggle" id="musicToggle" aria-label="Toggle background music">
                         <i class="fa-solid fa-volume-xmark"></i>
                     </button>
@@ -170,12 +169,6 @@
                             <div class="char-stat-item"><i class="fa-solid fa-gauge-high"></i> SPD <strong id="char-spd">0</strong></div>
                             <div class="char-stat-item"><i class="fa-solid fa-clover"></i> LCK <strong id="char-lck">0</strong></div>
                             <div class="char-stat-item"><i class="fa-solid fa-bolt"></i> CRIT <strong id="char-crit">0%</strong></div>
-                        </div>
-
-                        <div class="quick-actions">
-                            <button class="action-btn" data-ripple onclick="performAction('heal')"><i class="fa-solid fa-heart-pulse"></i><span>Heal</span></button>
-                            <button class="action-btn" data-ripple onclick="performAction('hunt')"><i class="fa-solid fa-crosshairs"></i><span>Hunt</span></button>
-                            <button class="action-btn" data-ripple onclick="performAction('daily')"><i class="fa-solid fa-gift"></i><span>Daily</span></button>
                         </div>
 
                         <div class="char-divider"></div>
@@ -329,30 +322,6 @@
         </div>
     </div>
 
-    <div class="bot-intro-overlay" id="botIntroOverlay">
-        <div class="bot-intro-card">
-            <button class="bot-intro-skip" id="botIntroSkip">Skip</button>
-            <div class="bot-intro-bot-row">
-                <div class="bot-intro-bot-avatar"><i class="fa-solid fa-ghost"></i></div>
-                <div class="bot-intro-bot-info">
-                    <div class="bot-intro-bot-name">RPG Ghost</div>
-                    <div class="bot-intro-bot-tag">v2.4 · <span>Discord RPG Bot</span></div>
-                </div>
-            </div>
-            <div class="bot-intro-desc" id="botIntroDesc"><span class="tw-cursor"></span></div>
-            <div class="bot-intro-divider"></div>
-            <div class="bot-intro-dev-label">Created by</div>
-            <div class="bot-intro-dev-row">
-                <div class="bot-intro-dev-pfp-fallback"><i class="fa-solid fa-code"></i></div>
-                <div class="bot-intro-dev-details">
-                    <div class="bot-intro-dev-name">Ghost Development</div>
-                    <div class="bot-intro-dev-handle"><span>@ghost_dev</span></div>
-                </div>
-                <div class="bot-intro-dev-badge">✦ Dev</div>
-            </div>
-            <button class="bot-intro-enter" id="botIntroEnter">Enter the Realm <i class="fa-solid fa-arrow-right"></i></button>
-        </div>
-    </div>
     <div id="ytMusicPlayer" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;"></div>
     <script src="https://www.youtube.com/iframe_api"></script>
     <script src="/static/dashboard.js" defer></script>
