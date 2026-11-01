@@ -118,6 +118,7 @@ def init_db():
                 current_bid INTEGER NOT NULL DEFAULT 0, highest_bidder BIGINT,
                 status TEXT NOT NULL DEFAULT 'active', end_time TIMESTAMP NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
+            "ALTER TABLE auctions ADD COLUMN IF NOT EXISTS rarity TEXT NOT NULL DEFAULT 'common'",
             """CREATE TABLE IF NOT EXISTS guild_members (
                 account_key TEXT NOT NULL, guild_name TEXT NOT NULL,
                 joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (account_key))""",
@@ -1323,7 +1324,7 @@ def api_auctions():
             'id': r['id'],
             'name': r['item_name'],
             'icon': '⚔️',
-            'rarity': 'common',
+            'rarity': (dict(r).get('rarity') or 'common'),
             'category': 'weapon',
             'seller': str(r['seller_id']),
             'seller_name': _player_name(r['seller_id']),
@@ -1335,6 +1336,151 @@ def api_auctions():
             'bid_history': [],
         })
     return {'auctions': auctions}
+
+AUCTION_DURATIONS_HOURS = (1, 6, 12, 24, 48)
+AUCTION_MAX_START_BID = 10_000_000
+AUCTION_MAX_ACTIVE_PER_SELLER = 5
+
+def _inventory_adjust(atype, uid, name, delta, rarity='common'):
+    """Add (delta > 0) or remove (delta < 0) one unit of an inventory item, under a row lock.
+
+    Handles both inventory shapes api_inventory() accepts (dict or list). Returns the item's rarity,
+    or None when a removal found no such item."""
+    def qty_of(e):
+        v = (e.get('quantity', e.get('qty', 1)) if isinstance(e, dict) else e)
+        try:
+            return max(1, int(v))
+        except (TypeError, ValueError):
+            return 1
+
+    def with_qty(e, q):
+        if isinstance(e, dict):
+            e = dict(e)
+            e['qty' if ('qty' in e and 'quantity' not in e) else 'quantity'] = q
+            return e
+        if isinstance(e, str):
+            return {'name': e, 'quantity': q, 'rarity': 'common'}
+        return q
+
+    def rar_of(e):
+        return (e.get('rarity') or 'common') if isinstance(e, dict) else 'common'
+
+    key = _stats_key(atype, uid)
+    conn = _db()
+    try:
+        row = conn.execute("SELECT data FROM player_stats WHERE account_key=? FOR UPDATE", (key,)).fetchone()
+        if not row:
+            return None
+        data = json.loads(row['data'])
+        inv = data.get('inventory')
+        out = rarity
+        if isinstance(inv, dict):
+            k = next((k for k, e in inv.items()
+                      if (e.get('name', k) if isinstance(e, dict) else k) == name), None)
+            if k is None:
+                if delta < 0:
+                    return None
+                inv[name] = {'name': name, 'quantity': 1, 'rarity': rarity}
+            else:
+                e = inv[k]
+                out = rar_of(e)
+                q = qty_of(e) + delta
+                if q <= 0:
+                    del inv[k]
+                else:
+                    inv[k] = with_qty(e, q)
+        elif isinstance(inv, list):
+            i = next((i for i, e in enumerate(inv)
+                      if (e.get('name') if isinstance(e, dict) else str(e)) == name), None)
+            if i is None:
+                if delta < 0:
+                    return None
+                inv.append({'name': name, 'quantity': 1, 'rarity': rarity})
+            else:
+                e = inv[i]
+                out = rar_of(e)
+                q = qty_of(e) + delta
+                if q <= 0:
+                    inv.pop(i)
+                else:
+                    inv[i] = with_qty(e, q)
+        else:
+            if delta < 0:
+                return None
+            inv = [{'name': name, 'quantity': 1, 'rarity': rarity}]
+        data['inventory'] = inv
+        conn.execute(
+            "UPDATE player_stats SET data=?, last_updated=CURRENT_TIMESTAMP WHERE account_key=?",
+            (json.dumps(data), key))
+        conn.commit()
+        return out
+    finally:
+        conn.close()
+
+@app.post('/api/auctions/create')
+async def api_auction_create(request: Request):
+    user = request.session.get('user')
+    if not user:
+        return _json({'ok': False, 'error': 'Not logged in'}, 401)
+    if _strict_rate_limit(_get_real_ip(request), max_calls=10, window=60, scope='auction_create'):
+        return _json({'ok': False, 'error': 'Too many listings. Slow down.'}, 429)
+    if (user.get('auth_type') or 'discord') != 'discord':
+        return _json({'ok': False, 'error': 'Auctions are only available for Discord accounts right now.'}, 403)
+
+    body = await _get_json(request)
+    name = str(body.get('name') or '').strip()[:100]
+    try:
+        start = int(body.get('starting_bid'))
+        hours = int(body.get('duration_hours'))
+        seller = int(user['discord_id'])
+    except (TypeError, ValueError, KeyError):
+        return _json({'ok': False, 'error': 'name, starting_bid and duration_hours required'}, 400)
+    if not name:
+        return _json({'ok': False, 'error': 'Pick an item to list.'}, 400)
+    if not 1 <= start <= AUCTION_MAX_START_BID:
+        return _json({'ok': False, 'error': f'Starting bid must be between 1 and {AUCTION_MAX_START_BID:,} gold.'}, 400)
+    if hours not in AUCTION_DURATIONS_HOURS:
+        return _json({'ok': False, 'error': 'Invalid duration.'}, 400)
+
+    def work():
+        with _bid_lock:
+            conn = _db()
+            try:
+                n = conn.execute(
+                    "SELECT COUNT(*) AS c FROM auctions WHERE seller_id=? AND status='active'", (seller,)
+                ).fetchone()
+            finally:
+                conn.close()
+            if int(n['c']) >= AUCTION_MAX_ACTIVE_PER_SELLER:
+                return {'ok': False, 'error': f'You can only have {AUCTION_MAX_ACTIVE_PER_SELLER} active listings.'}, 400
+
+            # The item leaves the seller's inventory while it is listed.
+            rarity = _inventory_adjust('discord', str(seller), name, -1)
+            if rarity is None:
+                return {'ok': False, 'error': "You don't have that item."}, 400
+            try:
+                end = (datetime.now(UTC) + timedelta(hours=hours)).replace(tzinfo=None)   # naive UTC, like the column
+                conn = _db()
+                try:
+                    conn.execute(
+                        "INSERT INTO auctions (item_name, seller_id, current_bid, status, end_time, rarity) "
+                        "VALUES (?, ?, ?, 'active', ?, ?)",
+                        (name, seller, start, end, rarity))
+                    conn.commit()
+                finally:
+                    conn.close()
+            except Exception:
+                _inventory_adjust('discord', str(seller), name, +1, rarity)   # give the item back
+                raise
+            _log_activity(seller, 'auction_create', f'{name}: start {start} gold, {hours}h')
+            return {'ok': True}, 200
+
+    try:
+        payload, status = await run_in_threadpool(work)
+        return _json(payload, status)
+    except Exception as e:
+        log.error(f'[auction create] {e}')
+        return _json({'ok': False, 'error': 'Something went wrong. Please try again.'}, 500)
 
 @app.post('/api/auctions/bid')
 async def api_auction_bid(request: Request):
@@ -1375,7 +1521,11 @@ async def api_auction_bid(request: Request):
             prev = row['highest_bidder']
             if prev is not None and int(prev) == bidder:
                 return {'ok': False, 'error': "You're already the highest bidder."}, 400
-            if amount <= old_bid:
+            # With no bids yet, current_bid holds the seller's starting price, which may be matched.
+            if prev is None:
+                if amount < max(old_bid, 1):
+                    return {'ok': False, 'error': f'Bid must be at least {max(old_bid, 1):,} gold.'}, 400
+            elif amount <= old_bid:
                 return {'ok': False, 'error': f'Bid must be higher than {old_bid:,} gold.'}, 400
             if int(get_stats('discord', str(bidder)).get('gold') or 0) < amount:
                 return {'ok': False, 'error': 'Not enough gold.'}, 400
