@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Realm of Valor - Auction House</title>
+    <link rel="stylesheet" href="/static/dashboard.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700" rel="stylesheet">
+    <style>
+        body { padding: 2rem 1.25rem 4rem; }
+        .ah-wrap { position: relative; z-index: 1; max-width: 1000px; margin: 0 auto; }
+        .ah-top { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.75rem; }
+        .ah-top h1 { font-family: 'Sora', sans-serif; font-size: 1.65rem; font-weight: 800; }
+        .ah-top h1 i { color: var(--gold); margin-right: 10px; }
+        .ah-back { text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+        .ah-toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 1.25rem; }
+        .ah-toolbar .admin-search-input { flex: 1; min-width: 180px; }
+        .ah-toolbar select.admin-search-input { flex: 0 0 auto; min-width: 140px; }
+        .ah-list { display: flex; flex-direction: column; gap: 0.75rem; }
+        .ah-card { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; padding: 1rem 1.1rem; border-radius: var(--radius-md); border: 1px solid var(--dash-border); background: var(--dash-glass-soft); }
+        .ah-meta { font-size: 0.7rem; color: var(--dash-text-faint); margin-top: 3px; }
+        .ah-price { text-align: right; min-width: 110px; }
+        .ah-price small { display: block; font-size: 0.62rem; letter-spacing: 1px; text-transform: uppercase; color: var(--dash-text-faint); }
+        .ah-price strong { color: var(--gold); font-family: 'Sora', sans-serif; font-size: 1rem; }
+        .ah-bid { display: flex; gap: 8px; align-items: center; }
+        .ah-bid input { width: 110px; }
+        .ah-empty { text-align: center; padding: 3rem 1rem; color: var(--dash-text-faint); }
+        .ah-empty i { display: block; font-size: 1.6rem; margin-bottom: 0.6rem; color: var(--dash-teal); }
+        @media (max-width: 600px) {
+            .ah-card { align-items: flex-start; }
+            .ah-price { text-align: left; }
+            .ah-bid { width: 100%; }
+            .ah-bid input { flex: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-canvas"></div>
+    <div class="bg-grid"></div>
+
+    <div class="ah-wrap">
+        <div class="ah-top">
+            <h1><i class="fa-solid fa-gavel"></i>Auction House</h1>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                <div class="currency-badge gold"><i class="fa-solid fa-coins"></i><span id="gold-display">0</span></div>
+                <a class="admin-btn ah-back" href="/"><i class="fa-solid fa-arrow-left"></i> Dashboard</a>
+            </div>
+        </div>
+
+        <div class="ah-toolbar">
+            <input type="text" id="ahSearch" class="admin-search-input" placeholder="Search items or sellers...">
+            <select id="ahRarity" class="admin-search-input">
+                <option value="">All rarities</option>
+                <option value="common">Common</option>
+                <option value="rare">Rare</option>
+                <option value="epic">Epic</option>
+                <option value="legendary">Legendary</option>
+            </select>
+            <button class="admin-btn" id="ahRefresh"><i class="fa-solid fa-rotate"></i> Refresh</button>
+        </div>
+
+        <div class="ah-list" id="ahList">
+            <div class="ah-empty"><i class="fa-solid fa-spinner fa-spin"></i>Loading auctions...</div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast">
+        <i class="fa-solid fa-circle-check" style="color:var(--spectral-teal);font-size:1.1rem;"></i>
+        <span id="toast-message">Notification</span>
+        <div class="toast-progress"></div>
+    </div>
+
+    <script>
+    (function () {
+        let auctions = [];
+        let me = null;
+        let gold = 0;
+        let busy = false;
+
+        const $ = id => document.getElementById(id);
+        const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        const RARITY = { legendary: 'var(--rarity-legendary)', epic: 'var(--rarity-epic)', rare: 'var(--rarity-rare)' };
+
+        function toast(msg, isError) {
+            const t = $('toast'); if (!t) return;
+            $('toast-message').textContent = msg;
+            t.style.borderLeftColor = isError ? '#ef4444' : 'var(--dash-teal)';
+            const old = t.querySelector('.toast-progress'); if (old) old.remove();
+            const bar = document.createElement('div'); bar.className = 'toast-progress'; t.appendChild(bar);
+            t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 3500);
+        }
+
+        function timeLeft(a) {
+            if (a.time_left == null) return '';
+            if (a.time_left <= 0) return 'Ended';
+            const m = Math.floor(a.time_left / 60);
+            if (m < 60) return m + 'm left';
+            const h = Math.floor(m / 60);
+            return h < 24 ? h + 'h left' : Math.floor(h / 24) + 'd ' + (h % 24) + 'h left';
+        }
+
+        function minBid(a) {
+            return (Number(a.current_bid) || 0) + 1;
+        }
+
+        function render() {
+            const q = $('ahSearch').value.trim().toLowerCase();
+            const r = $('ahRarity').value;
+            const list = auctions.filter(a =>
+                (!r || (a.rarity || 'common').toLowerCase() === r) &&
+                (!q || (a.name || '').toLowerCase().includes(q) || (a.seller || '').toLowerCase().includes(q)));
+
+            const cont = $('ahList');
+            if (!list.length) {
+                cont.innerHTML = '<div class="ah-empty"><i class="fa-solid fa-gavel"></i>No active auctions found.</div>';
+                return;
+            }
+            cont.innerHTML = '';
+            list.forEach(a => {
+                const rar = (a.rarity || 'common').toLowerCase();
+                const col = RARITY[rar] || '#22c55e';
+                const mine = me && String(a.seller) === String(me.discord_id);
+                const top = me && a.top_bidder && String(a.top_bidder) === String(me.discord_id);
+                const ended = a.time_left != null && a.time_left <= 0;
+                const left = timeLeft(a);
+                const min = minBid(a);
+                const card = document.createElement('div');
+                card.className = 'ah-card';
+                card.innerHTML = `
+                    <div class="auction-item-icon" style="background:${col}15;color:${col}"><i class="fa-solid fa-gavel"></i></div>
+                    <div class="auction-item-info">
+                        <div class="auction-item-name" style="color:${col}">${esc(a.name)}</div>
+                        <div class="ah-meta">${esc(rar)} · Seller: ${esc(a.seller_name || a.seller || 'Unknown')}${left ? ' · ' + esc(left) : ''}${a.top_bidder_name ? ' · Top bidder: ' + esc(a.top_bidder_name) : ''}</div>
+                    </div>
+                    <div class="ah-price"><small>Current bid</small><strong>${(Number(a.current_bid) || 0).toLocaleString()} 💰</strong></div>
+                    <div class="ah-bid">
+                        ${mine ? '<span class="ah-meta">Your listing</span>' : top ? '<span class="ah-meta" style="color:var(--dash-emerald)">You\'re the highest bidder</span>' : ended ? '<span class="ah-meta">Ended</span>' : `
+                        <input type="number" class="admin-search-input" min="${min}" value="${min}" aria-label="Bid amount">
+                        <button class="btn-bid" type="button">Bid</button>`}
+                    </div>`;
+                if (!mine && !top && !ended) {
+                    const input = card.querySelector('input');
+                    card.querySelector('.btn-bid').addEventListener('click', () => placeBid(a, parseInt(input.value, 10), card.querySelector('.btn-bid')));
+                }
+                cont.appendChild(card);
+            });
+        }
+
+        async function placeBid(a, amount, btn) {
+            if (busy) return;
+            if (!amount || amount < minBid(a)) return toast('Bid must be at least ' + minBid(a).toLocaleString() + ' gold.', true);
+            if (amount > gold) return toast('Not enough gold.', true);
+            busy = true; btn.disabled = true;
+            try {
+                const res = await fetch('/api/auctions/bid', {
+                    method: 'POST', credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ auction_id: a.id, amount })
+                });
+                const d = await res.json().catch(() => ({}));
+                if (res.status === 401) { toast('Session expired. Please log in again.', true); return; }
+                if (!d.ok) { toast(d.error || 'Bid failed.', true); return; }
+                toast('💰 Bid of ' + amount.toLocaleString() + ' gold placed on ' + a.name + '!');
+                await Promise.all([load(), loadGold()]);
+            } catch (e) {
+                console.error(e);
+                toast('Could not reach the server.', true);
+            } finally { busy = false; btn.disabled = false; }
+        }
+
+        async function load() {
+            try {
+                const res = await fetch('/api/auctions', { credentials: 'same-origin' });
+                const d = await res.json();
+                auctions = d.auctions || [];
+                render();
+            } catch (e) {
+                console.error(e);
+                $('ahList').innerHTML = '<div class="ah-empty"><i class="fa-solid fa-triangle-exclamation"></i>Could not load auctions.</div>';
+            }
+        }
+
+        async function loadGold() {
+            try {
+                const res = await fetch('/api/game/state', { credentials: 'same-origin' });
+                const d = await res.json();
+                if (d.ok) { gold = Number(d.state.gold) || 0; $('gold-display').textContent = gold.toLocaleString(); }
+            } catch (e) { console.error(e); }
+        }
+
+        async function init() {
+            try {
+                const res = await fetch('/api/me', { credentials: 'same-origin' });
+                const d = await res.json();
+                if (!d.logged_in) { window.location.href = '/'; return; }
+                me = d;
+            } catch (e) { window.location.href = '/'; return; }
+            $('ahSearch').addEventListener('input', render);
+            $('ahRarity').addEventListener('change', render);
+            $('ahRefresh').addEventListener('click', () => { load(); loadGold(); });
+            await Promise.all([load(), loadGold()]);
+            setInterval(load, 30000);
+        }
+        init();
+    })();
+    </script>
+</body>
+</html>
