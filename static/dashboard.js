@@ -93,6 +93,14 @@ async function giveGold() {
     } catch (e) { showToast('Request failed'); }
 }
 
+function setSessionFlag(on) {
+    try {
+        if (on) localStorage.setItem('rpgGhostSession', '1');
+        else localStorage.removeItem('rpgGhostSession');
+    } catch (e) { /* ignore */ }
+    if (!on) document.documentElement.classList.remove('has-session');
+}
+
 async function checkAuth() {
     const params = new URLSearchParams(window.location.search);
     const authStatus = params.get('auth');
@@ -102,16 +110,23 @@ async function checkAuth() {
         showToast('Successfully logged in!');
     } else if (authStatus === 'failed') {
         window.history.replaceState({}, document.title, window.location.pathname);
+        setSessionFlag(false);
         showToast('Login failed. Please try again.', true);
         return;
     }
 
     try {
-        const res  = await fetch(`${API_BASE}/api/me`);
+        const res  = await fetch(`${API_BASE}/api/me`, { credentials: 'same-origin' });
         const data = await res.json();
-        if (data.logged_in) showDashboard(data);
+        if (data.logged_in) {
+            setSessionFlag(true);
+            showDashboard(data);
+        } else {
+            setSessionFlag(false);   // session expired -> show login
+        }
     } catch (err) {
         console.error('Auth check error:', err);
+        setSessionFlag(false);
     }
 }
 
@@ -457,7 +472,6 @@ function showDashboard(user) {
         }
 
         setTimeout(() => navigateTo('overview'), 280);
-        setTimeout(maybeShowBotIntro, 700);
 
     } catch (err) {
         console.error('showDashboard error:', err);
@@ -488,6 +502,7 @@ async function loadCustomProfile() {
 // LOGOUT
 // ════════════════════════════════════════════════════════════════════
 async function logout() {
+    setSessionFlag(false);
     try { await fetch('/logout'); } catch (e) { console.error(e); }
 
     document.getElementById('dashboard-app').style.display  = 'none';
@@ -691,7 +706,7 @@ async function loadAuctions() {
                       : a.rarity === 'rare'        ? 'var(--rarity-rare)'
                       : '#22c55e';
             const safeName   = escapeHTML(a.name);
-            const safeSeller = escapeHTML(a.seller || 'Unknown');
+            const safeSeller = escapeHTML(a.seller_name || a.seller || 'Unknown');
             const div = document.createElement('div');
             div.className = 'auction-item';
             div.innerHTML = `
@@ -1034,7 +1049,7 @@ async function deleteUser(userId) {
     } catch { showToast('Server error', true); }
 }
 
-const YT_MUSIC_VIDEO_ID = 'VeTQswpgr6o';
+const YT_MUSIC_VIDEO_ID = 'dQw4w9WgXcQ';
 let musicEnabled  = localStorage.getItem('rpgGhostMusic') === 'on';
 let ytPlayer      = null;
 let ytPlayerReady = false;
@@ -1102,67 +1117,6 @@ function updateMusicButton(btn) {
     const icon = btn.querySelector('i');
     btn.classList.toggle('is-playing', musicEnabled);
     if (icon) icon.className = musicEnabled ? 'fa-solid fa-volume-high' : 'fa-solid fa-volume-xmark';
-}
-
-// ════════════════════════════════════════════════════════════════════
-// BOT INTRO OVERLAY
-// ════════════════════════════════════════════════════════════════════
-function maybeShowBotIntro() {
-    if (sessionStorage.getItem('botIntroSeen') === '1') return;
-    sessionStorage.setItem('botIntroSeen', '1');
-    launchBotIntro();
-}
-
-async function launchBotIntro() {
-    const overlay  = document.getElementById('botIntroOverlay');
-    const enterBtn = document.getElementById('botIntroEnter');
-    const skipBtn  = document.getElementById('botIntroSkip');
-    const descEl   = document.getElementById('botIntroDesc');
-    if (!overlay || !descEl) return;
-
-    const defaultDesc = "Hey there, Adventurer. I'm RPG Ghost — your guide through the spectral realm. Hunt monsters, loot rare gear, complete quests, trade in the auction house, and climb the leaderboard. Your journey through the spectral realm starts here.";
-
-    overlay.classList.add('visible');
-
-    await humanTypewriter(descEl, defaultDesc, () => enterBtn?.classList.add('ready'));
-
-    const dismiss = () => {
-        overlay.classList.remove('visible');
-        setTimeout(() => overlay.style.display = 'none', 400);
-    };
-
-    enterBtn?.addEventListener('click', () => {
-        const musicBtn = document.getElementById('musicToggle');
-        if (musicEnabled && ytPlayerReady && ytPlayer?.getPlayerState() !== YT.PlayerState.PLAYING) {
-            tryPlayMusic(musicBtn);
-        }
-        dismiss();
-    });
-    skipBtn?.addEventListener('click', dismiss);
-}
-
-function humanTypewriter(el, text, onDone) {
-    return new Promise(resolve => {
-        el.innerHTML = '<span class="tw-cursor"></span>';
-        let i = 0;
-        function next() {
-            if (i >= text.length) {
-                el.innerHTML = text + '<span class="tw-cursor"></span>';
-                if (onDone) onDone();
-                resolve();
-                return;
-            }
-            const ch = text[i];
-            el.innerHTML = text.slice(0, i + 1) + '<span class="tw-cursor"></span>';
-            i++;
-            let delay = 18 + Math.random() * 14;
-            if (ch === '.' || ch === '!' || ch === '?') delay = 260 + Math.random() * 100;
-            else if (ch === ',') delay = 110 + Math.random() * 50;
-            else if (ch === ' ') delay = 14 + Math.random() * 16;
-            setTimeout(next, delay);
-        }
-        next();
-    });
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -1324,46 +1278,6 @@ function announceEvents(events) {
     });
 }
 
-async function performAction(action) {
-    if (actionBusy) return;
-    actionBusy = true;
-    try {
-        const res = await fetch(`/api/game/${action}`, {
-            method: 'POST', credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' }
-        });
-        const d = await res.json().catch(() => ({}));
-        if (res.status === 401) { showToast('Session expired. Please log in again.', true); return; }
-        if (!d.ok) { showToast(d.error || 'That did not work.', true); return; }
-
-        applyServerState(d.state);
-
-        if (action === 'hunt') {
-            if (d.result === 'win') {
-                showToast(`⚔️ ${d.message}`);
-                addNotification('battle', 'Hunt won', d.message);
-            } else {
-                showToast(`💀 ${d.message}`, true);
-                addNotification('battle', 'Hunt lost', d.message);
-            }
-            if (d.loot && currentUser && currentUser.discord_id) loadInventory(currentUser.discord_id);
-        } else if (action === 'heal') {
-            showToast(`💚 ${d.message}`);
-            addNotification('level', 'Healed up', d.message);
-        } else if (action === 'daily') {
-            showToast(`🎁 ${d.message}`);
-            addNotification('gift', 'Daily reward claimed', d.message);
-        }
-        announceEvents(d.events);
-        if (currentUser && currentUser.discord_id) loadLeaderboard();
-    } catch (e) {
-        console.error(e);
-        showToast('Could not reach the server. Try again.', true);
-    } finally {
-        actionBusy = false;
-    }
-}
-
 // ════════════════════════════════════════════════════════════════════
 // MINI GAME — Spirit Catcher
 // ════════════════════════════════════════════════════════════════════
@@ -1492,11 +1406,8 @@ async function submitSpiritScore(score) {
     }
 }
 
-function placeBid(itemName) {
-    showToast(`💰 Bid placed on ${itemName}!`);
-    addNotification('auction', 'Bid placed', `You placed a bid on ${itemName}.`);
-    const el = document.getElementById('active-bids');
-    if (el) el.textContent = (parseInt(el.textContent) || 0) + 1;
+function placeBid() {
+    window.location.href = '/auction';
 }
 
 // ════════════════════════════════════════════════════════════════════
