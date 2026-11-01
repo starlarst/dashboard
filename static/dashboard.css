@@ -2505,3 +2505,4 @@ body.sidebar-is-collapsed .main-content {
     .social-btns-full { gap: 0.6rem; }
     .social-btn-full { min-height: 48px; }
 }
+html.has-session #auth-screen { display: none; }
