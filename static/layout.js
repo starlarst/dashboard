@@ -1,6 +1,5 @@
 (function () {
-    
-    const DASHBOARD_TABS = new Set(['overview', 'leaderboard', 'auction']);
+    const DASHBOARD_TABS = new Set(['overview']);
 
     const NAV_SECTIONS = [
         {
@@ -25,7 +24,7 @@
             label: 'Economy',
             items: [
                 { key: 'shop',        href: '/shop',        icon: 'fa-store',        label: 'Shop' },
-                { key: 'auction',     href: '/dashboard',   icon: 'fa-gavel',        label: 'Auction House' },
+                { key: 'auction',     href: '/auction',     icon: 'fa-gavel',        label: 'Auction House' },
                 { key: 'leaderboard', href: '/leaderboard', icon: 'fa-ranking-star', label: 'Leaderboard' }
             ]
         },
@@ -134,22 +133,6 @@
             });
         });
     }
-
-    // Close button inside the drawer (the hamburger is covered while it is open).
-    if (sidebar && !document.getElementById('sidebarCloseBtn')) {
-        const head = sidebar.querySelector('.sidebar-head');
-        if (head) {
-            const c = document.createElement('button');
-            c.type = 'button';
-            c.id = 'sidebarCloseBtn';
-            c.className = 'sidebar-close-btn';
-            c.setAttribute('aria-label', 'Close navigation');
-            c.innerHTML = '<i class="fas fa-xmark"></i>';
-            c.addEventListener('click', closeDrawer);
-            head.appendChild(c);
-        }
-    }
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); });
 
     // Reset on rotation / resize to desktop.
     const onViewportChange = () => { if (mqlDesktop.matches) closeDrawer(); };
