@@ -630,7 +630,7 @@ def _inv_view(st):
                   'rarity': it.get('rarity') or m['rarity'],
                   'description': it.get('description') or m.get('desc', '')})
         out.append(v)
-    order = {'legendary': 0, 'epic': 1, 'rare': 2, 'common': 3}
+    order = {'mythic': 0, 'legendary': 1, 'epic': 2, 'rare': 3, 'common': 4}
     out.sort(key=lambda i: (order.get(i['rarity'], 4), i['name']))
     return out
 
@@ -786,16 +786,16 @@ def register_game_routes(app, db_factory):
             return _unauth()
         with _state_lock:
             conn = _DB()
+            conn.isolation_level = None
             try:
-                # PostgreSQL opens a transaction implicitly on the first statement, so there is no
-                # BEGIN IMMEDIATE / isolation_level here (those are SQLite-only). _state_lock already
-                # serialises writers inside this process; commit()/rollback() end the transaction.
+                if write:
+                    conn.execute('BEGIN IMMEDIATE')
                 try:
                     st = _load(conn, ident)
                     result = fn(conn, ident, st)
                     if isinstance(result, JSONResponse):
                         if write:
-                            conn.rollback()
+                            conn.execute('ROLLBACK')
                         return result
                     if write and save:
                         _save(conn, ident, st)
@@ -803,13 +803,11 @@ def register_game_routes(app, db_factory):
                     result['ok'] = True
                     result['logged_in'] = True
                     if write:
-                        conn.commit()
+                        conn.execute('COMMIT')
                     return result
                 except Exception:
-                    try:
-                        conn.rollback()
-                    except Exception:
-                        pass
+                    if conn.in_transaction:
+                        conn.execute('ROLLBACK')
                     raise
             except Exception:
                 log.exception('[game_engine] action failed')
