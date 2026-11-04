@@ -148,34 +148,47 @@ async function checkAuth() {
 // SIDEBAR & NAVIGATION
 // ════════════════════════════════════════════════════════════════════
 function setupSidebar() {
-    const sidebar     = document.getElementById('sidebar');
-    const backdrop    = document.getElementById('navBackdrop');
-    const toggle      = document.getElementById('navToggle');
-    const collapseBtn = document.getElementById('sidebarCollapseBtn');
-    const container   = document.getElementById('dashboard');
+    const inPagePanels = ['overview', 'admin'];
 
     const closeDrawer = () => {
-        sidebar?.classList.remove('is-open');
-        backdrop?.classList.remove('is-open');
+        document.getElementById('sidebar')?.classList.remove('is-open');
+        document.getElementById('navBackdrop')?.classList.remove('is-open');
         document.body.classList.remove('drawer-open');
         document.body.style.overflow = '';
     };
 
-    if (toggle && backdrop && sidebar) {
-        toggle.addEventListener('click', () => {
+    // Delegated on `document` rather than bound directly to #sidebar/#navToggle/#navBackdrop.
+    // Those elements don't exist in dashboard.html — they're injected into #layout-slot by
+    // /static/layout.js, which can finish after this function runs. Grabbing them by id here
+    // (the old code did `const sidebar = document.getElementById('sidebar')` etc. once, up
+    // front) captured null if layout.js hadn't injected them yet, silently skipped attaching
+    // any listeners, and never re-checked — so the toggle button did nothing, permanently, even
+    // after the sidebar showed up in the DOM. Delegating and looking elements up fresh on every
+    // click fixes that regardless of injection timing.
+    document.addEventListener('click', (e) => {
+        if (e.target.closest('#navToggle')) {
+            const sidebar  = document.getElementById('sidebar');
+            const backdrop = document.getElementById('navBackdrop');
+            if (!sidebar || !backdrop) return;
             const willOpen = !sidebar.classList.contains('is-open');
             sidebar.classList.toggle('is-open', willOpen);
             backdrop.classList.toggle('is-open', willOpen);
             document.body.classList.toggle('drawer-open', willOpen);
             document.body.style.overflow = willOpen ? 'hidden' : '';
-        });
-        backdrop.addEventListener('click', closeDrawer);
-    }
+            return;
+        }
 
-    if (collapseBtn && sidebar) {
-        collapseBtn.addEventListener('click', () => {
+        if (e.target.closest('#navBackdrop')) {
+            closeDrawer();
+            return;
+        }
+
+        if (e.target.closest('#sidebarCollapseBtn')) {
             // Desktop-only control
             if (window.matchMedia('(max-width: 1100px)').matches) return;
+            const sidebar   = document.getElementById('sidebar');
+            const container = document.getElementById('dashboard');
+            if (!sidebar) return;
             sidebar.classList.toggle('is-collapsed');
             container?.classList.toggle('is-collapsed');
             // Keep the body class in sync with the actual sidebar state
@@ -184,14 +197,12 @@ function setupSidebar() {
             // Wait for the CSS width transition to settle before measuring,
             // otherwise the pill gets a stale position/height.
             setTimeout(positionNavPill, 320);
-        });
-    }
+            return;
+        }
 
-    const inPagePanels = ['overview', 'admin'];
-
-    document.querySelectorAll('.nav-links a').forEach(link => {
-        link.addEventListener('click', (e) => {
-            const page = link.dataset.page || 'overview';
+        const navLink = e.target.closest('.nav-links a');
+        if (navLink) {
+            const page = navLink.dataset.page || 'overview';
             if (inPagePanels.includes(page)) {
                 e.preventDefault();
                 navigateTo(page);
@@ -199,7 +210,7 @@ function setupSidebar() {
             // Always close the drawer — including for external/non-panel links,
             // otherwise body.overflow stays locked to 'hidden'.
             closeDrawer();
-        });
+        }
     });
 
     // Rotating to desktop must not leave the drawer "open"
