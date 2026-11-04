@@ -458,6 +458,8 @@ def leave_guild(auth_type: str, uid: str):
 async def lifespan(app: FastAPI):
     await run_in_threadpool(load_game_data)
     threading.Thread(target=_bg_updater, daemon=True).start()
+    await run_in_threadpool(_settle_expired_auctions)   # catch anything that expired while the server was down
+    threading.Thread(target=_auction_settler, daemon=True).start()
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -1416,6 +1418,65 @@ def _inventory_adjust(atype, uid, name, delta, rarity='common'):
         return out
     finally:
         conn.close()
+
+def _settle_auction(auction_id):
+    """Settle one expired auction: pay the seller and hand the item to the winning bidder, or
+    return the item to the seller if nobody bid. Safe to call more than once, or to race with a
+    bid on the same auction — the status flip to 'ended', done under FOR UPDATE inside _bid_lock,
+    makes settlement idempotent and mutually exclusive with placing a new bid."""
+    with _bid_lock:
+        conn = _db()
+        try:
+            row = conn.execute("SELECT * FROM auctions WHERE id=? FOR UPDATE", (auction_id,)).fetchone()
+            if not row or row['status'] != 'active' or _auction_seconds_left(row['end_time']) > 0:
+                return   # already settled, no longer active, or not actually expired yet
+            conn.execute("UPDATE auctions SET status='ended' WHERE id=?", (auction_id,))
+            conn.commit()
+        finally:
+            conn.close()
+
+    name = row['item_name']
+    rarity = dict(row).get('rarity') or 'common'
+    seller = row['seller_id']
+    winner = row['highest_bidder']
+    amount = int(row['current_bid'] or 0)
+
+    if winner is not None:
+        # Winner gets the item, seller gets the escrowed gold (it left the bidder's balance at bid time).
+        _inventory_adjust('discord', str(winner), name, +1, rarity)
+        save_stats('discord', str(seller), {}, deltas={'gold': amount})
+        _log_activity(seller, 'auction_sold', f'{name}: sold for {amount:,} gold')
+        _log_activity(winner, 'auction_won', f'{name}: won for {amount:,} gold')
+    else:
+        # No bids — the item was pulled from the seller's inventory at listing time, so return it.
+        _inventory_adjust('discord', str(seller), name, +1, rarity)
+        _log_activity(seller, 'auction_expired', f'{name}: no bids, returned to inventory')
+
+def _settle_expired_auctions():
+    """Find every active auction whose end_time has passed and settle it."""
+    conn = _db()
+    try:
+        rows = conn.execute(
+            "SELECT id FROM auctions WHERE status='active' AND end_time <= ?",
+            (datetime.now(UTC).replace(tzinfo=None),)
+        ).fetchall()
+    finally:
+        conn.close()
+    for r in rows:
+        try:
+            _settle_auction(r['id'])
+        except Exception as e:
+            log.error(f"[auction settle] auction {r['id']}: {e}")
+
+AUCTION_SETTLE_INTERVAL = 30   # seconds between sweeps for expired auctions
+
+def _auction_settler():
+    while True:
+        time.sleep(AUCTION_SETTLE_INTERVAL)
+        try:
+            _settle_expired_auctions()
+        except Exception as e:
+            log.error(f'[auction settler] {e}')
 
 @app.post('/api/auctions/create')
 async def api_auction_create(request: Request):
