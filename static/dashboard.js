@@ -165,11 +165,19 @@ function setupSidebar() {
     // any listeners, and never re-checked — so the toggle button did nothing, permanently, even
     // after the sidebar showed up in the DOM. Delegating and looking elements up fresh on every
     // click fixes that regardless of injection timing.
+    //
+    // Capture phase (the `true` below), not bubble: this must fire before any other handler
+    // attached directly to these elements gets a chance to call stopPropagation() and prevent
+    // our logic from ever running. We also call stopPropagation() ourselves once we act, so
+    // that if layout.js *does* carry its own working handler on the same element, both handlers
+    // firing don't double-toggle the class and cancel each other out — which looks exactly like
+    // "the button does nothing."
     document.addEventListener('click', (e) => {
         if (e.target.closest('#navToggle')) {
             const sidebar  = document.getElementById('sidebar');
             const backdrop = document.getElementById('navBackdrop');
             if (!sidebar || !backdrop) return;
+            e.stopPropagation();
             const willOpen = !sidebar.classList.contains('is-open');
             sidebar.classList.toggle('is-open', willOpen);
             backdrop.classList.toggle('is-open', willOpen);
@@ -179,6 +187,7 @@ function setupSidebar() {
         }
 
         if (e.target.closest('#navBackdrop')) {
+            e.stopPropagation();
             closeDrawer();
             return;
         }
@@ -187,8 +196,9 @@ function setupSidebar() {
             // Desktop-only control
             if (window.matchMedia('(max-width: 1100px)').matches) return;
             const sidebar   = document.getElementById('sidebar');
-            const container = document.getElementById('dashboard');
+            const container = document.getElementById('dashboard');   // id="dashboard" is the .dashboard-container element
             if (!sidebar) return;
+            e.stopPropagation();
             sidebar.classList.toggle('is-collapsed');
             container?.classList.toggle('is-collapsed');
             // Keep the body class in sync with the actual sidebar state
@@ -211,7 +221,7 @@ function setupSidebar() {
             // otherwise body.overflow stays locked to 'hidden'.
             closeDrawer();
         }
-    });
+    }, true);
 
     // Rotating to desktop must not leave the drawer "open"
     window.addEventListener('resize', () => {
